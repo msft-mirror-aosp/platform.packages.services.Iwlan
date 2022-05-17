@@ -110,6 +110,7 @@ public class EpdgTunnelManager {
     private static final int EVENT_IPSEC_TRANSFORM_CREATED = 7;
     private static final int EVENT_IPSEC_TRANSFORM_DELETED = 8;
     private static final int EVENT_UPDATE_NETWORK = 9;
+    private static final int EVENT_IKE_SESSION_OPENED = 10;
     private static final int IKE_HARD_LIFETIME_SEC_MINIMUM = 300;
     private static final int IKE_HARD_LIFETIME_SEC_MAXIMUM = 86400;
     private static final int IKE_SOFT_LIFETIME_SEC_MINIMUM = 120;
@@ -434,27 +435,10 @@ public class EpdgTunnelManager {
         @Override
         public void onOpened(IkeSessionConfiguration sessionConfiguration) {
             Log.d(TAG, "Ike session opened for apn: " + mApnName);
-            TunnelConfig tunnelConfig = mApnNameToTunnelConfig.get(mApnName);
-            tunnelConfig.setPcscfAddrList(sessionConfiguration.getPcscfServers());
-
-            boolean enabledFastReauth =
-                    (boolean)
-                            getConfig(
-                                    CarrierConfigManager.Iwlan
-                                            .KEY_SUPPORTS_EAP_AKA_FAST_REAUTH_BOOL);
-            Log.d(
-                    TAG,
-                    "CarrierConfigManager.Iwlan.KEY_SUPPORTS_EAP_AKA_FAST_REAUTH_BOOL "
-                            + enabledFastReauth);
-            if (enabledFastReauth) {
-                EapInfo eapInfo = sessionConfiguration.getEapInfo();
-                if (eapInfo != null && eapInfo instanceof EapAkaInfo) {
-                    mNextReauthId = ((EapAkaInfo) eapInfo).getReauthId();
-                    Log.d(TAG, "Update ReauthId: " + Arrays.toString(mNextReauthId));
-                } else {
-                    mNextReauthId = null;
-                }
-            }
+            mHandler.sendMessage(
+                    mHandler.obtainMessage(
+                            EVENT_IKE_SESSION_OPENED,
+                            new IkeSessionOpenedData(mApnName, sessionConfiguration)));
         }
 
         @Override
@@ -888,7 +872,8 @@ public class EpdgTunnelManager {
     // Returns the IMEISV or device IMEI, in that order of priority.
     private @Nullable String getMobileDeviceIdentity() {
         TelephonyManager telephonyManager = mContext.getSystemService(TelephonyManager.class);
-        telephonyManager = telephonyManager.createForSubscriptionId(mSlotId);
+        telephonyManager =
+                telephonyManager.createForSubscriptionId(IwlanHelper.getSubId(mContext, mSlotId));
         if (telephonyManager == null) {
             return null;
         }
@@ -952,6 +937,7 @@ public class EpdgTunnelManager {
                         .setNetwork(mNetwork)
                         .addIkeOption(IkeSessionParams.IKE_OPTION_ACCEPT_ANY_REMOTE_ID)
                         .addIkeOption(IkeSessionParams.IKE_OPTION_MOBIKE)
+                        .addIkeOption(IkeSessionParams.IKE_OPTION_REKEY_MOBILITY)
                         .setLifetimeSeconds(hardTimeSeconds, softTimeSeconds)
                         .setRetransmissionTimeoutsMillis(getRetransmissionTimeoutsFromConfig())
                         .setDpdDelaySeconds(getDpdDelayFromConfig());
@@ -1417,7 +1403,7 @@ public class EpdgTunnelManager {
                     tunnelConfig = mApnNameToTunnelConfig.get(apnName);
 
                     // Update the global cache if they aren't equal
-                    if (!mNetwork.equals(network)) {
+                    if (mNetwork == null || !mNetwork.equals(network)) {
                         Log.d(TAG, "Updating mNetwork to " + network);
                         mNetwork = network;
                     }
@@ -1523,6 +1509,34 @@ public class EpdgTunnelManager {
                     tunnelConfig.getIkeSession().close();
                     break;
 
+                case EVENT_IKE_SESSION_OPENED:
+                    IkeSessionOpenedData ikeSessionOpenedData = (IkeSessionOpenedData) msg.obj;
+                    IkeSessionConfiguration sessionConfiguration =
+                            ikeSessionOpenedData.mIkeSessionConfiguration;
+
+                    tunnelConfig = mApnNameToTunnelConfig.get(ikeSessionOpenedData.mApnName);
+                    tunnelConfig.setPcscfAddrList(sessionConfiguration.getPcscfServers());
+
+                    boolean enabledFastReauth =
+                            (boolean)
+                                    getConfig(
+                                            CarrierConfigManager.Iwlan
+                                                    .KEY_SUPPORTS_EAP_AKA_FAST_REAUTH_BOOL);
+                    Log.d(
+                            TAG,
+                            "CarrierConfigManager.Iwlan.KEY_SUPPORTS_EAP_AKA_FAST_REAUTH_BOOL "
+                                    + enabledFastReauth);
+
+                    if (enabledFastReauth) {
+                        EapInfo eapInfo = sessionConfiguration.getEapInfo();
+                        if (eapInfo != null && eapInfo instanceof EapAkaInfo) {
+                            mNextReauthId = ((EapAkaInfo) eapInfo).getReauthId();
+                            Log.d(TAG, "Update ReauthId: " + Arrays.toString(mNextReauthId));
+                        } else {
+                            mNextReauthId = null;
+                        }
+                    }
+                    break;
                 default:
                     throw new IllegalStateException("Unexpected value: " + msg.what);
             }
@@ -1722,6 +1736,7 @@ public class EpdgTunnelManager {
         }
     }
 
+    // Data received from IkeSessionStateMachine on successful EVENT_CHILD_SESSION_OPENED.
     private static final class TunnelOpenedData {
         final String mApnName;
         final List<InetAddress> mInternalDnsServers;
@@ -1737,6 +1752,20 @@ public class EpdgTunnelManager {
         }
     }
 
+    // Data received from IkeSessionStateMachine on successful EVENT_IKE_SESSION_OPENED.
+    private static final class IkeSessionOpenedData {
+        final String mApnName;
+        final IkeSessionConfiguration mIkeSessionConfiguration;
+
+        private IkeSessionOpenedData(
+                String apnName, IkeSessionConfiguration ikeSessionConfiguration) {
+            mApnName = apnName;
+            mIkeSessionConfiguration = ikeSessionConfiguration;
+        }
+    }
+
+    // Data received from IkeSessionStateMachine if either IKE session or Child session have been
+    // closed, normally or exceptionally.
     private static final class SessionClosedData {
         final String mApnName;
         final IwlanError mIwlanError;
@@ -1948,6 +1977,11 @@ public class EpdgTunnelManager {
     @VisibleForTesting
     void setIsEpdgAddressSelected(boolean value) {
         mIsEpdgAddressSelected = value;
+    }
+
+    @VisibleForTesting
+    TunnelConfig getTunnelConfigForApn(String apnName) {
+        return mApnNameToTunnelConfig.get(apnName);
     }
 
     @VisibleForTesting
