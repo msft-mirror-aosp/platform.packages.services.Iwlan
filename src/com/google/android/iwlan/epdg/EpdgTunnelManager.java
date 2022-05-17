@@ -62,6 +62,7 @@ import android.os.Message;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.telephony.CarrierConfigManager;
+import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.telephony.data.ApnSetting;
 import android.telephony.data.NetworkSliceInfo;
@@ -72,6 +73,7 @@ import com.android.internal.annotations.VisibleForTesting;
 import com.google.android.iwlan.ErrorPolicyManager;
 import com.google.android.iwlan.IwlanError;
 import com.google.android.iwlan.IwlanHelper;
+import com.google.android.iwlan.exceptions.IwlanSimNotReadyException;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
@@ -110,6 +112,7 @@ public class EpdgTunnelManager {
     private static final int EVENT_IPSEC_TRANSFORM_CREATED = 7;
     private static final int EVENT_IPSEC_TRANSFORM_DELETED = 8;
     private static final int EVENT_UPDATE_NETWORK = 9;
+    private static final int EVENT_IKE_SESSION_OPENED = 10;
     private static final int IKE_HARD_LIFETIME_SEC_MINIMUM = 300;
     private static final int IKE_HARD_LIFETIME_SEC_MAXIMUM = 86400;
     private static final int IKE_SOFT_LIFETIME_SEC_MINIMUM = 120;
@@ -434,27 +437,10 @@ public class EpdgTunnelManager {
         @Override
         public void onOpened(IkeSessionConfiguration sessionConfiguration) {
             Log.d(TAG, "Ike session opened for apn: " + mApnName);
-            TunnelConfig tunnelConfig = mApnNameToTunnelConfig.get(mApnName);
-            tunnelConfig.setPcscfAddrList(sessionConfiguration.getPcscfServers());
-
-            boolean enabledFastReauth =
-                    (boolean)
-                            getConfig(
-                                    CarrierConfigManager.Iwlan
-                                            .KEY_SUPPORTS_EAP_AKA_FAST_REAUTH_BOOL);
-            Log.d(
-                    TAG,
-                    "CarrierConfigManager.Iwlan.KEY_SUPPORTS_EAP_AKA_FAST_REAUTH_BOOL "
-                            + enabledFastReauth);
-            if (enabledFastReauth) {
-                EapInfo eapInfo = sessionConfiguration.getEapInfo();
-                if (eapInfo != null && eapInfo instanceof EapAkaInfo) {
-                    mNextReauthId = ((EapAkaInfo) eapInfo).getReauthId();
-                    Log.d(TAG, "Update ReauthId: " + Arrays.toString(mNextReauthId));
-                } else {
-                    mNextReauthId = null;
-                }
-            }
+            mHandler.sendMessage(
+                    mHandler.obtainMessage(
+                            EVENT_IKE_SESSION_OPENED,
+                            new IkeSessionOpenedData(mApnName, sessionConfiguration)));
         }
 
         @Override
@@ -731,6 +717,7 @@ public class EpdgTunnelManager {
 
     private void onBringUpTunnel(TunnelSetupRequest setupRequest, TunnelCallback tunnelCallback) {
         String apnName = setupRequest.apnName();
+        IkeSessionParams ikeSessionParams = null;
 
         Log.d(
                 TAG,
@@ -739,11 +726,21 @@ public class EpdgTunnelManager {
                         + "ePDG : "
                         + mEpdgAddress.getHostAddress());
 
+        try {
+            ikeSessionParams = buildIkeSessionParams(setupRequest, apnName);
+        } catch (IwlanSimNotReadyException e) {
+            mRequestQueue.poll();
+            IwlanError iwlanError = new IwlanError(IwlanError.SIM_NOT_READY_EXCEPTION);
+            reportIwlanError(apnName, iwlanError);
+            tunnelCallback.onClosed(apnName, iwlanError);
+            return;
+        }
+
         IkeSession ikeSession =
                 getIkeSessionCreator()
                         .createIkeSession(
                                 mContext,
-                                buildIkeSessionParams(setupRequest, apnName),
+                                ikeSessionParams,
                                 buildChildSessionParams(setupRequest),
                                 Executors.newSingleThreadExecutor(),
                                 getTmIkeSessionCallback(apnName),
@@ -888,7 +885,8 @@ public class EpdgTunnelManager {
     // Returns the IMEISV or device IMEI, in that order of priority.
     private @Nullable String getMobileDeviceIdentity() {
         TelephonyManager telephonyManager = mContext.getSystemService(TelephonyManager.class);
-        telephonyManager = telephonyManager.createForSubscriptionId(mSlotId);
+        telephonyManager =
+                telephonyManager.createForSubscriptionId(IwlanHelper.getSubId(mContext, mSlotId));
         if (telephonyManager == null) {
             return null;
         }
@@ -907,8 +905,8 @@ public class EpdgTunnelManager {
         return imei.substring(0, imei.length() - 1) + imeisv_suffix;
     }
 
-    private IkeSessionParams buildIkeSessionParams(
-            TunnelSetupRequest setupRequest, String apnName) {
+    private IkeSessionParams buildIkeSessionParams(TunnelSetupRequest setupRequest, String apnName)
+            throws IwlanSimNotReadyException {
         int hardTimeSeconds =
                 (int) getConfig(CarrierConfigManager.Iwlan.KEY_IKE_REKEY_HARD_TIMER_SEC_INT);
         int softTimeSeconds =
@@ -952,6 +950,7 @@ public class EpdgTunnelManager {
                         .setNetwork(mNetwork)
                         .addIkeOption(IkeSessionParams.IKE_OPTION_ACCEPT_ANY_REMOTE_ID)
                         .addIkeOption(IkeSessionParams.IKE_OPTION_MOBIKE)
+                        .addIkeOption(IkeSessionParams.IKE_OPTION_REKEY_MOBILITY)
                         .setLifetimeSeconds(hardTimeSeconds, softTimeSeconds)
                         .setRetransmissionTimeoutsMillis(getRetransmissionTimeoutsFromConfig())
                         .setDpdDelaySeconds(getDpdDelayFromConfig());
@@ -1179,13 +1178,13 @@ public class EpdgTunnelManager {
         return saProposalBuilder.build();
     }
 
-    private IkeIdentification getLocalIdentification() {
+    private IkeIdentification getLocalIdentification() throws IwlanSimNotReadyException {
         String nai;
 
         nai = IwlanHelper.getNai(mContext, mSlotId, mNextReauthId);
 
         if (nai == null) {
-            throw new IllegalArgumentException("Nai is null.");
+            throw new IwlanSimNotReadyException("Nai is null.");
         }
 
         Log.d(TAG, "getLocalIdentification: Nai: " + nai);
@@ -1210,12 +1209,12 @@ public class EpdgTunnelManager {
         }
     }
 
-    private EapSessionConfig getEapConfig() {
+    private EapSessionConfig getEapConfig() throws IwlanSimNotReadyException {
         int subId = IwlanHelper.getSubId(mContext, mSlotId);
         String nai = IwlanHelper.getNai(mContext, mSlotId, null);
 
         if (nai == null) {
-            throw new IllegalArgumentException("Nai is null.");
+            throw new IwlanSimNotReadyException("Nai is null.");
         }
 
         EapSessionConfig.EapAkaOption option = null;
@@ -1261,6 +1260,18 @@ public class EpdgTunnelManager {
                 case EVENT_TUNNEL_BRINGUP_REQUEST:
                     TunnelRequestWrapper tunnelRequestWrapper = (TunnelRequestWrapper) msg.obj;
                     TunnelSetupRequest setupRequest = tunnelRequestWrapper.getSetupRequest();
+
+                    if (IwlanHelper.getSubId(mContext, mSlotId)
+                            == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                        Log.e(TAG, "SIM isn't ready");
+                        IwlanError iwlanError = new IwlanError(IwlanError.SIM_NOT_READY_EXCEPTION);
+                        reportIwlanError(setupRequest.apnName(), iwlanError);
+                        tunnelRequestWrapper
+                                .getTunnelCallback()
+                                .onClosed(setupRequest.apnName(), iwlanError);
+                        return;
+                    }
+
                     if (!canBringUpTunnel(setupRequest.apnName())) {
                         Log.d(TAG, "Cannot bring up tunnel as retry time has not passed");
                         tunnelRequestWrapper
@@ -1523,6 +1534,34 @@ public class EpdgTunnelManager {
                     tunnelConfig.getIkeSession().close();
                     break;
 
+                case EVENT_IKE_SESSION_OPENED:
+                    IkeSessionOpenedData ikeSessionOpenedData = (IkeSessionOpenedData) msg.obj;
+                    IkeSessionConfiguration sessionConfiguration =
+                            ikeSessionOpenedData.mIkeSessionConfiguration;
+
+                    tunnelConfig = mApnNameToTunnelConfig.get(ikeSessionOpenedData.mApnName);
+                    tunnelConfig.setPcscfAddrList(sessionConfiguration.getPcscfServers());
+
+                    boolean enabledFastReauth =
+                            (boolean)
+                                    getConfig(
+                                            CarrierConfigManager.Iwlan
+                                                    .KEY_SUPPORTS_EAP_AKA_FAST_REAUTH_BOOL);
+                    Log.d(
+                            TAG,
+                            "CarrierConfigManager.Iwlan.KEY_SUPPORTS_EAP_AKA_FAST_REAUTH_BOOL "
+                                    + enabledFastReauth);
+
+                    if (enabledFastReauth) {
+                        EapInfo eapInfo = sessionConfiguration.getEapInfo();
+                        if (eapInfo != null && eapInfo instanceof EapAkaInfo) {
+                            mNextReauthId = ((EapAkaInfo) eapInfo).getReauthId();
+                            Log.d(TAG, "Update ReauthId: " + Arrays.toString(mNextReauthId));
+                        } else {
+                            mNextReauthId = null;
+                        }
+                    }
+                    break;
                 default:
                     throw new IllegalStateException("Unexpected value: " + msg.what);
             }
@@ -1722,6 +1761,7 @@ public class EpdgTunnelManager {
         }
     }
 
+    // Data received from IkeSessionStateMachine on successful EVENT_CHILD_SESSION_OPENED.
     private static final class TunnelOpenedData {
         final String mApnName;
         final List<InetAddress> mInternalDnsServers;
@@ -1737,6 +1777,20 @@ public class EpdgTunnelManager {
         }
     }
 
+    // Data received from IkeSessionStateMachine on successful EVENT_IKE_SESSION_OPENED.
+    private static final class IkeSessionOpenedData {
+        final String mApnName;
+        final IkeSessionConfiguration mIkeSessionConfiguration;
+
+        private IkeSessionOpenedData(
+                String apnName, IkeSessionConfiguration ikeSessionConfiguration) {
+            mApnName = apnName;
+            mIkeSessionConfiguration = ikeSessionConfiguration;
+        }
+    }
+
+    // Data received from IkeSessionStateMachine if either IKE session or Child session have been
+    // closed, normally or exceptionally.
     private static final class SessionClosedData {
         final String mApnName;
         final IwlanError mIwlanError;
@@ -1948,6 +2002,11 @@ public class EpdgTunnelManager {
     @VisibleForTesting
     void setIsEpdgAddressSelected(boolean value) {
         mIsEpdgAddressSelected = value;
+    }
+
+    @VisibleForTesting
+    TunnelConfig getTunnelConfigForApn(String apnName) {
+        return mApnNameToTunnelConfig.get(apnName);
     }
 
     @VisibleForTesting
