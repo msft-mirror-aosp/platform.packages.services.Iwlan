@@ -22,6 +22,7 @@ import static android.system.OsConstants.AF_INET;
 import static android.system.OsConstants.AF_INET6;
 
 import android.content.Context;
+import android.net.ConnectivityManager;
 import android.net.InetAddresses;
 import android.net.IpPrefix;
 import android.net.IpSecManager;
@@ -113,6 +114,7 @@ public class EpdgTunnelManager {
     private static final int EVENT_IPSEC_TRANSFORM_DELETED = 8;
     private static final int EVENT_UPDATE_NETWORK = 9;
     private static final int EVENT_IKE_SESSION_OPENED = 10;
+    private static final int EVENT_IKE_SESSION_CONNECTION_INFO_CHANGED = 11;
     private static final int IKE_HARD_LIFETIME_SEC_MINIMUM = 300;
     private static final int IKE_HARD_LIFETIME_SEC_MAXIMUM = 86400;
     private static final int IKE_SOFT_LIFETIME_SEC_MINIMUM = 120;
@@ -387,6 +389,12 @@ public class EpdgTunnelManager {
             return sb.toString();
         }
 
+        public boolean hasTunnelOpened() {
+            return mInternalAddrList != null
+                    && !mInternalAddrList.isEmpty() /* The child session is opened */
+                    && mIface != null; /* The tunnel interface is bring up */
+        }
+
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
@@ -475,14 +483,17 @@ public class EpdgTunnelManager {
         @Override
         public void onIkeSessionConnectionInfoChanged(
                 IkeSessionConnectionInfo ikeSessionConnectionInfo) {
-            Log.d(TAG, "Ike session connection info changed for apn: " + mApnName);
-            TunnelConfig tunnelConfig = mApnNameToTunnelConfig.get(mApnName);
-            IpSecManager.IpSecTunnelInterface tunnelInterface = tunnelConfig.getIface();
-            try {
-                tunnelInterface.setUnderlyingNetwork(ikeSessionConnectionInfo.getNetwork());
-            } catch (IOException e) {
-                Log.e(TAG, "IOException while updating underlying network for apn: " + mApnName);
-            }
+            Network network = ikeSessionConnectionInfo.getNetwork();
+            Log.d(
+                    TAG,
+                    "Ike session connection info changed for apn: "
+                            + mApnName
+                            + " Network: "
+                            + network);
+            mHandler.sendMessage(
+                    mHandler.obtainMessage(
+                            EVENT_IKE_SESSION_CONNECTION_INFO_CHANGED,
+                            new IkeSessionConnectionInfoData(mApnName, ikeSessionConnectionInfo)));
         }
     }
 
@@ -525,11 +536,12 @@ public class EpdgTunnelManager {
         }
     }
 
-    private class TmChildSessionCallBack implements ChildSessionCallback {
+    @VisibleForTesting
+    class TmChildSessionCallback implements ChildSessionCallback {
 
         private final String mApnName;
 
-        TmChildSessionCallBack(String apnName) {
+        TmChildSessionCallback(String apnName) {
             this.mApnName = apnName;
         }
 
@@ -744,7 +756,7 @@ public class EpdgTunnelManager {
                                 buildChildSessionParams(setupRequest),
                                 Executors.newSingleThreadExecutor(),
                                 getTmIkeSessionCallback(apnName),
-                                new TmChildSessionCallBack(apnName));
+                                new TmChildSessionCallback(apnName));
 
         boolean isSrcIpv6Present = setupRequest.srcIpv6Address().isPresent();
         putApnNameToTunnelConfig(
@@ -1387,7 +1399,13 @@ public class EpdgTunnelManager {
                     if (sessionClosedData.mIwlanError.getErrorType() != IwlanError.NO_ERROR) {
                         iwlanError = sessionClosedData.mIwlanError;
                     } else {
-                        iwlanError = tunnelConfig.getError();
+                        // If IKE session setup failed without error cause, Iwlan reports
+                        // NETWORK_FAILURE instead of NO_ERROR
+                        if (!tunnelConfig.hasTunnelOpened()) {
+                            iwlanError = new IwlanError(IwlanError.NETWORK_FAILURE);
+                        } else {
+                            iwlanError = tunnelConfig.getError();
+                        }
                     }
 
                     IpSecManager.IpSecTunnelInterface iface = tunnelConfig.getIface();
@@ -1509,8 +1527,10 @@ public class EpdgTunnelManager {
                                 tunnelConfig.getIface(),
                                 transformData.getDirection(),
                                 transformData.getTransform());
-                    } catch (IOException e) {
-                        Log.e(TAG, "Failed to apply tunnel transform.");
+                    } catch (IOException | IllegalArgumentException e) {
+                        // If the IKE session was closed before the transform could be applied, the
+                        // IpSecService will throw an IAE on processing the IpSecTunnelInterface id.
+                        Log.e(TAG, "Failed to apply tunnel transform." + e);
                         closeIkeSession(
                                 apnName, new IwlanError(IwlanError.TUNNEL_TRANSFORM_FAILED));
                     }
@@ -1562,6 +1582,34 @@ public class EpdgTunnelManager {
                         }
                     }
                     break;
+
+                case EVENT_IKE_SESSION_CONNECTION_INFO_CHANGED:
+                    IkeSessionConnectionInfoData ikeSessionConnectionInfoData =
+                            (IkeSessionConnectionInfoData) msg.obj;
+                    network = ikeSessionConnectionInfoData.mIkeSessionConnectionInfo.getNetwork();
+                    apnName = ikeSessionConnectionInfoData.mApnName;
+
+                    ConnectivityManager connectivityManager =
+                            mContext.getSystemService(ConnectivityManager.class);
+                    if (connectivityManager.getLinkProperties(network) == null) {
+                        Log.e(TAG, "Network " + network + " has null LinkProperties!");
+                        return;
+                    }
+
+                    tunnelConfig = mApnNameToTunnelConfig.get(apnName);
+                    tunnelInterface = tunnelConfig.getIface();
+                    try {
+                        tunnelInterface.setUnderlyingNetwork(network);
+                    } catch (IOException | IllegalArgumentException e) {
+                        Log.e(
+                                TAG,
+                                "Failed to update underlying network for apn: "
+                                        + apnName
+                                        + " exception: "
+                                        + e);
+                    }
+                    break;
+
                 default:
                     throw new IllegalStateException("Unexpected value: " + msg.what);
             }
@@ -1786,6 +1834,17 @@ public class EpdgTunnelManager {
                 String apnName, IkeSessionConfiguration ikeSessionConfiguration) {
             mApnName = apnName;
             mIkeSessionConfiguration = ikeSessionConfiguration;
+        }
+    }
+
+    private static final class IkeSessionConnectionInfoData {
+        final String mApnName;
+        final IkeSessionConnectionInfo mIkeSessionConnectionInfo;
+
+        private IkeSessionConnectionInfoData(
+                String apnName, IkeSessionConnectionInfo ikeSessionConnectionInfo) {
+            mApnName = apnName;
+            mIkeSessionConnectionInfo = ikeSessionConnectionInfo;
         }
     }
 
