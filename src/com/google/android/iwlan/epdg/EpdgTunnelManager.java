@@ -22,6 +22,7 @@ import static android.system.OsConstants.AF_INET;
 import static android.system.OsConstants.AF_INET6;
 
 import android.content.Context;
+import android.net.ConnectivityManager;
 import android.net.InetAddresses;
 import android.net.IpPrefix;
 import android.net.IpSecManager;
@@ -62,6 +63,7 @@ import android.os.Message;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.telephony.CarrierConfigManager;
+import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.telephony.data.ApnSetting;
 import android.telephony.data.NetworkSliceInfo;
@@ -72,6 +74,7 @@ import com.android.internal.annotations.VisibleForTesting;
 import com.google.android.iwlan.ErrorPolicyManager;
 import com.google.android.iwlan.IwlanError;
 import com.google.android.iwlan.IwlanHelper;
+import com.google.android.iwlan.exceptions.IwlanSimNotReadyException;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
@@ -110,6 +113,9 @@ public class EpdgTunnelManager {
     private static final int EVENT_IPSEC_TRANSFORM_CREATED = 7;
     private static final int EVENT_IPSEC_TRANSFORM_DELETED = 8;
     private static final int EVENT_UPDATE_NETWORK = 9;
+    private static final int EVENT_IKE_SESSION_OPENED = 10;
+    private static final int EVENT_IKE_SESSION_CONNECTION_INFO_CHANGED = 11;
+    private static final int EVENT_IKE_3GPP_DATA_RECEIVED = 12;
     private static final int IKE_HARD_LIFETIME_SEC_MINIMUM = 300;
     private static final int IKE_HARD_LIFETIME_SEC_MAXIMUM = 86400;
     private static final int IKE_SOFT_LIFETIME_SEC_MINIMUM = 120;
@@ -384,6 +390,12 @@ public class EpdgTunnelManager {
             return sb.toString();
         }
 
+        public boolean hasTunnelOpened() {
+            return mInternalAddrList != null
+                    && !mInternalAddrList.isEmpty() /* The child session is opened */
+                    && mIface != null; /* The tunnel interface is bring up */
+        }
+
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
@@ -434,27 +446,10 @@ public class EpdgTunnelManager {
         @Override
         public void onOpened(IkeSessionConfiguration sessionConfiguration) {
             Log.d(TAG, "Ike session opened for apn: " + mApnName);
-            TunnelConfig tunnelConfig = mApnNameToTunnelConfig.get(mApnName);
-            tunnelConfig.setPcscfAddrList(sessionConfiguration.getPcscfServers());
-
-            boolean enabledFastReauth =
-                    (boolean)
-                            getConfig(
-                                    CarrierConfigManager.Iwlan
-                                            .KEY_SUPPORTS_EAP_AKA_FAST_REAUTH_BOOL);
-            Log.d(
-                    TAG,
-                    "CarrierConfigManager.Iwlan.KEY_SUPPORTS_EAP_AKA_FAST_REAUTH_BOOL "
-                            + enabledFastReauth);
-            if (enabledFastReauth) {
-                EapInfo eapInfo = sessionConfiguration.getEapInfo();
-                if (eapInfo != null && eapInfo instanceof EapAkaInfo) {
-                    mNextReauthId = ((EapAkaInfo) eapInfo).getReauthId();
-                    Log.d(TAG, "Update ReauthId: " + Arrays.toString(mNextReauthId));
-                } else {
-                    mNextReauthId = null;
-                }
-            }
+            mHandler.sendMessage(
+                    mHandler.obtainMessage(
+                            EVENT_IKE_SESSION_OPENED,
+                            new IkeSessionOpenedData(mApnName, sessionConfiguration)));
         }
 
         @Override
@@ -489,14 +484,17 @@ public class EpdgTunnelManager {
         @Override
         public void onIkeSessionConnectionInfoChanged(
                 IkeSessionConnectionInfo ikeSessionConnectionInfo) {
-            Log.d(TAG, "Ike session connection info changed for apn: " + mApnName);
-            TunnelConfig tunnelConfig = mApnNameToTunnelConfig.get(mApnName);
-            IpSecManager.IpSecTunnelInterface tunnelInterface = tunnelConfig.getIface();
-            try {
-                tunnelInterface.setUnderlyingNetwork(ikeSessionConnectionInfo.getNetwork());
-            } catch (IOException e) {
-                Log.e(TAG, "IOException while updating underlying network for apn: " + mApnName);
-            }
+            Network network = ikeSessionConnectionInfo.getNetwork();
+            Log.d(
+                    TAG,
+                    "Ike session connection info changed for apn: "
+                            + mApnName
+                            + " Network: "
+                            + network);
+            mHandler.sendMessage(
+                    mHandler.obtainMessage(
+                            EVENT_IKE_SESSION_CONNECTION_INFO_CHANGED,
+                            new IkeSessionConnectionInfoData(mApnName, ikeSessionConnectionInfo)));
         }
     }
 
@@ -510,40 +508,19 @@ public class EpdgTunnelManager {
 
         @Override
         public void onIke3gppDataReceived(List<Ike3gppData> payloads) {
-            if (payloads != null && !payloads.isEmpty()) {
-                TunnelConfig tunnelConfig = mApnNameToTunnelConfig.get(mApnName);
-                for (Ike3gppData payload : payloads) {
-                    if (payload.getDataType() == DATA_TYPE_NOTIFY_N1_MODE_INFORMATION) {
-                        Log.d(TAG, "Got payload DATA_TYPE_NOTIFY_N1_MODE_INFORMATION");
-                        NetworkSliceInfo si =
-                                NetworkSliceSelectionAssistanceInformation.getSliceInfo(
-                                        ((Ike3gppN1ModeInformation) payload).getSnssai());
-                        if (si != null) {
-                            tunnelConfig.setSliceInfo(si);
-                            Log.d(TAG, "SliceInfo: " + si);
-                        }
-                    } else if (payload.getDataType() == DATA_TYPE_NOTIFY_BACKOFF_TIMER) {
-                        Log.d(TAG, "Got payload DATA_TYPE_NOTIFY_BACKOFF_TIMER");
-                        long backoffTime =
-                                decodeBackoffTime(
-                                        ((Ike3gppBackoffTimer) payload).getBackoffTimer());
-                        if (backoffTime > 0) {
-                            tunnelConfig.setBackoffTime(backoffTime);
-                            Log.d(TAG, "Backoff Timer: " + backoffTime);
-                        }
-                    }
-                }
-            } else {
-                Log.e(TAG, "Null or empty payloads received:");
+            mHandler.sendMessage(
+                    mHandler.obtainMessage(
+                            EVENT_IKE_3GPP_DATA_RECEIVED,
+                            new Ike3gppDataReceived(mApnName, payloads)));
             }
         }
-    }
 
-    private class TmChildSessionCallBack implements ChildSessionCallback {
+    @VisibleForTesting
+    class TmChildSessionCallback implements ChildSessionCallback {
 
         private final String mApnName;
 
-        TmChildSessionCallBack(String apnName) {
+        TmChildSessionCallback(String apnName) {
             this.mApnName = apnName;
         }
 
@@ -731,6 +708,7 @@ public class EpdgTunnelManager {
 
     private void onBringUpTunnel(TunnelSetupRequest setupRequest, TunnelCallback tunnelCallback) {
         String apnName = setupRequest.apnName();
+        IkeSessionParams ikeSessionParams = null;
 
         Log.d(
                 TAG,
@@ -739,15 +717,25 @@ public class EpdgTunnelManager {
                         + "ePDG : "
                         + mEpdgAddress.getHostAddress());
 
+        try {
+            ikeSessionParams = buildIkeSessionParams(setupRequest, apnName);
+        } catch (IwlanSimNotReadyException e) {
+            mRequestQueue.poll();
+            IwlanError iwlanError = new IwlanError(IwlanError.SIM_NOT_READY_EXCEPTION);
+            reportIwlanError(apnName, iwlanError);
+            tunnelCallback.onClosed(apnName, iwlanError);
+            return;
+        }
+
         IkeSession ikeSession =
                 getIkeSessionCreator()
                         .createIkeSession(
                                 mContext,
-                                buildIkeSessionParams(setupRequest, apnName),
+                                ikeSessionParams,
                                 buildChildSessionParams(setupRequest),
                                 Executors.newSingleThreadExecutor(),
                                 getTmIkeSessionCallback(apnName),
-                                new TmChildSessionCallBack(apnName));
+                                new TmChildSessionCallback(apnName));
 
         boolean isSrcIpv6Present = setupRequest.srcIpv6Address().isPresent();
         putApnNameToTunnelConfig(
@@ -888,7 +876,8 @@ public class EpdgTunnelManager {
     // Returns the IMEISV or device IMEI, in that order of priority.
     private @Nullable String getMobileDeviceIdentity() {
         TelephonyManager telephonyManager = mContext.getSystemService(TelephonyManager.class);
-        telephonyManager = telephonyManager.createForSubscriptionId(mSlotId);
+        telephonyManager =
+                telephonyManager.createForSubscriptionId(IwlanHelper.getSubId(mContext, mSlotId));
         if (telephonyManager == null) {
             return null;
         }
@@ -907,8 +896,8 @@ public class EpdgTunnelManager {
         return imei.substring(0, imei.length() - 1) + imeisv_suffix;
     }
 
-    private IkeSessionParams buildIkeSessionParams(
-            TunnelSetupRequest setupRequest, String apnName) {
+    private IkeSessionParams buildIkeSessionParams(TunnelSetupRequest setupRequest, String apnName)
+            throws IwlanSimNotReadyException {
         int hardTimeSeconds =
                 (int) getConfig(CarrierConfigManager.Iwlan.KEY_IKE_REKEY_HARD_TIMER_SEC_INT);
         int softTimeSeconds =
@@ -952,6 +941,7 @@ public class EpdgTunnelManager {
                         .setNetwork(mNetwork)
                         .addIkeOption(IkeSessionParams.IKE_OPTION_ACCEPT_ANY_REMOTE_ID)
                         .addIkeOption(IkeSessionParams.IKE_OPTION_MOBIKE)
+                        .addIkeOption(IkeSessionParams.IKE_OPTION_REKEY_MOBILITY)
                         .setLifetimeSeconds(hardTimeSeconds, softTimeSeconds)
                         .setRetransmissionTimeoutsMillis(getRetransmissionTimeoutsFromConfig())
                         .setDpdDelaySeconds(getDpdDelayFromConfig());
@@ -1179,13 +1169,13 @@ public class EpdgTunnelManager {
         return saProposalBuilder.build();
     }
 
-    private IkeIdentification getLocalIdentification() {
+    private IkeIdentification getLocalIdentification() throws IwlanSimNotReadyException {
         String nai;
 
         nai = IwlanHelper.getNai(mContext, mSlotId, mNextReauthId);
 
         if (nai == null) {
-            throw new IllegalArgumentException("Nai is null.");
+            throw new IwlanSimNotReadyException("Nai is null.");
         }
 
         Log.d(TAG, "getLocalIdentification: Nai: " + nai);
@@ -1210,12 +1200,12 @@ public class EpdgTunnelManager {
         }
     }
 
-    private EapSessionConfig getEapConfig() {
+    private EapSessionConfig getEapConfig() throws IwlanSimNotReadyException {
         int subId = IwlanHelper.getSubId(mContext, mSlotId);
         String nai = IwlanHelper.getNai(mContext, mSlotId, null);
 
         if (nai == null) {
-            throw new IllegalArgumentException("Nai is null.");
+            throw new IwlanSimNotReadyException("Nai is null.");
         }
 
         EapSessionConfig.EapAkaOption option = null;
@@ -1261,6 +1251,18 @@ public class EpdgTunnelManager {
                 case EVENT_TUNNEL_BRINGUP_REQUEST:
                     TunnelRequestWrapper tunnelRequestWrapper = (TunnelRequestWrapper) msg.obj;
                     TunnelSetupRequest setupRequest = tunnelRequestWrapper.getSetupRequest();
+
+                    if (IwlanHelper.getSubId(mContext, mSlotId)
+                            == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                        Log.e(TAG, "SIM isn't ready");
+                        IwlanError iwlanError = new IwlanError(IwlanError.SIM_NOT_READY_EXCEPTION);
+                        reportIwlanError(setupRequest.apnName(), iwlanError);
+                        tunnelRequestWrapper
+                                .getTunnelCallback()
+                                .onClosed(setupRequest.apnName(), iwlanError);
+                        return;
+                    }
+
                     if (!canBringUpTunnel(setupRequest.apnName())) {
                         Log.d(TAG, "Cannot bring up tunnel as retry time has not passed");
                         tunnelRequestWrapper
@@ -1376,7 +1378,13 @@ public class EpdgTunnelManager {
                     if (sessionClosedData.mIwlanError.getErrorType() != IwlanError.NO_ERROR) {
                         iwlanError = sessionClosedData.mIwlanError;
                     } else {
-                        iwlanError = tunnelConfig.getError();
+                        // If IKE session setup failed without error cause, Iwlan reports
+                        // NETWORK_FAILURE instead of NO_ERROR
+                        if (!tunnelConfig.hasTunnelOpened()) {
+                            iwlanError = new IwlanError(IwlanError.NETWORK_FAILURE);
+                        } else {
+                            iwlanError = tunnelConfig.getError();
+                        }
                     }
 
                     IpSecManager.IpSecTunnelInterface iface = tunnelConfig.getIface();
@@ -1498,8 +1506,10 @@ public class EpdgTunnelManager {
                                 tunnelConfig.getIface(),
                                 transformData.getDirection(),
                                 transformData.getTransform());
-                    } catch (IOException e) {
-                        Log.e(TAG, "Failed to apply tunnel transform.");
+                    } catch (IOException | IllegalArgumentException e) {
+                        // If the IKE session was closed before the transform could be applied, the
+                        // IpSecService will throw an IAE on processing the IpSecTunnelInterface id.
+                        Log.e(TAG, "Failed to apply tunnel transform." + e);
                         closeIkeSession(
                                 apnName, new IwlanError(IwlanError.TUNNEL_TRANSFORM_FAILED));
                     }
@@ -1521,6 +1531,94 @@ public class EpdgTunnelManager {
                     }
                     tunnelConfig.setError(sessionClosedData.mIwlanError);
                     tunnelConfig.getIkeSession().close();
+                    break;
+
+                case EVENT_IKE_SESSION_OPENED:
+                    IkeSessionOpenedData ikeSessionOpenedData = (IkeSessionOpenedData) msg.obj;
+                    IkeSessionConfiguration sessionConfiguration =
+                            ikeSessionOpenedData.mIkeSessionConfiguration;
+
+                    tunnelConfig = mApnNameToTunnelConfig.get(ikeSessionOpenedData.mApnName);
+                    tunnelConfig.setPcscfAddrList(sessionConfiguration.getPcscfServers());
+
+                    boolean enabledFastReauth =
+                            (boolean)
+                                    getConfig(
+                                            CarrierConfigManager.Iwlan
+                                                    .KEY_SUPPORTS_EAP_AKA_FAST_REAUTH_BOOL);
+                    Log.d(
+                            TAG,
+                            "CarrierConfigManager.Iwlan.KEY_SUPPORTS_EAP_AKA_FAST_REAUTH_BOOL "
+                                    + enabledFastReauth);
+
+                    if (enabledFastReauth) {
+                        EapInfo eapInfo = sessionConfiguration.getEapInfo();
+                        if (eapInfo != null && eapInfo instanceof EapAkaInfo) {
+                            mNextReauthId = ((EapAkaInfo) eapInfo).getReauthId();
+                            Log.d(TAG, "Update ReauthId: " + Arrays.toString(mNextReauthId));
+                        } else {
+                            mNextReauthId = null;
+                        }
+                    }
+                    break;
+
+                case EVENT_IKE_SESSION_CONNECTION_INFO_CHANGED:
+                    IkeSessionConnectionInfoData ikeSessionConnectionInfoData =
+                            (IkeSessionConnectionInfoData) msg.obj;
+                    network = ikeSessionConnectionInfoData.mIkeSessionConnectionInfo.getNetwork();
+                    apnName = ikeSessionConnectionInfoData.mApnName;
+
+                    ConnectivityManager connectivityManager =
+                            mContext.getSystemService(ConnectivityManager.class);
+                    if (connectivityManager.getLinkProperties(network) == null) {
+                        Log.e(TAG, "Network " + network + " has null LinkProperties!");
+                        return;
+                    }
+
+                    tunnelConfig = mApnNameToTunnelConfig.get(apnName);
+                    tunnelInterface = tunnelConfig.getIface();
+                    try {
+                        tunnelInterface.setUnderlyingNetwork(network);
+                    } catch (IOException | IllegalArgumentException e) {
+                        Log.e(
+                                TAG,
+                                "Failed to update underlying network for apn: "
+                                        + apnName
+                                        + " exception: "
+                                        + e);
+                    }
+                    break;
+
+                case EVENT_IKE_3GPP_DATA_RECEIVED:
+                    Ike3gppDataReceived ike3gppDataReceived = (Ike3gppDataReceived) msg.obj;
+                    apnName = ike3gppDataReceived.mApnName;
+                    List<Ike3gppData> ike3gppData = ike3gppDataReceived.mIke3gppData;
+                    if (ike3gppData != null && !ike3gppData.isEmpty()) {
+                        tunnelConfig = mApnNameToTunnelConfig.get(apnName);
+                        for (Ike3gppData payload : ike3gppData) {
+                            if (payload.getDataType() == DATA_TYPE_NOTIFY_N1_MODE_INFORMATION) {
+                                Log.d(TAG, "Got payload DATA_TYPE_NOTIFY_N1_MODE_INFORMATION");
+                                NetworkSliceInfo si =
+                                        NetworkSliceSelectionAssistanceInformation.getSliceInfo(
+                                                ((Ike3gppN1ModeInformation) payload).getSnssai());
+                                if (si != null) {
+                                    tunnelConfig.setSliceInfo(si);
+                                    Log.d(TAG, "SliceInfo: " + si);
+                                }
+                            } else if (payload.getDataType() == DATA_TYPE_NOTIFY_BACKOFF_TIMER) {
+                                Log.d(TAG, "Got payload DATA_TYPE_NOTIFY_BACKOFF_TIMER");
+                                long backoffTime =
+                                        decodeBackoffTime(
+                                                ((Ike3gppBackoffTimer) payload).getBackoffTimer());
+                                if (backoffTime > 0) {
+                                    tunnelConfig.setBackoffTime(backoffTime);
+                                    Log.d(TAG, "Backoff Timer: " + backoffTime);
+                                }
+                            }
+                        }
+                    } else {
+                        Log.e(TAG, "Null or empty payloads received:");
+                    }
                     break;
 
                 default:
@@ -1722,6 +1820,7 @@ public class EpdgTunnelManager {
         }
     }
 
+    // Data received from IkeSessionStateMachine on successful EVENT_CHILD_SESSION_OPENED.
     private static final class TunnelOpenedData {
         final String mApnName;
         final List<InetAddress> mInternalDnsServers;
@@ -1737,6 +1836,41 @@ public class EpdgTunnelManager {
         }
     }
 
+    // Data received from IkeSessionStateMachine on successful EVENT_IKE_SESSION_OPENED.
+    private static final class IkeSessionOpenedData {
+        final String mApnName;
+        final IkeSessionConfiguration mIkeSessionConfiguration;
+
+        private IkeSessionOpenedData(
+                String apnName, IkeSessionConfiguration ikeSessionConfiguration) {
+            mApnName = apnName;
+            mIkeSessionConfiguration = ikeSessionConfiguration;
+        }
+    }
+
+    private static final class IkeSessionConnectionInfoData {
+        final String mApnName;
+        final IkeSessionConnectionInfo mIkeSessionConnectionInfo;
+
+        private IkeSessionConnectionInfoData(
+                String apnName, IkeSessionConnectionInfo ikeSessionConnectionInfo) {
+            mApnName = apnName;
+            mIkeSessionConnectionInfo = ikeSessionConnectionInfo;
+        }
+    }
+
+    private static final class Ike3gppDataReceived {
+        final String mApnName;
+        final List<Ike3gppData> mIke3gppData;
+
+        private Ike3gppDataReceived(String apnName, List<Ike3gppData> ike3gppData) {
+            mApnName = apnName;
+            mIke3gppData = ike3gppData;
+        }
+    }
+
+    // Data received from IkeSessionStateMachine if either IKE session or Child session have been
+    // closed, normally or exceptionally.
     private static final class SessionClosedData {
         final String mApnName;
         final IwlanError mIwlanError;
@@ -1948,6 +2082,11 @@ public class EpdgTunnelManager {
     @VisibleForTesting
     void setIsEpdgAddressSelected(boolean value) {
         mIsEpdgAddressSelected = value;
+    }
+
+    @VisibleForTesting
+    TunnelConfig getTunnelConfigForApn(String apnName) {
+        return mApnNameToTunnelConfig.get(apnName);
     }
 
     @VisibleForTesting
