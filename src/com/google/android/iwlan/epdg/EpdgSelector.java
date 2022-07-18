@@ -19,6 +19,7 @@ package com.google.android.iwlan.epdg;
 import android.content.Context;
 import android.net.DnsResolver;
 import android.net.DnsResolver.DnsException;
+import android.net.InetAddresses;
 import android.net.Network;
 import android.support.annotation.IntDef;
 import android.support.annotation.NonNull;
@@ -145,20 +146,49 @@ public class EpdgSelector {
 
     private void getIP(
             String domainName, int filter, ArrayList<InetAddress> validIpList, Network network) {
-        InetAddress[] ipList;
+        List<InetAddress> ipList = new ArrayList<InetAddress>();
 
         // Get All IP for each domain name
         Log.d(TAG, "Input domainName : " + domainName);
-        try {
-            ipList = network.getAllByName(domainName);
-        } catch (Exception e) {
-            Log.e(TAG, "Exception when querying IP address : " + e);
-            return;
-        }
 
-        if (ipList == null) {
-            Log.e(TAG, "Get empty IP address list");
-            return;
+        if (InetAddresses.isNumericAddress(domainName)) {
+            try {
+                Log.d(TAG, domainName + " is a numeric ip address");
+                ipList.add(InetAddress.getByName(domainName));
+            } catch (UnknownHostException e) {
+                Log.e(TAG, "Exception when resolving domainName : " + domainName + ".", e);
+            }
+        } else {
+            try {
+                CompletableFuture<List<InetAddress>> result = new CompletableFuture();
+                final DnsResolver.Callback<List<InetAddress>> cb =
+                        new DnsResolver.Callback<List<InetAddress>>() {
+                            @Override
+                            public void onAnswer(
+                                    @NonNull final List<InetAddress> answer, final int rcode) {
+                                if (rcode != 0) {
+                                    Log.e(TAG, "DnsResolver Response Code = " + rcode);
+                                }
+                                result.complete(answer);
+                            }
+
+                            @Override
+                            public void onError(@Nullable final DnsResolver.DnsException error) {
+                                Log.e(TAG, "Resolve DNS with error : " + error);
+                                result.completeExceptionally(error);
+                            }
+                        };
+                DnsResolver.getInstance()
+                        .query(network, domainName, DnsResolver.FLAG_EMPTY, r -> r.run(), null, cb);
+                ipList = new ArrayList<>(result.get());
+            } catch (ExecutionException e) {
+                Log.e(TAG, "Cause of ExecutionException: ", e.getCause());
+            } catch (InterruptedException e) {
+                if (Thread.currentThread().interrupted()) {
+                    Thread.currentThread().interrupt();
+                }
+                Log.e(TAG, "InterruptedException: ", e);
+            }
         }
 
         // Filter the IP list by input ProtoFilter
