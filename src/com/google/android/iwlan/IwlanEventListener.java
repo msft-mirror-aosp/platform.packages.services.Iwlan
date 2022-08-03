@@ -152,9 +152,16 @@ public class IwlanEventListener {
         }
     }
 
-    /** Returns IwlanEventListener instance */
+    /**
+     * Returns IwlanEventListener instance
+     */
     public static IwlanEventListener getInstance(@NonNull Context context, int slotId) {
         return mInstances.computeIfAbsent(slotId, k -> new IwlanEventListener(context, slotId));
+    }
+
+    @VisibleForTesting
+    public static void resetAllInstances() {
+        mInstances.clear();
     }
 
     /**
@@ -485,7 +492,7 @@ public class IwlanEventListener {
         if (eventHandlers.contains(event)) {
             Log.d(SUB_TAG, "Updating handlers for the event: " + event);
             for (Handler handler : eventHandlers.get(event)) {
-                handler.obtainMessage(event).sendToTarget();
+                handler.obtainMessage(event, mSlotId, 0 /* unused */).sendToTarget();
             }
         }
     }
@@ -494,7 +501,7 @@ public class IwlanEventListener {
         if (eventHandlers.contains(event)) {
             Log.d(SUB_TAG, "Updating handlers for the event: " + event);
             for (Handler handler : eventHandlers.get(event)) {
-                handler.obtainMessage(event, arrayCi).sendToTarget();
+                handler.obtainMessage(event, mSlotId, 0 /* unused */, arrayCi).sendToTarget();
             }
         }
     }
