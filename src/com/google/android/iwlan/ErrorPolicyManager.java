@@ -178,6 +178,11 @@ public class ErrorPolicyManager {
         return mInstances.computeIfAbsent(slotId, k -> new ErrorPolicyManager(context, slotId));
     }
 
+    @VisibleForTesting
+    public static void resetAllInstances() {
+        mInstances.clear();
+    }
+
     /**
      * Release or reset the instance.
      *
@@ -910,7 +915,7 @@ public class ErrorPolicyManager {
             mError = error;
             mErrorPolicy = errorPolicy;
             mCurrentRetryIndex = -1;
-            mLastErrorTime = new Date().getTime();
+            mLastErrorTime = IwlanHelper.elapsedRealtime();
         }
 
         ErrorInfo(IwlanError error, ErrorPolicy errorPolicy, long backOffTime) {
@@ -919,7 +924,7 @@ public class ErrorPolicyManager {
             mCurrentRetryIndex = -1;
             mIsBackOffTimeValid = true;
             mBackOffTime = backOffTime;
-            mLastErrorTime = new Date().getTime();
+            mLastErrorTime = IwlanHelper.elapsedRealtime();
         }
 
         /**
@@ -931,7 +936,7 @@ public class ErrorPolicyManager {
                 return -1;
             }
             long time = mErrorPolicy.getRetryTime(++mCurrentRetryIndex);
-            mLastErrorTime = new Date().getTime();
+            mLastErrorTime = IwlanHelper.elapsedRealtime();
             Log.d(LOG_TAG, "Current RetryArray index: " + mCurrentRetryIndex + " time: " + time);
             return time;
         }
@@ -950,7 +955,7 @@ public class ErrorPolicyManager {
             } else {
                 time = TimeUnit.SECONDS.toMillis(mErrorPolicy.getRetryTime(mCurrentRetryIndex));
             }
-            long currentTime = new Date().getTime();
+            long currentTime = IwlanHelper.elapsedRealtime();
             time = Math.max(0, time - (currentTime - mLastErrorTime));
             Log.d(
                     LOG_TAG,
@@ -964,7 +969,7 @@ public class ErrorPolicyManager {
 
         void setBackOffTime(long backOffTime) {
             mBackOffTime = backOffTime;
-            mLastErrorTime = new Date().getTime();
+            mLastErrorTime = IwlanHelper.elapsedRealtime();
         }
 
         boolean canBringUpTunnel() {
@@ -979,7 +984,7 @@ public class ErrorPolicyManager {
                 retryTime =
                         TimeUnit.SECONDS.toMillis(mErrorPolicy.getRetryTime(mCurrentRetryIndex));
             }
-            long currentTime = new Date().getTime();
+            long currentTime = IwlanHelper.elapsedRealtime();
             long timeDifference = currentTime - mLastErrorTime;
             if (timeDifference < retryTime) {
                 ret = false;
