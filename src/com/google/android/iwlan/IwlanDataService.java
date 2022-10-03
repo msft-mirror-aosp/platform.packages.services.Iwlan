@@ -82,8 +82,7 @@ public class IwlanDataService extends DataService {
     private static final Map<Integer, IwlanDataServiceProvider> sIwlanDataServiceProviders =
             new ConcurrentHashMap<>();
 
-    // Distinguish from the events in IwlanEventListener
-    private static final int EVENT_BASE = 100;
+    private static final int EVENT_BASE = IwlanEventListener.DATA_SERVICE_INTERNAL_EVENT_BASE;
     private static final int EVENT_TUNNEL_OPENED = EVENT_BASE;
     private static final int EVENT_TUNNEL_CLOSED = EVENT_BASE + 1;
     private static final int EVENT_SETUP_DATA_CALL = EVENT_BASE + 2;
@@ -210,6 +209,7 @@ public class IwlanDataService extends DataService {
             // ideally it should be 1280 - tunnelling overhead ?
             private static final int LINK_MTU =
                     1280; // TODO: need to substract tunnelling overhead?
+            private static final int LINK_MTU_CST = 1200; // Reserve 80 bytes for VCN.
             static final int TUNNEL_DOWN = 1;
             static final int TUNNEL_IN_BRINGUP = 2;
             static final int TUNNEL_UP = 3;
@@ -236,7 +236,11 @@ public class IwlanDataService extends DataService {
             }
 
             public int getLinkMtu() {
-                return LINK_MTU; // TODO: need to substract tunnelling overhead
+                if ((sDefaultDataTransport == Transport.MOBILE) && sNetworkConnected) {
+                    return LINK_MTU_CST;
+                } else {
+                    return LINK_MTU; // TODO: need to substract tunnelling overhead
+                }
             }
 
             public void setProtocolType(int protocolType) {
@@ -559,15 +563,22 @@ public class IwlanDataService extends DataService {
                     .setProtocolType(tunnelState.getProtocolType())
                     .setCause(DataFailCause.NONE);
 
-            if (tunnelState.getState() != TunnelState.TUNNEL_UP) {
-                // no need to fill additional params
-                return responseBuilder.setLinkStatus(DataCallResponse.LINK_STATUS_UNKNOWN).build();
+            responseBuilder.setLinkStatus(DataCallResponse.LINK_STATUS_INACTIVE);
+            int state = tunnelState.getState();
+
+            if (state == TunnelState.TUNNEL_UP) {
+                responseBuilder.setLinkStatus(DataCallResponse.LINK_STATUS_ACTIVE);
+            }
+
+            TunnelLinkProperties tunnelLinkProperties = tunnelState.getTunnelLinkProperties();
+            if (tunnelLinkProperties == null) {
+                Log.d(TAG, "PDN with empty linkproperties. TunnelState : " + state);
+                return responseBuilder.build();
             }
 
             // fill wildcard address for gatewayList (used by DataConnection to add routes)
             List<InetAddress> gatewayList = new ArrayList<>();
-            List<LinkAddress> linkAddrList =
-                    tunnelState.getTunnelLinkProperties().internalAddresses();
+            List<LinkAddress> linkAddrList = tunnelLinkProperties.internalAddresses();
             if (linkAddrList.stream().anyMatch(t -> t.isIpv4())) {
                 try {
                     gatewayList.add(Inet4Address.getByName("0.0.0.0"));
@@ -583,18 +594,16 @@ public class IwlanDataService extends DataService {
                 }
             }
 
-            if (tunnelState.getTunnelLinkProperties().sliceInfo().isPresent()) {
-                responseBuilder.setSliceInfo(
-                        tunnelState.getTunnelLinkProperties().sliceInfo().get());
+            if (tunnelLinkProperties.sliceInfo().isPresent()) {
+                responseBuilder.setSliceInfo(tunnelLinkProperties.sliceInfo().get());
             }
 
             return responseBuilder
                     .setAddresses(linkAddrList)
-                    .setDnsAddresses(tunnelState.getTunnelLinkProperties().dnsAddresses())
-                    .setPcscfAddresses(tunnelState.getTunnelLinkProperties().pcscfAddresses())
-                    .setInterfaceName(tunnelState.getTunnelLinkProperties().ifaceName())
+                    .setDnsAddresses(tunnelLinkProperties.dnsAddresses())
+                    .setPcscfAddresses(tunnelLinkProperties.pcscfAddresses())
+                    .setInterfaceName(tunnelLinkProperties.ifaceName())
                     .setGatewayAddresses(gatewayList)
-                    .setLinkStatus(DataCallResponse.LINK_STATUS_ACTIVE)
                     .setMtu(tunnelState.getLinkMtu())
                     .setMtuV4(tunnelState.getLinkMtu())
                     .setMtuV6(tunnelState.getLinkMtu())

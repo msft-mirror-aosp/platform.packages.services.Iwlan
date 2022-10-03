@@ -164,6 +164,7 @@ public class EpdgTunnelManagerTest {
 
     @Before
     public void setUp() throws Exception {
+        EpdgTunnelManager.resetAllInstances();
         mEpdgTunnelManager = spy(EpdgTunnelManager.getInstance(mMockContext, DEFAULT_SLOT_INDEX));
 
         when(mMockContext.getSystemService(eq(IpSecManager.class))).thenReturn(mMockIpSecManager);
@@ -172,7 +173,7 @@ public class EpdgTunnelManagerTest {
         setVariable(mEpdgTunnelManager, "mContext", mMockContext);
         mEpdgTunnelManager.initHandler();
         mEpdgTunnelManager.resetTunnelManagerState();
-        when(mEpdgTunnelManager.getEpdgSelector()).thenReturn(mMockEpdgSelector);
+        doReturn(mMockEpdgSelector).when(mEpdgTunnelManager).getEpdgSelector();
         when(mEpdgTunnelManager.getIkeSessionCreator()).thenReturn(mMockIkeSessionCreator);
 
         when(mMockEpdgSelector.getValidatedServerList(
