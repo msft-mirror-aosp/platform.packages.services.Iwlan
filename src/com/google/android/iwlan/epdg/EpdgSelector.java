@@ -19,6 +19,7 @@ package com.google.android.iwlan.epdg;
 import android.content.Context;
 import android.net.DnsResolver;
 import android.net.DnsResolver.DnsException;
+import android.net.InetAddresses;
 import android.net.Network;
 import android.support.annotation.IntDef;
 import android.support.annotation.NonNull;
@@ -34,6 +35,7 @@ import android.telephony.CellInfoLte;
 import android.telephony.CellInfoNr;
 import android.telephony.CellInfoTdscdma;
 import android.telephony.CellInfoWcdma;
+import android.telephony.DataFailCause;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
@@ -42,6 +44,7 @@ import android.util.Log;
 
 import com.android.internal.annotations.VisibleForTesting;
 
+import com.google.android.iwlan.ErrorPolicyManager;
 import com.google.android.iwlan.IwlanError;
 import com.google.android.iwlan.IwlanHelper;
 import com.google.android.iwlan.epdg.NaptrDnsResolver.NaptrTarget;
@@ -54,6 +57,8 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
 
 public class EpdgSelector {
     private static final String TAG = "EpdgSelector";
@@ -65,6 +70,9 @@ public class EpdgSelector {
     private int mV6PcoId = -1;
     private byte[] mV4PcoData = null;
     private byte[] mV6PcoData = null;
+    @NonNull private ErrorPolicyManager mErrorPolicyManager;
+
+    private static final long DNS_RESOLVER_TIMEOUT_DURATION_SEC = 5L;
 
     final Comparator<InetAddress> inetAddressComparator =
             new Comparator<InetAddress>() {
@@ -98,6 +106,8 @@ public class EpdgSelector {
     EpdgSelector(Context context, int slotId) {
         mContext = context;
         mSlotId = slotId;
+
+        mErrorPolicyManager = ErrorPolicyManager.getInstance(mContext, mSlotId);
     }
 
     public static EpdgSelector getSelectorInstance(Context context, int slotId) {
@@ -143,57 +153,81 @@ public class EpdgSelector {
         mV6PcoData = null;
     }
 
-    private void getIP(
-            String domainName, int filter, ArrayList<InetAddress> validIpList, Network network) {
-        InetAddress[] ipList;
+    private Map.Entry<String, List<InetAddress>> getIP(
+            String domainName, int filter, List<InetAddress> validIpList, Network network) {
+        List<InetAddress> ipList = new ArrayList<InetAddress>();
 
         // Get All IP for each domain name
         Log.d(TAG, "Input domainName : " + domainName);
-        try {
-            CompletableFuture<List<InetAddress>> result = new CompletableFuture();
-            final DnsResolver.Callback<List<InetAddress>> cb =
-                    new DnsResolver.Callback<List<InetAddress>>() {
-                        @Override
-                        public void onAnswer(
-                                @NonNull final List<InetAddress> answer, final int rcode) {
-                            if (rcode != 0) {
-                                Log.e(TAG, "DnsResolver Response Code = " + rcode);
-                            }
-                            result.complete(answer);
-                        }
 
-                        @Override
-                        public void onError(@Nullable final DnsResolver.DnsException error) {
-                            Log.e(TAG, "Resolve DNS with error : " + error);
-                            result.completeExceptionally(error);
-                        }
-                    };
-            DnsResolver.getInstance()
-                    .query(network, domainName, DnsResolver.FLAG_EMPTY, r -> r.run(), null, cb);
-
-            // Filter the IP list by input ProtoFilter
-            for (InetAddress ipAddress : result.get()) {
-                switch (filter) {
-                    case PROTO_FILTER_IPV4:
-                        if (ipAddress instanceof Inet4Address) {
-                            validIpList.add(ipAddress);
-                        }
-                        break;
-                    case PROTO_FILTER_IPV6:
-                        if (!IwlanHelper.isIpv4EmbeddedIpv6Address(ipAddress)) {
-                            validIpList.add(ipAddress);
-                        }
-                        break;
-                    case PROTO_FILTER_IPV4V6:
-                        validIpList.add(ipAddress);
-                        break;
-                    default:
-                        Log.d(TAG, "Invalid ProtoFilter : " + filter);
-                }
+        if (InetAddresses.isNumericAddress(domainName)) {
+            try {
+                Log.d(TAG, domainName + " is a numeric ip address");
+                ipList.add(InetAddress.getByName(domainName));
+            } catch (UnknownHostException e) {
+                Log.e(TAG, "Exception when resolving domainName : " + domainName + ".", e);
             }
-        } catch (Exception e) {
-            Log.e(TAG, "Exception when resolving domainName : " + domainName + ".", e);
+        } else {
+            try {
+                CompletableFuture<List<InetAddress>> result = new CompletableFuture();
+                final DnsResolver.Callback<List<InetAddress>> cb =
+                        new DnsResolver.Callback<List<InetAddress>>() {
+                            @Override
+                            public void onAnswer(
+                                    @NonNull final List<InetAddress> answer, final int rcode) {
+                                if (rcode != 0) {
+                                    Log.e(TAG, "DnsResolver Response Code = " + rcode);
+                                }
+                                result.complete(answer);
+                            }
+
+                            @Override
+                            public void onError(@Nullable final DnsResolver.DnsException error) {
+                                Log.e(TAG, "Resolve DNS with error : " + error);
+                                result.completeExceptionally(error);
+                            }
+                        };
+                DnsResolver.getInstance()
+                        .query(network, domainName, DnsResolver.FLAG_EMPTY, r -> r.run(), null, cb);
+                ipList =
+                        new ArrayList<>(
+                                result.get(DNS_RESOLVER_TIMEOUT_DURATION_SEC, TimeUnit.SECONDS));
+            } catch (ExecutionException e) {
+                Log.e(TAG, "Cause of ExecutionException: ", e.getCause());
+            } catch (InterruptedException e) {
+                if (Thread.currentThread().interrupted()) {
+                    Thread.currentThread().interrupt();
+                }
+                Log.e(TAG, "InterruptedException: ", e);
+            } catch (TimeoutException e) {
+                Log.e(TAG, "TimeoutException: ", e);
+            }
         }
+
+        List<InetAddress> filteredIpList = new ArrayList<>();
+        // Filter the IP list by input ProtoFilter
+        for (InetAddress ipAddress : ipList) {
+            switch (filter) {
+                case PROTO_FILTER_IPV4:
+                    if (ipAddress instanceof Inet4Address) {
+                        filteredIpList.add(ipAddress);
+                    }
+                    break;
+                case PROTO_FILTER_IPV6:
+                    if (!IwlanHelper.isIpv4EmbeddedIpv6Address(ipAddress)) {
+                        filteredIpList.add(ipAddress);
+                    }
+                    break;
+                case PROTO_FILTER_IPV4V6:
+                    filteredIpList.add(ipAddress);
+                    break;
+                default:
+                    Log.d(TAG, "Invalid ProtoFilter : " + filter);
+            }
+        }
+        validIpList.addAll(filteredIpList);
+
+        return Map.entry(domainName, filteredIpList);
     }
 
     private String[] getPlmnList() {
@@ -270,7 +304,7 @@ public class EpdgSelector {
         return combinedList.toArray(new String[combinedList.size()]);
     }
 
-    private ArrayList<InetAddress> removeDuplicateIp(ArrayList<InetAddress> validIpList) {
+    private ArrayList<InetAddress> removeDuplicateIp(List<InetAddress> validIpList) {
         ArrayList<InetAddress> resultIpList = new ArrayList<InetAddress>();
 
         for (Iterator<InetAddress> iterator = validIpList.iterator(); iterator.hasNext(); ) {
@@ -304,7 +338,7 @@ public class EpdgSelector {
     }
 
     private void resolutionMethodStatic(
-            int filter, ArrayList<InetAddress> validIpList, boolean isRoaming, Network network) {
+            int filter, List<InetAddress> validIpList, boolean isRoaming, Network network) {
         String[] domainNames = null;
 
         Log.d(TAG, "STATIC Method");
@@ -359,10 +393,11 @@ public class EpdgSelector {
         return inSameCountry;
     }
 
-    private void resolutionMethodPlmn(
-            int filter, ArrayList<InetAddress> validIpList, boolean isEmergency, Network network) {
+    private Map<String, List<InetAddress>> resolutionMethodPlmn(
+            int filter, List<InetAddress> validIpList, boolean isEmergency, Network network) {
         String[] plmnList;
         StringBuilder domainName = new StringBuilder();
+        Map<String, List<InetAddress>> domainNameToIpAddr = new LinkedHashMap<>();
 
         Log.d(TAG, "PLMN Method");
 
@@ -377,22 +412,35 @@ public class EpdgSelector {
              * sos.epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
              */
             if (isEmergency) {
-                domainName.append("sos.");
+                domainName = new StringBuilder();
+                domainName
+                        .append("sos.")
+                        .append("epdg.epc.mnc")
+                        .append(mccmnc[1])
+                        .append(".mcc")
+                        .append(mccmnc[0])
+                        .append(".pub.3gppnetwork.org");
+                getIP(domainName.toString(), filter, validIpList, network);
+                domainName.setLength(0);
             }
-
+            // For emergency PDN setup, still adding FQDN without "sos" header as second priority
+            // because some operator doesn't support hostname with "sos" prefix.
             domainName
                     .append("epdg.epc.mnc")
                     .append(mccmnc[1])
                     .append(".mcc")
                     .append(mccmnc[0])
                     .append(".pub.3gppnetwork.org");
-            getIP(domainName.toString(), filter, validIpList, network);
+            Map.Entry<String, List<InetAddress>> entry =
+                    getIP(domainName.toString(), filter, validIpList, network);
+            domainNameToIpAddr.put(entry.getKey(), entry.getValue());
             domainName.setLength(0);
         }
+        return domainNameToIpAddr;
     }
 
     private void resolutionMethodCellularLoc(
-            int filter, ArrayList<InetAddress> validIpList, boolean isEmergency, Network network) {
+            int filter, List<InetAddress> validIpList, boolean isEmergency, Network network) {
         String[] plmnList;
         StringBuilder domainName = new StringBuilder();
 
@@ -514,7 +562,7 @@ public class EpdgSelector {
 
     private void lacDomainNameResolution(
             int filter,
-            ArrayList<InetAddress> validIpList,
+            List<InetAddress> validIpList,
             String lacString,
             boolean isEmergency,
             Network network) {
@@ -548,7 +596,7 @@ public class EpdgSelector {
         }
     }
 
-    private void resolutionMethodPco(int filter, ArrayList<InetAddress> validIpList) {
+    private void resolutionMethodPco(int filter, List<InetAddress> validIpList) {
         Log.d(TAG, "PCO Method");
 
         int PCO_ID_IPV6 =
@@ -586,7 +634,7 @@ public class EpdgSelector {
         }
     }
 
-    private void getInetAddressWithPcoData(byte[] pcoData, ArrayList<InetAddress> validIpList) {
+    private void getInetAddressWithPcoData(byte[] pcoData, List<InetAddress> validIpList) {
         InetAddress ipAddress;
         if (pcoData != null && pcoData.length > 0) {
             try {
@@ -647,7 +695,7 @@ public class EpdgSelector {
 
     private void processNaptrResponse(
             int filter,
-            ArrayList<InetAddress> validIpList,
+            List<InetAddress> validIpList,
             boolean isEmergency,
             Network network,
             boolean isRegisteredWith3GPP,
@@ -699,7 +747,7 @@ public class EpdgSelector {
     }
 
     private void resolutionMethodVisitedCountry(
-            int filter, ArrayList<InetAddress> validIpList, boolean isEmergency, Network network) {
+            int filter, List<InetAddress> validIpList, boolean isEmergency, Network network) {
         StringBuilder domainName = new StringBuilder();
 
         TelephonyManager telephonyManager = mContext.getSystemService(TelephonyManager.class);
@@ -777,7 +825,8 @@ public class EpdgSelector {
         NaptrDnsResolver.query(network, domainName.toString(), r -> r.run(), null, naptrDnsCb);
 
         try {
-            final List<NaptrTarget> naptrResponse = naptrDnsResult.get();
+            final List<NaptrTarget> naptrResponse =
+                    naptrDnsResult.get(DNS_RESOLVER_TIMEOUT_DURATION_SEC, TimeUnit.SECONDS);
             // Check if there is any record in the NAPTR response
             if (naptrResponse != null && naptrResponse.size() > 0) {
                 processNaptrResponse(
@@ -797,6 +846,8 @@ public class EpdgSelector {
                 Thread.currentThread().interrupt();
             }
             Log.e(TAG, "InterruptedException: ", e);
+        } catch (TimeoutException e) {
+            Log.e(TAG, "TimeoutException: ", e);
         }
     }
 
@@ -807,13 +858,11 @@ public class EpdgSelector {
             boolean isEmergency,
             @NonNull Network network,
             EpdgSelectorCallback selectorCallback) {
-        ArrayList<InetAddress> validIpList = new ArrayList<InetAddress>();
-        StringBuilder domainName = new StringBuilder();
 
         Runnable doValidation =
                 () -> {
+                    List<InetAddress> validIpList = new ArrayList<>();
                     Log.d(TAG, "Processing request with transactionId: " + transactionId);
-                    String[] plmnList;
 
                     int[] addrResolutionMethods =
                             IwlanHelper.getConfig(
@@ -834,6 +883,7 @@ public class EpdgSelector {
                         resolutionMethodVisitedCountry(filter, validIpList, isEmergency, network);
                     }
 
+                    Map<String, List<InetAddress>> plmnDomainNamesToIpAddress = null;
                     for (int addrResolutionMethod : addrResolutionMethods) {
                         switch (addrResolutionMethod) {
                             case CarrierConfigManager.Iwlan.EPDG_ADDRESS_STATIC:
@@ -841,7 +891,9 @@ public class EpdgSelector {
                                 break;
 
                             case CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN:
-                                resolutionMethodPlmn(filter, validIpList, isEmergency, network);
+                                plmnDomainNamesToIpAddress =
+                                        resolutionMethodPlmn(
+                                                filter, validIpList, isEmergency, network);
                                 break;
 
                             case CarrierConfigManager.Iwlan.EPDG_ADDRESS_PCO:
@@ -862,6 +914,23 @@ public class EpdgSelector {
                     }
 
                     if (selectorCallback != null) {
+                        if (mErrorPolicyManager.getMostRecentDataFailCause()
+                                == DataFailCause.IWLAN_CONGESTION) {
+                            int numFqdns = plmnDomainNamesToIpAddress.size();
+                            int index = mErrorPolicyManager.getCurrentFqdnIndex(numFqdns);
+                            if (index >= 0 && index < numFqdns) {
+                                Object[] keys = plmnDomainNamesToIpAddress.keySet().toArray();
+                                validIpList = plmnDomainNamesToIpAddress.get(keys[index]);
+                            } else {
+                                Log.w(
+                                        TAG,
+                                        "CONGESTION error handling- invalid index: "
+                                                + index
+                                                + " number of PLMN FQDNs: "
+                                                + numFqdns);
+                            }
+                        }
+
                         if (!validIpList.isEmpty()) {
                             Collections.sort(validIpList, inetAddressComparator);
                             selectorCallback.onServerListChanged(
