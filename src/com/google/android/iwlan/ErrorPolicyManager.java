@@ -395,7 +395,10 @@ public class ErrorPolicyManager {
     }
 
     public synchronized int getMostRecentDataFailCause() {
-        return getDataFailCause(mMostRecentError.mIwlanError);
+        if (mMostRecentError != null) {
+            return getDataFailCause(mMostRecentError.mIwlanError);
+        }
+        return DataFailCause.NONE;
     }
 
     /**
@@ -528,10 +531,16 @@ public class ErrorPolicyManager {
         return selectedPolicy;
     }
 
-    private void initHandler() {
+    @VisibleForTesting
+    void initHandler() {
+        mHandler = new EpmHandler(getLooper());
+    }
+
+    @VisibleForTesting
+    Looper getLooper() {
         mHandlerThread = new HandlerThread("ErrorPolicyManagerThread");
         mHandlerThread.start();
-        mHandler = new EpmHandler(mHandlerThread.getLooper());
+        return mHandlerThread.getLooper();
     }
 
     private String getDefaultJSONConfig() throws IOException {
@@ -1063,8 +1072,8 @@ public class ErrorPolicyManager {
     }
 
     static class ApnWithIwlanError {
-        final String mApn;
-        final IwlanError mIwlanError;
+        @NonNull final String mApn;
+        @NonNull final IwlanError mIwlanError;
 
         ApnWithIwlanError(String apn, IwlanError iwlanError) {
             mApn = apn;
