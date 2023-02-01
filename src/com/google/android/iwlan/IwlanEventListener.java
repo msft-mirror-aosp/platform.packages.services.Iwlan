@@ -43,6 +43,7 @@ import com.android.internal.annotations.VisibleForTesting;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -85,6 +86,19 @@ public class IwlanEventListener {
     /** On Cellinfo changed */
     public static final int CELLINFO_CHANGED_EVENT = 11;
 
+    /** On Call state changed */
+    public static final int CALL_STATE_CHANGED_EVENT = 12;
+
+    /* Events used and handled by IwlanDataService internally */
+    public static final int DATA_SERVICE_INTERNAL_EVENT_BASE = 100;
+
+    public static final int DATA_SERVICE_INTERNAL_EVENT_END = 200;
+
+    /* Events used and handled by IwlanNetworkService internally */
+    public static final int NETWORK_SERVICE_INTERNAL_EVENT_BASE = 200;
+
+    public static final int NETWORK_SERVICE_INTERNAL_EVENT_END = 300;
+
     @IntDef({
         CARRIER_CONFIG_CHANGED_EVENT,
         WIFI_DISABLE_EVENT,
@@ -96,7 +110,8 @@ public class IwlanEventListener {
         CROSS_SIM_CALLING_ENABLE_EVENT,
         CROSS_SIM_CALLING_DISABLE_EVENT,
         CARRIER_CONFIG_UNKNOWN_CARRIER_EVENT,
-        CELLINFO_CHANGED_EVENT
+        CELLINFO_CHANGED_EVENT,
+        CALL_STATE_CHANGED_EVENT
     })
     @interface IwlanEventType {};
 
@@ -128,6 +143,8 @@ public class IwlanEventListener {
 
         @Override
         public void onChange(boolean selfChange, Uri uri) {
+            Objects.requireNonNull(mCrossSimCallingUri, "CrossSimCallingUri must not be null");
+            Objects.requireNonNull(mWfcEnabledUri, "WfcEnabledUri must not be null");
             if (mCrossSimCallingUri.equals(uri)) {
                 notifyCurrentSetting(uri);
             } else if (mWfcEnabledUri.equals(uri)) {
@@ -137,7 +154,7 @@ public class IwlanEventListener {
     }
 
     private class RadioInfoTelephonyCallback extends TelephonyCallback
-            implements TelephonyCallback.CellInfoListener {
+            implements TelephonyCallback.CellInfoListener, TelephonyCallback.CallStateListener {
         @Override
         public void onCellInfoChanged(List<CellInfo> arrayCi) {
             Log.d(LOG_TAG, "Cellinfo changed");
@@ -150,11 +167,32 @@ public class IwlanEventListener {
                 }
             }
         }
+
+        @Override
+        public void onCallStateChanged(int state) {
+            Log.d(
+                    LOG_TAG,
+                    "Call state changed to " + callStateToString(state) + " for slot " + mSlotId);
+
+            for (Map.Entry<Integer, IwlanEventListener> entry : mInstances.entrySet()) {
+                IwlanEventListener instance = entry.getValue();
+                if (instance != null) {
+                    instance.updateHandlers(CALL_STATE_CHANGED_EVENT, state);
+                }
+            }
+        }
     }
 
-    /** Returns IwlanEventListener instance */
+    /**
+     * Returns IwlanEventListener instance
+     */
     public static IwlanEventListener getInstance(@NonNull Context context, int slotId) {
         return mInstances.computeIfAbsent(slotId, k -> new IwlanEventListener(context, slotId));
+    }
+
+    @VisibleForTesting
+    public static void resetAllInstances() {
+        mInstances.clear();
     }
 
     /**
@@ -379,7 +417,7 @@ public class IwlanEventListener {
     }
 
     /** Unregister ContentObserver. */
-    private void unregisterContentObserver() {
+    void unregisterContentObserver() {
         if (mUserSettingContentObserver != null) {
             mContext.getContentResolver().unregisterContentObserver(mUserSettingContentObserver);
         }
@@ -448,7 +486,12 @@ public class IwlanEventListener {
                 Log.e(SUB_TAG, "Could not find  ImsMmTelManager");
                 return;
             }
-            boolean wfcEnabled = imsMmTelManager.isVoWiFiSettingEnabled();
+            boolean wfcEnabled = false;
+            try {
+                wfcEnabled = imsMmTelManager.isVoWiFiSettingEnabled();
+            } catch (IllegalArgumentException e) {
+                Log.w(SUB_TAG, e.getMessage());
+            }
             int event = (wfcEnabled) ? WIFI_CALLING_ENABLE_EVENT : WIFI_CALLING_DISABLE_EVENT;
             getInstance(mContext, slotIndex).updateHandlers(event);
         } else {
@@ -485,7 +528,7 @@ public class IwlanEventListener {
         if (eventHandlers.contains(event)) {
             Log.d(SUB_TAG, "Updating handlers for the event: " + event);
             for (Handler handler : eventHandlers.get(event)) {
-                handler.obtainMessage(event).sendToTarget();
+                handler.obtainMessage(event, mSlotId, 0 /* unused */).sendToTarget();
             }
         }
     }
@@ -494,8 +537,30 @@ public class IwlanEventListener {
         if (eventHandlers.contains(event)) {
             Log.d(SUB_TAG, "Updating handlers for the event: " + event);
             for (Handler handler : eventHandlers.get(event)) {
-                handler.obtainMessage(event, arrayCi).sendToTarget();
+                handler.obtainMessage(event, mSlotId, 0 /* unused */, arrayCi).sendToTarget();
             }
+        }
+    }
+
+    private synchronized void updateHandlers(int event, int state) {
+        if (eventHandlers.contains(event)) {
+            Log.d(SUB_TAG, "Updating handlers for the event: " + event);
+            for (Handler handler : eventHandlers.get(event)) {
+                handler.obtainMessage(event, mSlotId, state).sendToTarget();
+            }
+        }
+    }
+
+    private String callStateToString(int state) {
+        switch (state) {
+            case TelephonyManager.CALL_STATE_IDLE:
+                return "CALL_STATE_IDLE";
+            case TelephonyManager.CALL_STATE_RINGING:
+                return "CALL_STATE_RINGING";
+            case TelephonyManager.CALL_STATE_OFFHOOK:
+                return "CALL_STATE_OFFHOOK";
+            default:
+                return "Unknown Call State (" + state + ")";
         }
     }
 }
