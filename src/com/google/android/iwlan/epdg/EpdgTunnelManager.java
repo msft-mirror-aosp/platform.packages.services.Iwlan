@@ -153,17 +153,21 @@ public class EpdgTunnelManager {
     private InetAddress mEpdgAddress;
     private Network mNetwork;
     private int mTransactionId = 0;
-    private int mProtoFilter = EpdgSelector.PROTO_FILTER_IPV4V6;
     private boolean mHasConnectedToEpdg;
     private IkeSessionCreator mIkeSessionCreator;
 
     private Map<String, TunnelConfig> mApnNameToTunnelConfig = new ConcurrentHashMap<>();
+    private Map<String, Integer> mApnNameToCurrentToken = new ConcurrentHashMap<>();
 
     private final String TAG;
 
     private List<InetAddress> mLocalAddresses;
 
     @Nullable private byte[] mNextReauthId = null;
+    private long mEpdgServerSelectionDuration = 0;
+    private long mEpdgServerSelectionStartTime = 0;
+    private long mIkeTunnelEstablishmentDuration = 0;
+    private long mIkeTunnelEstablishmentStartTime = 0;
 
     private static final Set<Integer> VALID_DH_GROUPS;
     private static final Set<Integer> VALID_KEY_LENGTHS;
@@ -239,6 +243,7 @@ public class EpdgTunnelManager {
     @VisibleForTesting
     class TunnelConfig {
         @NonNull final TunnelCallback mTunnelCallback;
+        @NonNull final TunnelCallbackMetrics mTunnelCallbackMetrics;
         // TODO: Change this to TunnelLinkProperties after removing autovalue
         private List<InetAddress> mPcscfAddrList;
         private List<InetAddress> mDnsAddrList;
@@ -278,9 +283,11 @@ public class EpdgTunnelManager {
         public TunnelConfig(
                 IkeSession ikeSession,
                 TunnelCallback tunnelCallback,
+                TunnelCallbackMetrics tunnelCallbackMetrics,
                 InetAddress srcIpv6Addr,
                 int srcIpv6PrefixLength) {
             mTunnelCallback = tunnelCallback;
+            mTunnelCallbackMetrics = tunnelCallbackMetrics;
             mIkeSession = ikeSession;
             mError = new IwlanError(IwlanError.NO_ERROR);
             mSrcIpv6Address = srcIpv6Addr;
@@ -290,6 +297,11 @@ public class EpdgTunnelManager {
         @NonNull
         TunnelCallback getTunnelCallback() {
             return mTunnelCallback;
+        }
+
+        @NonNull
+        TunnelCallbackMetrics getTunnelCallbackMetrics() {
+            return mTunnelCallbackMetrics;
         }
 
         List<InetAddress> getPcscfAddrList() {
@@ -438,38 +450,41 @@ public class EpdgTunnelManager {
     class TmIkeSessionCallback implements IkeSessionCallback {
 
         private final String mApnName;
+        private final int mToken;
 
-        TmIkeSessionCallback(String apnName) {
+        TmIkeSessionCallback(String apnName, int token) {
             this.mApnName = apnName;
+            this.mToken = token;
         }
 
         @Override
         public void onOpened(IkeSessionConfiguration sessionConfiguration) {
-            Log.d(TAG, "Ike session opened for apn: " + mApnName);
+            Log.d(TAG, "Ike session opened for apn: " + mApnName + " with token: " + mToken);
             mHandler.sendMessage(
                     mHandler.obtainMessage(
                             EVENT_IKE_SESSION_OPENED,
-                            new IkeSessionOpenedData(mApnName, sessionConfiguration)));
+                            new IkeSessionOpenedData(mApnName, mToken, sessionConfiguration)));
         }
 
         @Override
         public void onClosed() {
-            Log.d(TAG, "Ike session closed for apn: " + mApnName);
+            Log.d(TAG, "Ike session closed for apn: " + mApnName + " with token: " + mToken);
             mHandler.sendMessage(
                     mHandler.obtainMessage(
                             EVENT_IKE_SESSION_CLOSED,
-                            new SessionClosedData(mApnName, new IwlanError(IwlanError.NO_ERROR))));
+                            new SessionClosedData(
+                                    mApnName, mToken, new IwlanError(IwlanError.NO_ERROR))));
         }
 
         @Override
         public void onClosedExceptionally(IkeException exception) {
             mNextReauthId = null;
-            onSessionClosedWithException(exception, mApnName, EVENT_IKE_SESSION_CLOSED);
+            onSessionClosedWithException(exception, mApnName, mToken, EVENT_IKE_SESSION_CLOSED);
         }
 
         @Override
         public void onError(IkeProtocolException exception) {
-            Log.d(TAG, "Ike session onError for apn: " + mApnName);
+            Log.d(TAG, "Ike session onError for apn: " + mApnName + " with token: " + mToken);
 
             mNextReauthId = null;
 
@@ -489,21 +504,26 @@ public class EpdgTunnelManager {
                     TAG,
                     "Ike session connection info changed for apn: "
                             + mApnName
+                            + " with token: "
+                            + mToken
                             + " Network: "
                             + network);
             mHandler.sendMessage(
                     mHandler.obtainMessage(
                             EVENT_IKE_SESSION_CONNECTION_INFO_CHANGED,
-                            new IkeSessionConnectionInfoData(mApnName, ikeSessionConnectionInfo)));
+                            new IkeSessionConnectionInfoData(
+                                    mApnName, mToken, ikeSessionConnectionInfo)));
         }
     }
 
     @VisibleForTesting
     class TmIke3gppCallback implements Ike3gppExtension.Ike3gppDataListener {
         private final String mApnName;
+        private final int mToken;
 
-        private TmIke3gppCallback(String apnName) {
+        private TmIke3gppCallback(String apnName, int token) {
             mApnName = apnName;
+            mToken = token;
         }
 
         @Override
@@ -511,75 +531,102 @@ public class EpdgTunnelManager {
             mHandler.sendMessage(
                     mHandler.obtainMessage(
                             EVENT_IKE_3GPP_DATA_RECEIVED,
-                            new Ike3gppDataReceived(mApnName, payloads)));
-            }
+                            new Ike3gppDataReceived(mApnName, mToken, payloads)));
         }
+    }
 
     @VisibleForTesting
     class TmChildSessionCallback implements ChildSessionCallback {
 
         private final String mApnName;
+        private final int mToken;
 
-        TmChildSessionCallback(String apnName) {
+        TmChildSessionCallback(String apnName, int token) {
             this.mApnName = apnName;
+            this.mToken = token;
         }
 
         @Override
         public void onOpened(ChildSessionConfiguration sessionConfiguration) {
+            Log.d(TAG, "onOpened child session for apn: " + mApnName + " with token: " + mToken);
             mHandler.sendMessage(
                     mHandler.obtainMessage(
                             EVENT_CHILD_SESSION_OPENED,
                             new TunnelOpenedData(
                                     mApnName,
+                                    mToken,
                                     sessionConfiguration.getInternalDnsServers(),
                                     sessionConfiguration.getInternalAddresses())));
         }
 
         @Override
         public void onClosed() {
-            Log.d(TAG, "onClosed child session for apn: " + mApnName);
+            Log.d(TAG, "onClosed child session for apn: " + mApnName + " with token: " + mToken);
             mHandler.sendMessage(
                     mHandler.obtainMessage(
                             EVENT_CHILD_SESSION_CLOSED,
-                            new SessionClosedData(mApnName, new IwlanError(IwlanError.NO_ERROR))));
+                            new SessionClosedData(
+                                    mApnName, mToken, new IwlanError(IwlanError.NO_ERROR))));
         }
 
         @Override
         public void onClosedExceptionally(IkeException exception) {
-            onSessionClosedWithException(exception, mApnName, EVENT_CHILD_SESSION_CLOSED);
+            onSessionClosedWithException(exception, mApnName, mToken, EVENT_CHILD_SESSION_CLOSED);
         }
 
         @Override
         public void onIpSecTransformsMigrated(
                 IpSecTransform inIpSecTransform, IpSecTransform outIpSecTransform) {
             // migration is similar to addition
-            Log.d(TAG, "Transforms migrated for apn: + " + mApnName);
+            Log.d(TAG, "Transforms migrated for apn: " + mApnName + " with token: " + mToken);
             mHandler.sendMessage(
                     mHandler.obtainMessage(
                             EVENT_IPSEC_TRANSFORM_CREATED,
                             new IpsecTransformData(
-                                    inIpSecTransform, IpSecManager.DIRECTION_IN, mApnName)));
+                                    inIpSecTransform,
+                                    IpSecManager.DIRECTION_IN,
+                                    mApnName,
+                                    mToken)));
             mHandler.sendMessage(
                     mHandler.obtainMessage(
                             EVENT_IPSEC_TRANSFORM_CREATED,
                             new IpsecTransformData(
-                                    outIpSecTransform, IpSecManager.DIRECTION_OUT, mApnName)));
+                                    outIpSecTransform,
+                                    IpSecManager.DIRECTION_OUT,
+                                    mApnName,
+                                    mToken)));
         }
 
         @Override
         public void onIpSecTransformCreated(IpSecTransform ipSecTransform, int direction) {
-            Log.d(TAG, "Transform created, direction: " + direction + ", apn:" + mApnName);
+            Log.d(
+                    TAG,
+                    "Transform created, direction: "
+                            + direction
+                            + ", apn: "
+                            + mApnName
+                            + ", token: "
+                            + mToken);
             mHandler.sendMessage(
                     mHandler.obtainMessage(
                             EVENT_IPSEC_TRANSFORM_CREATED,
-                            new IpsecTransformData(ipSecTransform, direction, mApnName)));
+                            new IpsecTransformData(ipSecTransform, direction, mApnName, mToken)));
         }
 
         @Override
         public void onIpSecTransformDeleted(IpSecTransform ipSecTransform, int direction) {
-            Log.d(TAG, "Transform deleted, direction: " + direction + ", apn:" + mApnName);
+            Log.d(
+                    TAG,
+                    "Transform deleted, direction: "
+                            + direction
+                            + ", apn: "
+                            + mApnName
+                            + ", token: "
+                            + mToken);
             mHandler.sendMessage(
-                    mHandler.obtainMessage(EVENT_IPSEC_TRANSFORM_DELETED, ipSecTransform));
+                    mHandler.obtainMessage(
+                            EVENT_IPSEC_TRANSFORM_DELETED,
+                            new IpsecTransformData(ipSecTransform, direction, mApnName, mToken)));
         }
     }
 
@@ -637,6 +684,37 @@ public class EpdgTunnelManager {
         void onClosed(@NonNull String apnName, @NonNull IwlanError error);
     }
 
+    public interface TunnelCallbackMetrics {
+        /**
+         * Called for logging the tunnel is opened.
+         *
+         * @param apnName apn for which the tunnel was opened
+         * @param epdgServerAddress epdg server IP address for bringup the tunnel
+         * @param epdgServerSelectionDuration time for EpdgSelector doing FQDN
+         * @param ikeTunnelEstablishmentDuration time for IKE module processing tunnel
+         *     establishement
+         */
+        void onOpened(
+                @NonNull String apnName,
+                @Nullable String epdgServerAddress,
+                @NonNull int epdgServerSelectionDuration,
+                @NonNull int ikeTunnelEstablishmentDuration);
+        /**
+         * Called for logging the tunnel is closed or bringup failed.
+         *
+         * @param apnName apn for which the tunnel was closed
+         * @param epdgServerAddress epdg server IP address for bringup the tunnel
+         * @param epdgServerSelectionDuration time for EpdgSelector doing FQDN
+         * @param ikeTunnelEstablishmentDuration time for IKE module processing tunnel
+         *     establishement
+         */
+        void onClosed(
+                @NonNull String apnName,
+                @Nullable String epdgServerAddress,
+                @NonNull int epdgServerSelectionDuration,
+                @NonNull int ikeTunnelEstablishmentDuration);
+    }
+
     /**
      * Close tunnel for an apn. Confirmation of closing will be delivered in TunnelCallback that was
      * provided in {@link #bringUpTunnel}
@@ -678,7 +756,9 @@ public class EpdgTunnelManager {
      * @return true if params are valid and no existing tunnel. False otherwise.
      */
     public boolean bringUpTunnel(
-            @NonNull TunnelSetupRequest setupRequest, @NonNull TunnelCallback tunnelCallback) {
+            @NonNull TunnelSetupRequest setupRequest,
+            @NonNull TunnelCallback tunnelCallback,
+            @NonNull TunnelCallbackMetrics tunnelCallbackMetrics) {
         String apnName = setupRequest.apnName();
 
         if (getTunnelSetupRequestApnName(setupRequest) == null) {
@@ -703,7 +783,7 @@ public class EpdgTunnelManager {
         }
 
         TunnelRequestWrapper tunnelRequestWrapper =
-                new TunnelRequestWrapper(setupRequest, tunnelCallback);
+                new TunnelRequestWrapper(setupRequest, tunnelCallback, tunnelCallbackMetrics);
 
         mHandler.sendMessage(
                 mHandler.obtainMessage(EVENT_TUNNEL_BRINGUP_REQUEST, tunnelRequestWrapper));
@@ -711,7 +791,10 @@ public class EpdgTunnelManager {
         return true;
     }
 
-    private void onBringUpTunnel(TunnelSetupRequest setupRequest, TunnelCallback tunnelCallback) {
+    private void onBringUpTunnel(
+            TunnelSetupRequest setupRequest,
+            TunnelCallback tunnelCallback,
+            TunnelCallbackMetrics tunnelCallbackMetrics) {
         String apnName = setupRequest.apnName();
         IkeSessionParams ikeSessionParams = null;
 
@@ -722,15 +805,19 @@ public class EpdgTunnelManager {
                         + "ePDG : "
                         + mEpdgAddress.getHostAddress());
 
+        final int token = incrementAndGetCurrentTokenForApn(apnName);
+
         try {
-            ikeSessionParams = buildIkeSessionParams(setupRequest, apnName);
+            ikeSessionParams = buildIkeSessionParams(setupRequest, apnName, token);
         } catch (IwlanSimNotReadyException e) {
             IwlanError iwlanError = new IwlanError(IwlanError.SIM_NOT_READY_EXCEPTION);
             reportIwlanError(apnName, iwlanError);
             tunnelCallback.onClosed(apnName, iwlanError);
+            tunnelCallbackMetrics.onClosed(apnName, null, 0, 0);
             return;
         }
 
+        mIkeTunnelEstablishmentStartTime = System.currentTimeMillis();
         IkeSession ikeSession =
                 getIkeSessionCreator()
                         .createIkeSession(
@@ -738,14 +825,15 @@ public class EpdgTunnelManager {
                                 ikeSessionParams,
                                 buildChildSessionParams(setupRequest),
                                 Executors.newSingleThreadExecutor(),
-                                getTmIkeSessionCallback(apnName),
-                                new TmChildSessionCallback(apnName));
+                                getTmIkeSessionCallback(apnName, token),
+                                new TmChildSessionCallback(apnName, token));
 
         boolean isSrcIpv6Present = setupRequest.srcIpv6Address().isPresent();
         putApnNameToTunnelConfig(
                 apnName,
                 ikeSession,
                 tunnelCallback,
+                tunnelCallbackMetrics,
                 isSrcIpv6Present ? setupRequest.srcIpv6Address().get() : null,
                 setupRequest.srcIpv6AddressPrefixLength());
     }
@@ -900,7 +988,8 @@ public class EpdgTunnelManager {
         return imei.substring(0, imei.length() - 1) + imeisv_suffix;
     }
 
-    private IkeSessionParams buildIkeSessionParams(TunnelSetupRequest setupRequest, String apnName)
+    private IkeSessionParams buildIkeSessionParams(
+            TunnelSetupRequest setupRequest, String apnName, int token)
             throws IwlanSimNotReadyException {
         int hardTimeSeconds =
                 (int) getConfig(CarrierConfigManager.Iwlan.KEY_IKE_REKEY_HARD_TIMER_SEC_INT);
@@ -994,7 +1083,8 @@ public class EpdgTunnelManager {
 
         if (builder3gppParams != null) {
             Ike3gppExtension extension =
-                    new Ike3gppExtension(builder3gppParams.build(), new TmIke3gppCallback(apnName));
+                    new Ike3gppExtension(
+                            builder3gppParams.build(), new TmIke3gppCallback(apnName, token));
             builder.setIke3gppExtension(extension);
         }
 
@@ -1229,12 +1319,14 @@ public class EpdgTunnelManager {
     }
 
     private void onSessionClosedWithException(
-            IkeException exception, String apnName, int sessionType) {
+            IkeException exception, String apnName, int token, int sessionType) {
         IwlanError error = new IwlanError(exception);
         Log.e(
                 TAG,
                 "Closing tunnel with exception for apn: "
                         + apnName
+                        + " with token: "
+                        + token
                         + " sessionType:"
                         + sessionType
                         + " error: "
@@ -1242,7 +1334,7 @@ public class EpdgTunnelManager {
         exception.printStackTrace();
 
         mHandler.sendMessage(
-                mHandler.obtainMessage(sessionType, new SessionClosedData(apnName, error)));
+                mHandler.obtainMessage(sessionType, new SessionClosedData(apnName, token, error)));
     }
 
     private boolean isEpdgSelectionOrFirstTunnelBringUpInProgress() {
@@ -1259,10 +1351,30 @@ public class EpdgTunnelManager {
 
         @Override
         public void handleMessage(Message msg) {
-            Log.d(TAG, "msg.what = " + msg.what);
+            Log.d(TAG, "msg.what = " + eventToString(msg.what));
 
             String apnName;
             TunnelConfig tunnelConfig;
+
+            switch (msg.what) {
+                case EVENT_CHILD_SESSION_OPENED:
+                case EVENT_IKE_SESSION_CLOSED:
+                case EVENT_IPSEC_TRANSFORM_CREATED:
+                case EVENT_IPSEC_TRANSFORM_DELETED:
+                case EVENT_CHILD_SESSION_CLOSED:
+                case EVENT_IKE_SESSION_OPENED:
+                case EVENT_IKE_SESSION_CONNECTION_INFO_CHANGED:
+                case EVENT_IKE_3GPP_DATA_RECEIVED:
+                    IkeEventData ikeEventData = (IkeEventData) msg.obj;
+                    if (isObsoleteToken(ikeEventData.mApnName, ikeEventData.mToken)) {
+                        Log.d(
+                                TAG,
+                                eventToString(msg.what)
+                                        + " for obsolete token "
+                                        + ikeEventData.mToken);
+                        return;
+                    }
+            }
 
             switch (msg.what) {
                 case EVENT_TUNNEL_BRINGUP_REQUEST:
@@ -1277,6 +1389,9 @@ public class EpdgTunnelManager {
                         tunnelRequestWrapper
                                 .getTunnelCallback()
                                 .onClosed(setupRequest.apnName(), iwlanError);
+                        tunnelRequestWrapper
+                                .getTunnelCallbackMetrics()
+                                .onClosed(setupRequest.apnName(), null, 0, 0);
                         return;
                     }
 
@@ -1287,12 +1402,18 @@ public class EpdgTunnelManager {
                                 .onClosed(
                                         setupRequest.apnName(),
                                         getLastError(setupRequest.apnName()));
+                        tunnelRequestWrapper
+                                .getTunnelCallbackMetrics()
+                                .onClosed(setupRequest.apnName(), null, 0, 0);
                         return;
                     }
 
                     if (mHasConnectedToEpdg) {
                         // Service the request immediately when epdg address is available
-                        onBringUpTunnel(setupRequest, tunnelRequestWrapper.getTunnelCallback());
+                        onBringUpTunnel(
+                                setupRequest,
+                                tunnelRequestWrapper.getTunnelCallback(),
+                                tunnelRequestWrapper.getTunnelCallbackMetrics());
                         break;
                     }
 
@@ -1326,7 +1447,8 @@ public class EpdgTunnelManager {
                         validateAndSetEpdgAddress(selectorResult.getValidIpList());
                         onBringUpTunnel(
                                 tunnelRequestWrapper.getSetupRequest(),
-                                tunnelRequestWrapper.getTunnelCallback());
+                                tunnelRequestWrapper.getTunnelCallback(),
+                                tunnelRequestWrapper.getTunnelCallbackMetrics());
                     } else {
                         IwlanError error =
                                 (selectorResult.getEpdgError().getErrorType()
@@ -1368,6 +1490,17 @@ public class EpdgTunnelManager {
                     tunnelConfig.getTunnelCallback().onOpened(apnName, linkProperties);
 
                     reportIwlanError(apnName, new IwlanError(IwlanError.NO_ERROR));
+
+                    mIkeTunnelEstablishmentDuration =
+                            System.currentTimeMillis() - mIkeTunnelEstablishmentStartTime;
+                    mIkeTunnelEstablishmentStartTime = 0;
+                    tunnelConfig
+                            .getTunnelCallbackMetrics()
+                            .onOpened(
+                                    apnName,
+                                    mEpdgAddress.getHostAddress(),
+                                    (int) mEpdgServerSelectionDuration,
+                                    (int) mIkeTunnelEstablishmentDuration);
 
                     setHasConnectedToEpdg(true);
                     mValidEpdgInfo.resetIndex();
@@ -1422,6 +1555,22 @@ public class EpdgTunnelManager {
 
                     if (!mHasConnectedToEpdg) {
                         failAllPendingRequests(iwlanError);
+                        tunnelConfig.getTunnelCallbackMetrics().onClosed(apnName, null, 0, 0);
+                    } else {
+                        mIkeTunnelEstablishmentDuration =
+                                mIkeTunnelEstablishmentStartTime > 0
+                                        ? System.currentTimeMillis()
+                                                - mIkeTunnelEstablishmentStartTime
+                                        : 0;
+                        mIkeTunnelEstablishmentStartTime = 0;
+
+                        tunnelConfig
+                                .getTunnelCallbackMetrics()
+                                .onClosed(
+                                        apnName,
+                                        mEpdgAddress.getHostAddress(),
+                                        (int) mEpdgServerSelectionDuration,
+                                        (int) mIkeTunnelEstablishmentDuration);
                     }
 
                     mApnNameToTunnelConfig.remove(apnName);
@@ -1492,7 +1641,7 @@ public class EpdgTunnelManager {
 
                         try {
                             if (mEpdgAddress instanceof Inet4Address
-                                    && mProtoFilter == EpdgSelector.PROTO_FILTER_IPV6) {
+                                    && !IwlanHelper.hasIpv4Address(mLocalAddresses)) {
                                 mLocalAddresses =
                                         IwlanHelper.getStackedAddressesForNetwork(
                                                 mNetwork, mContext);
@@ -1528,7 +1677,8 @@ public class EpdgTunnelManager {
                     break;
 
                 case EVENT_IPSEC_TRANSFORM_DELETED:
-                    IpSecTransform transform = (IpSecTransform) msg.obj;
+                    transformData = (IpsecTransformData) msg.obj;
+                    IpSecTransform transform = transformData.getTransform();
                     transform.close();
                     break;
 
@@ -1547,10 +1697,11 @@ public class EpdgTunnelManager {
 
                 case EVENT_IKE_SESSION_OPENED:
                     IkeSessionOpenedData ikeSessionOpenedData = (IkeSessionOpenedData) msg.obj;
+                    apnName = ikeSessionOpenedData.mApnName;
                     IkeSessionConfiguration sessionConfiguration =
                             ikeSessionOpenedData.mIkeSessionConfiguration;
 
-                    tunnelConfig = mApnNameToTunnelConfig.get(ikeSessionOpenedData.mApnName);
+                    tunnelConfig = mApnNameToTunnelConfig.get(apnName);
                     tunnelConfig.setPcscfAddrList(sessionConfiguration.getPcscfServers());
 
                     boolean enabledFastReauth =
@@ -1650,27 +1801,50 @@ public class EpdgTunnelManager {
     }
 
     private void selectEpdgAddress(TunnelSetupRequest setupRequest) {
-        mLocalAddresses = getAddressForNetwork(mNetwork, mContext);
-        if (mLocalAddresses == null || mLocalAddresses.size() == 0) {
-            Log.e(TAG, "No local addresses available.");
-            failAllPendingRequests(
-                    new IwlanError(IwlanError.EPDG_SELECTOR_SERVER_SELECTION_FAILED));
+        ++mTransactionId;
+        mEpdgServerSelectionStartTime = System.currentTimeMillis();
+
+        final int ipPreference =
+                IwlanHelper.getConfig(
+                        CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_IP_TYPE_PREFERENCE_INT,
+                        mContext,
+                        mSlotId);
+
+        if (isIpPreferenceConflictsWithNetwork(ipPreference, mNetwork)) {
+            sendSelectionRequestComplete(
+                    null,
+                    new IwlanError(IwlanError.EPDG_SELECTOR_SERVER_SELECTION_FAILED),
+                    mTransactionId);
             return;
         }
 
-        mProtoFilter = EpdgSelector.PROTO_FILTER_IPV4V6;
-        if (!IwlanHelper.hasIpv6Address(mLocalAddresses)) {
-            mProtoFilter = EpdgSelector.PROTO_FILTER_IPV4;
-        }
-        if (!IwlanHelper.hasIpv4Address(mLocalAddresses)) {
-            mProtoFilter = EpdgSelector.PROTO_FILTER_IPV6;
+        int protoFilter = EpdgSelector.PROTO_FILTER_IPV4V6;
+        int epdgAddressOrder = EpdgSelector.SYSTEM_PREFERRED;
+        switch (ipPreference) {
+            case CarrierConfigManager.Iwlan.EPDG_ADDRESS_IPV4_PREFERRED:
+                epdgAddressOrder = EpdgSelector.IPV4_PREFERRED;
+                break;
+            case CarrierConfigManager.Iwlan.EPDG_ADDRESS_IPV6_PREFERRED:
+                epdgAddressOrder = EpdgSelector.IPV6_PREFERRED;
+                break;
+            case CarrierConfigManager.Iwlan.EPDG_ADDRESS_IPV4_ONLY:
+                protoFilter = EpdgSelector.PROTO_FILTER_IPV4;
+                break;
+            case CarrierConfigManager.Iwlan.EPDG_ADDRESS_IPV6_ONLY:
+                protoFilter = EpdgSelector.PROTO_FILTER_IPV6;
+                break;
+            case CarrierConfigManager.Iwlan.EPDG_ADDRESS_SYSTEM_PREFERRED:
+                break;
+            default:
+                Log.w(TAG, "Invalid Ip preference : " + ipPreference);
         }
 
         EpdgSelector epdgSelector = getEpdgSelector();
         IwlanError epdgError =
                 epdgSelector.getValidatedServerList(
-                        ++mTransactionId,
-                        mProtoFilter,
+                        mTransactionId,
+                        protoFilter,
+                        epdgAddressOrder,
                         setupRequest.isRoaming(),
                         setupRequest.isEmergency(),
                         mNetwork,
@@ -1678,7 +1852,7 @@ public class EpdgTunnelManager {
 
         if (epdgError.getErrorType() != IwlanError.NO_ERROR) {
             Log.e(TAG, "Epdg address selection failed with error:" + epdgError);
-            failAllPendingRequests(epdgError);
+            sendSelectionRequestComplete(null, epdgError, mTransactionId);
         }
     }
 
@@ -1701,6 +1875,14 @@ public class EpdgTunnelManager {
                 requestWrapper
                         .getTunnelCallback()
                         .onClosed(apnName, new IwlanError(IwlanError.NO_ERROR));
+
+                requestWrapper
+                        .getTunnelCallbackMetrics()
+                        .onClosed(
+                                apnName,
+                                mEpdgAddress == null ? null : mEpdgAddress.getHostAddress(),
+                                0,
+                                0);
                 numRequestsClosed++;
             } else {
                 mPendingBringUpRequests.add(requestWrapper);
@@ -1744,7 +1926,10 @@ public class EpdgTunnelManager {
         while (!mPendingBringUpRequests.isEmpty()) {
             Log.d(TAG, "serviceAllPendingRequests");
             TunnelRequestWrapper request = mPendingBringUpRequests.remove();
-            onBringUpTunnel(request.getSetupRequest(), request.getTunnelCallback());
+            onBringUpTunnel(
+                    request.getSetupRequest(),
+                    request.getTunnelCallback(),
+                    request.getTunnelCallbackMetrics());
         }
     }
 
@@ -1755,6 +1940,12 @@ public class EpdgTunnelManager {
             TunnelSetupRequest setupRequest = request.getSetupRequest();
             reportIwlanError(setupRequest.apnName(), error);
             request.getTunnelCallback().onClosed(setupRequest.apnName(), error);
+            request.getTunnelCallbackMetrics()
+                    .onClosed(
+                            setupRequest.apnName(),
+                            mEpdgAddress == null ? null : mEpdgAddress.getHostAddress(),
+                            0,
+                            0);
         }
     }
 
@@ -1789,11 +1980,15 @@ public class EpdgTunnelManager {
         private final TunnelSetupRequest mSetupRequest;
 
         private final TunnelCallback mTunnelCallback;
+        private final TunnelCallbackMetrics mTunnelCallbackMetrics;
 
         private TunnelRequestWrapper(
-                TunnelSetupRequest setupRequest, TunnelCallback tunnelCallback) {
+                TunnelSetupRequest setupRequest,
+                TunnelCallback tunnelCallback,
+                TunnelCallbackMetrics tunnelCallbackMetrics) {
             mTunnelCallback = tunnelCallback;
             mSetupRequest = setupRequest;
+            mTunnelCallbackMetrics = tunnelCallbackMetrics;
         }
 
         public TunnelSetupRequest getSetupRequest() {
@@ -1802,6 +1997,10 @@ public class EpdgTunnelManager {
 
         public TunnelCallback getTunnelCallback() {
             return mTunnelCallback;
+        }
+
+        public TunnelCallbackMetrics getTunnelCallbackMetrics() {
+            return mTunnelCallbackMetrics;
         }
     }
 
@@ -1832,62 +2031,58 @@ public class EpdgTunnelManager {
     }
 
     // Data received from IkeSessionStateMachine on successful EVENT_CHILD_SESSION_OPENED.
-    private static final class TunnelOpenedData {
-        final String mApnName;
+    private static final class TunnelOpenedData extends IkeEventData {
         final List<InetAddress> mInternalDnsServers;
         final List<LinkAddress> mInternalAddresses;
 
         private TunnelOpenedData(
                 String apnName,
+                int token,
                 List<InetAddress> internalDnsServers,
                 List<LinkAddress> internalAddresses) {
-            mApnName = apnName;
+            super(apnName, token);
             mInternalDnsServers = internalDnsServers;
             mInternalAddresses = internalAddresses;
         }
     }
 
     // Data received from IkeSessionStateMachine on successful EVENT_IKE_SESSION_OPENED.
-    private static final class IkeSessionOpenedData {
-        final String mApnName;
+    private static final class IkeSessionOpenedData extends IkeEventData {
         final IkeSessionConfiguration mIkeSessionConfiguration;
 
         private IkeSessionOpenedData(
-                String apnName, IkeSessionConfiguration ikeSessionConfiguration) {
-            mApnName = apnName;
+                String apnName, int token, IkeSessionConfiguration ikeSessionConfiguration) {
+            super(apnName, token);
             mIkeSessionConfiguration = ikeSessionConfiguration;
         }
     }
 
-    private static final class IkeSessionConnectionInfoData {
-        final String mApnName;
+    private static final class IkeSessionConnectionInfoData extends IkeEventData {
         final IkeSessionConnectionInfo mIkeSessionConnectionInfo;
 
         private IkeSessionConnectionInfoData(
-                String apnName, IkeSessionConnectionInfo ikeSessionConnectionInfo) {
-            mApnName = apnName;
+                String apnName, int token, IkeSessionConnectionInfo ikeSessionConnectionInfo) {
+            super(apnName, token);
             mIkeSessionConnectionInfo = ikeSessionConnectionInfo;
         }
     }
 
-    private static final class Ike3gppDataReceived {
-        final String mApnName;
+    private static final class Ike3gppDataReceived extends IkeEventData {
         final List<Ike3gppData> mIke3gppData;
 
-        private Ike3gppDataReceived(String apnName, List<Ike3gppData> ike3gppData) {
-            mApnName = apnName;
+        private Ike3gppDataReceived(String apnName, int token, List<Ike3gppData> ike3gppData) {
+            super(apnName, token);
             mIke3gppData = ike3gppData;
         }
     }
 
     // Data received from IkeSessionStateMachine if either IKE session or Child session have been
     // closed, normally or exceptionally.
-    private static final class SessionClosedData {
-        final String mApnName;
+    private static final class SessionClosedData extends IkeEventData {
         final IwlanError mIwlanError;
 
-        private SessionClosedData(String apnName, IwlanError iwlanError) {
-            mApnName = apnName;
+        private SessionClosedData(String apnName, int token, IwlanError iwlanError) {
+            super(apnName, token);
             mIwlanError = iwlanError;
         }
     }
@@ -1897,15 +2092,15 @@ public class EpdgTunnelManager {
         mTunnelManagerInstances.remove(mSlotId);
     }
 
-    private static final class IpsecTransformData {
+    private static final class IpsecTransformData extends IkeEventData {
         private final IpSecTransform mTransform;
         private final int mDirection;
-        private final String mApnName;
 
-        private IpsecTransformData(IpSecTransform transform, int direction, String apnName) {
+        private IpsecTransformData(
+                IpSecTransform transform, int direction, String apnName, int token) {
+            super(apnName, token);
             mTransform = transform;
             mDirection = direction;
-            mApnName = apnName;
         }
 
         public IpSecTransform getTransform() {
@@ -1917,7 +2112,17 @@ public class EpdgTunnelManager {
         }
 
         public String getApnName() {
-            return mApnName;
+            return super.mApnName;
+        }
+    }
+
+    private abstract static class IkeEventData {
+        final String mApnName;
+        final int mToken;
+
+        private IkeEventData(String apnName, int token) {
+            mApnName = apnName;
+            mToken = token;
         }
     }
 
@@ -2039,12 +2244,27 @@ public class EpdgTunnelManager {
             String apnName,
             IkeSession ikeSession,
             TunnelCallback tunnelCallback,
+            TunnelCallbackMetrics tunnelCallbackMetrics,
             InetAddress srcIpv6Addr,
             int srcIPv6AddrPrefixLen) {
         mApnNameToTunnelConfig.put(
                 apnName,
-                new TunnelConfig(ikeSession, tunnelCallback, srcIpv6Addr, srcIPv6AddrPrefixLen));
+                new TunnelConfig(
+                        ikeSession,
+                        tunnelCallback,
+                        tunnelCallbackMetrics,
+                        srcIpv6Addr,
+                        srcIPv6AddrPrefixLen));
         Log.d(TAG, "Added apn: " + apnName + " to TunnelConfig");
+    }
+
+    @VisibleForTesting
+    int incrementAndGetCurrentTokenForApn(String apnName) {
+        final int currentToken =
+                mApnNameToCurrentToken.compute(
+                        apnName, (apn, token) -> token == null ? 0 : token + 1);
+        Log.d(TAG, "Added token: " + currentToken + " for apn: " + apnName);
+        return currentToken;
     }
 
     @VisibleForTesting
@@ -2072,6 +2292,8 @@ public class EpdgTunnelManager {
     @VisibleForTesting
     void sendSelectionRequestComplete(
             ArrayList<InetAddress> validIPList, IwlanError result, int transactionId) {
+        mEpdgServerSelectionDuration = System.currentTimeMillis() - mEpdgServerSelectionStartTime;
+        mEpdgServerSelectionStartTime = 0;
         EpdgSelectorResult epdgSelectorResult =
                 new EpdgSelectorResult(validIPList, result, transactionId);
         mHandler.sendMessage(
@@ -2085,9 +2307,47 @@ public class EpdgTunnelManager {
                 || proto == ApnSetting.PROTOCOL_IPV6);
     }
 
+    boolean isObsoleteToken(String apnName, int token) {
+        if (!mApnNameToCurrentToken.containsKey(apnName)) {
+            return true;
+        }
+        return token != mApnNameToCurrentToken.get(apnName);
+    }
+
+    private static String eventToString(int event) {
+        switch (event) {
+            case EVENT_TUNNEL_BRINGUP_REQUEST:
+                return "EVENT_TUNNEL_BRINGUP_REQUEST";
+            case EVENT_TUNNEL_BRINGDOWN_REQUEST:
+                return "EVENT_TUNNEL_BRINGDOWN_REQUEST";
+            case EVENT_CHILD_SESSION_OPENED:
+                return "EVENT_CHILD_SESSION_OPENED";
+            case EVENT_CHILD_SESSION_CLOSED:
+                return "EVENT_CHILD_SESSION_CLOSED";
+            case EVENT_IKE_SESSION_CLOSED:
+                return "EVENT_IKE_SESSION_CLOSED";
+            case EVENT_EPDG_ADDRESS_SELECTION_REQUEST_COMPLETE:
+                return "EVENT_EPDG_ADDRESS_SELECTION_REQUEST_COMPLETE";
+            case EVENT_IPSEC_TRANSFORM_CREATED:
+                return "EVENT_IPSEC_TRANSFORM_CREATED";
+            case EVENT_IPSEC_TRANSFORM_DELETED:
+                return "EVENT_IPSEC_TRANSFORM_DELETED";
+            case EVENT_UPDATE_NETWORK:
+                return "EVENT_UPDATE_NETWORK";
+            case EVENT_IKE_SESSION_OPENED:
+                return "EVENT_IKE_SESSION_OPENED";
+            case EVENT_IKE_SESSION_CONNECTION_INFO_CHANGED:
+                return "EVENT_IKE_SESSION_CONNECTION_INFO_CHANGED";
+            case EVENT_IKE_3GPP_DATA_RECEIVED:
+                return "EVENT_IKE_3GPP_DATA_RECEIVED";
+            default:
+                return "Unknown(" + event + ")";
+        }
+    }
+
     @VisibleForTesting
-    TmIkeSessionCallback getTmIkeSessionCallback(String apnName) {
-        return new TmIkeSessionCallback(apnName);
+    TmIkeSessionCallback getTmIkeSessionCallback(String apnName, int token) {
+        return new TmIkeSessionCallback(apnName, token);
     }
 
     @VisibleForTesting
@@ -2098,6 +2358,14 @@ public class EpdgTunnelManager {
     @VisibleForTesting
     TunnelConfig getTunnelConfigForApn(String apnName) {
         return mApnNameToTunnelConfig.get(apnName);
+    }
+
+    @VisibleForTesting
+    int getCurrentTokenForApn(String apnName) {
+        if (!mApnNameToCurrentToken.containsKey(apnName)) {
+            throw new IllegalArgumentException("There is no token for apn: " + apnName);
+        }
+        return mApnNameToCurrentToken.get(apnName);
     }
 
     @VisibleForTesting
@@ -2119,6 +2387,55 @@ public class EpdgTunnelManager {
     @VisibleForTesting
     boolean canBringUpTunnel(String apnName) {
         return ErrorPolicyManager.getInstance(mContext, mSlotId).canBringUpTunnel(apnName);
+    }
+
+    @VisibleForTesting
+    void setEpdgAddress(InetAddress inetAddress) {
+        mEpdgAddress = inetAddress;
+    }
+
+    @VisibleForTesting
+    boolean isIpPreferenceConflictsWithNetwork(
+            @CarrierConfigManager.Iwlan.EpdgAddressIpPreference int ipPreference, Network network) {
+        mLocalAddresses = getAddressForNetwork(mNetwork, mContext);
+        if (mLocalAddresses == null || mLocalAddresses.size() == 0) {
+            Log.e(TAG, "No local addresses available.");
+            return true;
+        }
+
+        int sourceIpType = EpdgSelector.PROTO_FILTER_IPV4V6;
+        if (!IwlanHelper.hasIpv6Address(mLocalAddresses)) {
+            sourceIpType = EpdgSelector.PROTO_FILTER_IPV4;
+        }
+        if (!IwlanHelper.hasIpv4Address(mLocalAddresses)) {
+            sourceIpType = EpdgSelector.PROTO_FILTER_IPV6;
+        }
+
+        if (sourceIpType == EpdgSelector.PROTO_FILTER_IPV4
+                && ipPreference == CarrierConfigManager.Iwlan.EPDG_ADDRESS_IPV6_ONLY) {
+            Log.e(
+                    TAG,
+                    "ePDG IP preference: "
+                            + ipPreference
+                            + " conflicts with source IP type: "
+                            + sourceIpType);
+            return true;
+        } else if (sourceIpType == EpdgSelector.PROTO_FILTER_IPV6
+                && ipPreference == CarrierConfigManager.Iwlan.EPDG_ADDRESS_IPV4_ONLY) {
+            // b/209938719 allows Iwlan to support VoWiFi for IPv4 ePDG server while on IPv6 WiFi.
+            // Iwlan will receive a IPv4 address which is embedded in stacked IPv6 address. By using
+            // this IPv4 address, UE will connect to IPv4 ePDG server through XLAT. However, there
+            // are issues on connecting ePDG server through XLAT. Will allow IPV4_ONLY on IPv6 WiFi
+            // after the issues are resolved.
+            Log.e(
+                    TAG,
+                    "ePDG IP preference: "
+                            + ipPreference
+                            + " conflicts with source IP type: "
+                            + sourceIpType);
+            return true;
+        }
+        return false;
     }
 
     public void dump(FileDescriptor fd, PrintWriter pw, String[] args) {

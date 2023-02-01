@@ -32,6 +32,8 @@ import android.util.Log;
 
 import com.android.internal.annotations.VisibleForTesting;
 
+import com.google.auto.value.AutoValue;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -50,6 +52,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -116,6 +119,9 @@ public class ErrorPolicyManager {
     private static final int IKE_PROTOCOL_ERROR_PLMN_NOT_ALLOWED = 11011;
     private static final int IKE_PROTOCOL_ERROR_UNAUTHENTICATED_EMERGENCY_NOT_SUPPORTED = 11055;
 
+    /** Private IKEv2 notify message types, as defined in TS 124 502 (section 9.2.4.1) */
+    private static final int IKE_PROTOCOL_ERROR_CONGESTION = 15500;
+
     @IntDef({
         IKE_PROTOCOL_ERROR_PDN_CONNECTION_REJECTION,
         IKE_PROTOCOL_ERROR_MAX_CONNECTION_REACHED,
@@ -132,7 +138,8 @@ public class ErrorPolicyManager {
         IKE_PROTOCOL_ERROR_RAT_TYPE_NOT_ALLOWED,
         IKE_PROTOCOL_ERROR_IMEI_NOT_ACCEPTED,
         IKE_PROTOCOL_ERROR_PLMN_NOT_ALLOWED,
-        IKE_PROTOCOL_ERROR_UNAUTHENTICATED_EMERGENCY_NOT_SUPPORTED
+        IKE_PROTOCOL_ERROR_UNAUTHENTICATED_EMERGENCY_NOT_SUPPORTED,
+        IKE_PROTOCOL_ERROR_CONGESTION
     })
     @interface IkeProtocolErrorType {};
 
@@ -152,6 +159,10 @@ public class ErrorPolicyManager {
 
     // String APN as key to identify the ErrorInfo associated with that APN
     private Map<String, ErrorInfo> mLastErrorForApn = new ConcurrentHashMap<>();
+
+    // Records the most recently reported IwlanError (including NO_ERROR), and the corresponding
+    // APN.
+    private ApnWithIwlanError mMostRecentError;
 
     // List of current Unthrottling events registered with IwlanEventListener
     private Set<Integer> mUnthrottlingEvents;
@@ -207,6 +218,7 @@ public class ErrorPolicyManager {
     public synchronized long reportIwlanError(String apn, IwlanError iwlanError) {
         // Fail by default
         long retryTime = -1;
+        mMostRecentError = new ApnWithIwlanError(apn, iwlanError);
 
         if (iwlanError.getErrorType() == IwlanError.NO_ERROR) {
             Log.d(LOG_TAG, "reportIwlanError: NO_ERROR");
@@ -297,13 +309,19 @@ public class ErrorPolicyManager {
      * @return DataFailCause corresponding to the error for the apn
      */
     public synchronized int getDataFailCause(String apn) {
-
         if (!mLastErrorForApn.containsKey(apn)) {
             return DataFailCause.NONE;
         }
         IwlanError error = mLastErrorForApn.get(apn).getError();
+        return getDataFailCause(error);
+    }
+
+    private int getDataFailCause(IwlanError error) {
         int ret = DataFailCause.ERROR_UNSPECIFIED;
-        if (error.getErrorType() == IwlanError.EPDG_SELECTOR_SERVER_SELECTION_FAILED) {
+
+        if (error.getErrorType() == IwlanError.NO_ERROR) {
+            ret = DataFailCause.NONE;
+        } else if (error.getErrorType() == IwlanError.EPDG_SELECTOR_SERVER_SELECTION_FAILED) {
             ret = DataFailCause.IWLAN_DNS_RESOLUTION_NAME_FAILURE;
         } else if (error.getErrorType() == IwlanError.IKE_INTERNAL_IO_EXCEPTION) {
             ret = DataFailCause.IWLAN_IKEV2_MSG_TIMEOUT;
@@ -367,6 +385,9 @@ public class ErrorPolicyManager {
                     case IKE_PROTOCOL_ERROR_UNAUTHENTICATED_EMERGENCY_NOT_SUPPORTED:
                         ret = DataFailCause.IWLAN_UNAUTHENTICATED_EMERGENCY_NOT_SUPPORTED;
                         break;
+                    case IKE_PROTOCOL_ERROR_CONGESTION:
+                        ret = DataFailCause.IWLAN_CONGESTION;
+                        break;
                     default:
                         ret = DataFailCause.IWLAN_NETWORK_FAILURE;
                         break;
@@ -374,6 +395,13 @@ public class ErrorPolicyManager {
             }
         }
         return ret;
+    }
+
+    public synchronized int getMostRecentDataFailCause() {
+        if (mMostRecentError != null) {
+            return getDataFailCause(mMostRecentError.mIwlanError);
+        }
+        return DataFailCause.NONE;
     }
 
     /**
@@ -390,6 +418,23 @@ public class ErrorPolicyManager {
     }
 
     /**
+     * Returns the index of the FQDN to use for ePDG server selection, based on how many FQDNs are
+     * available, the position of the RetryArray index, and configuration of 'NumAttemptsPerFqdn'.
+     *
+     * @param numFqdns number of FQDNs discovered during ePDG server selection.
+     * @return int index of the FQDN to use for ePDG server selection. -1 (invalid) if RetryArray or
+     *     'NumAttemptsPerFqdn' is not specified in the ErrorPolicy.
+     */
+    public synchronized int getCurrentFqdnIndex(int numFqdns) {
+        String apn = mMostRecentError.mApn;
+        if (!mLastErrorForApn.containsKey(apn)) {
+            return -1;
+        }
+        ErrorInfo errorInfo = mLastErrorForApn.get(apn);
+        return errorInfo.getCurrentFqdnIndex(numFqdns);
+    }
+
+    /**
      * Returns the last error for that apn
      *
      * @param apn apn name
@@ -400,6 +445,19 @@ public class ErrorPolicyManager {
             return mLastErrorForApn.get(apn).getError();
         }
         return new IwlanError(IwlanError.NO_ERROR);
+    }
+
+    /**
+     * Returns whether framework should retry tunnel setup with initial PDN bringup request when
+     * handover request fails.
+     *
+     * @param apn apn name
+     * @return boolean result of whether framework should retry tunnel setup with initial PDN
+     *     bringup request when handover request fails
+     */
+    public synchronized boolean shouldRetryWithInitialAttach(String apn) {
+        ErrorInfo errorInfo = mLastErrorForApn.get(apn);
+        return errorInfo != null && errorInfo.shouldRetryWithInitialAttach();
     }
 
     public void logErrorPolicies() {
@@ -489,10 +547,16 @@ public class ErrorPolicyManager {
         return selectedPolicy;
     }
 
-    private void initHandler() {
+    @VisibleForTesting
+    void initHandler() {
+        mHandler = new EpmHandler(getLooper());
+    }
+
+    @VisibleForTesting
+    Looper getLooper() {
         mHandlerThread = new HandlerThread("ErrorPolicyManagerThread");
         mHandlerThread.start();
-        mHandler = new EpmHandler(mHandlerThread.getLooper());
+        return mHandlerThread.getLooper();
     }
 
     private String getDefaultJSONConfig() throws IOException {
@@ -512,7 +576,8 @@ public class ErrorPolicyManager {
         return stringBuilder.toString();
     }
 
-    private Map<String, List<ErrorPolicy>> readErrorPolicies(JSONArray apnArray)
+    @VisibleForTesting
+    Map<String, List<ErrorPolicy>> readErrorPolicies(JSONArray apnArray)
             throws JSONException, IllegalArgumentException {
         Map<String, List<ErrorPolicy>> errorPolicies = new HashMap<>();
         for (int i = 0; i < apnArray.length(); i++) {
@@ -532,13 +597,39 @@ public class ErrorPolicyManager {
                     throw new IllegalArgumentException("Unknown error type in the parsing");
                 }
 
-                ErrorPolicy errorPolicy =
-                        new ErrorPolicy(
-                                errorType,
-                                parseErrorDetails(errorType, errorDetailArray),
-                                parseRetryArray((JSONArray) errorTypeObject.get("RetryArray")),
-                                parseUnthrottlingEvents(
-                                        (JSONArray) errorTypeObject.get("UnthrottlingEvents")));
+                List<Integer> retryArray =
+                        parseRetryArray((JSONArray) errorTypeObject.get("RetryArray"));
+
+                ErrorPolicy.Builder errorPolicyBuilder =
+                        ErrorPolicy.builder()
+                                .setErrorType(errorType)
+                                .setErrorDetails(parseErrorDetails(errorType, errorDetailArray))
+                                .setRetryArray(retryArray)
+                                .setUnthrottlingEvents(
+                                        parseUnthrottlingEvents(
+                                                (JSONArray)
+                                                        errorTypeObject.get("UnthrottlingEvents")));
+
+                if (!retryArray.isEmpty() && retryArray.get(retryArray.size() - 1) == -1L) {
+                    errorPolicyBuilder.setInfiniteRetriesWithLastRetryTime(true);
+                }
+
+                if (errorTypeObject.has("NumAttemptsPerFqdn")) {
+                    errorPolicyBuilder.setNumAttemptsPerFqdn(
+                            errorTypeObject.getInt("NumAttemptsPerFqdn"));
+                }
+
+                if (errorTypeObject.has("HandoverAttemptCount")) {
+                    if (errorType != IKE_PROTOCOL_ERROR_TYPE) {
+                        throw new IllegalArgumentException(
+                                "Handover attempt count should not be applied when errorType is not"
+                                        + " explicitly defined as IKE_PROTOCOL_ERROR_TYPE");
+                    }
+                    errorPolicyBuilder.setHandoverAttemptCount(
+                            errorTypeObject.getInt("HandoverAttemptCount"));
+                }
+
+                ErrorPolicy errorPolicy = errorPolicyBuilder.build();
 
                 errorPolicies.putIfAbsent(apnName, new ArrayList<ErrorPolicy>());
                 errorPolicies.get(apnName).add(errorPolicy);
@@ -678,13 +769,13 @@ public class ErrorPolicyManager {
         for (Map.Entry<String, List<ErrorPolicy>> entry : mCarrierConfigPolicies.entrySet()) {
             List<ErrorPolicy> errorPolicies = entry.getValue();
             for (ErrorPolicy errorPolicy : errorPolicies) {
-                events.addAll(errorPolicy.mUnthrottlingEvents);
+                events.addAll(errorPolicy.unthrottlingEvents());
             }
         }
         for (Map.Entry<String, List<ErrorPolicy>> entry : mDefaultPolicies.entrySet()) {
             List<ErrorPolicy> errorPolicies = entry.getValue();
             for (ErrorPolicy errorPolicy : errorPolicies) {
-                events.addAll(errorPolicy.mUnthrottlingEvents);
+                events.addAll(errorPolicy.unthrottlingEvents());
             }
         }
         events.add(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT);
@@ -779,35 +870,60 @@ public class ErrorPolicyManager {
         return mErrorStats;
     }
 
-    class ErrorPolicy {
-        @ErrorPolicyErrorType int mErrorType;
-        List<String> mErrorDetails;
-        List<Integer> mRetryArray;
-        List<Integer> mUnthrottlingEvents;
+    @AutoValue
+    abstract static class ErrorPolicy {
+        private static final String LOG_TAG = ErrorPolicyManager.class.getSimpleName();
 
-        ErrorPolicy(
-                @ErrorPolicyErrorType int errorType,
-                List<String> errorDetails,
-                List<Integer> retryArray,
-                List<Integer> unthrottlingEvents) {
-            mErrorType = errorType;
-            mErrorDetails = errorDetails;
-            mRetryArray = retryArray;
-            mUnthrottlingEvents = unthrottlingEvents;
+        abstract @ErrorPolicyErrorType int errorType();
+
+        abstract List<String> errorDetails();
+
+        abstract List<Integer> retryArray();
+
+        abstract Boolean infiniteRetriesWithLastRetryTime();
+
+        abstract List<Integer> unthrottlingEvents();
+
+        abstract Optional<Integer> numAttemptsPerFqdn();
+
+        abstract Optional<Integer> handoverAttemptCount();
+
+        static Builder builder() {
+            return new AutoValue_ErrorPolicyManager_ErrorPolicy.Builder()
+                    .setInfiniteRetriesWithLastRetryTime(false);
+        }
+
+        @AutoValue.Builder
+        abstract static class Builder {
+            abstract Builder setErrorType(int errorType);
+
+            abstract Builder setErrorDetails(List<String> errorDetails);
+
+            abstract Builder setRetryArray(List<Integer> retryArray);
+
+            abstract Builder setInfiniteRetriesWithLastRetryTime(
+                    Boolean infiniteRetriesWithLastRetryTime);
+
+            abstract Builder setUnthrottlingEvents(List<Integer> unthrottlingEvents);
+
+            abstract Builder setNumAttemptsPerFqdn(Integer numAttemptsPerFqdn);
+
+            abstract Builder setHandoverAttemptCount(Integer handoverAttemptCount);
+
+            abstract ErrorPolicy build();
         }
 
         long getRetryTime(int index) {
             long retryTime = -1;
-            if (mRetryArray.size() > 0) {
+            if (retryArray().size() > 0) {
                 // If the index is greater than or equal to the last element's index
                 // and if the last item in the retryArray is "-1" use the retryTime
                 // of the element before the last element to repeat the element.
-                if (index >= mRetryArray.size() - 1
-                        && mRetryArray.get(mRetryArray.size() - 1) == -1L) {
-                    index = mRetryArray.size() - 2;
+                if (infiniteRetriesWithLastRetryTime()) {
+                    index = Math.min(index, retryArray().size() - 2);
                 }
-                if (index >= 0 && index < mRetryArray.size()) {
-                    retryTime = mRetryArray.get(index);
+                if (index >= 0 && index < retryArray().size()) {
+                    retryTime = retryArray().get(index);
                 }
             }
 
@@ -819,25 +935,39 @@ public class ErrorPolicyManager {
             return retryTime;
         }
 
+        int getCurrentFqdnIndex(int retryIndex, int numFqdns) {
+            int result = -1;
+            if (!numAttemptsPerFqdn().isPresent() || retryArray().size() <= 0) {
+                return result;
+            }
+            // Cycles between 0 and (numFqdns - 1), based on the current attempt count and size of
+            // mRetryArray.
+            return (retryIndex + 1) / numAttemptsPerFqdn().get() % numFqdns;
+        }
+
         @ErrorPolicyErrorType
         int getErrorType() {
-            return mErrorType;
+            return errorType();
+        }
+
+        int getHandoverAttemptCount() {
+            return handoverAttemptCount().orElse(Integer.MAX_VALUE);
         }
 
         synchronized boolean canUnthrottle(int event) {
-            return mUnthrottlingEvents.contains(event);
+            return unthrottlingEvents().contains(event);
         }
 
         boolean match(IwlanError iwlanError) {
             // Generic by default to match to generic policy.
             String iwlanErrorDetail = "*";
-            if (mErrorType == FALLBACK_ERROR_TYPE) {
+            if (errorType() == FALLBACK_ERROR_TYPE) {
                 return true;
-            } else if (mErrorType == IKE_PROTOCOL_ERROR_TYPE
+            } else if (errorType() == IKE_PROTOCOL_ERROR_TYPE
                     && iwlanError.getErrorType() == IwlanError.IKE_PROTOCOL_EXCEPTION) {
                 IkeProtocolException exception = (IkeProtocolException) iwlanError.getException();
                 iwlanErrorDetail = String.valueOf(exception.getErrorType());
-            } else if (mErrorType == GENERIC_ERROR_TYPE) {
+            } else if (errorType() == GENERIC_ERROR_TYPE) {
                 iwlanErrorDetail = getGenericErrorDetailString(iwlanError);
                 if (iwlanErrorDetail.equals("UNKNOWN")) {
                     return false;
@@ -847,8 +977,8 @@ public class ErrorPolicyManager {
             }
 
             boolean ret = false;
-            for (String errorDetail : mErrorDetails) {
-                if (mErrorType == IKE_PROTOCOL_ERROR_TYPE
+            for (String errorDetail : errorDetails()) {
+                if (errorType() == IKE_PROTOCOL_ERROR_TYPE
                         && iwlanError.getErrorType() == IwlanError.IKE_PROTOCOL_EXCEPTION
                         && errorDetail.contains("-")) {
                     // error detail is stored in range format.
@@ -871,15 +1001,22 @@ public class ErrorPolicyManager {
         }
 
         void log() {
-            Log.d(LOG_TAG, "ErrorType: " + mErrorType);
-            Log.d(LOG_TAG, "ErrorDetail: " + Arrays.toString(mErrorDetails.toArray()));
-            Log.d(LOG_TAG, "RetryArray: " + Arrays.toString(mRetryArray.toArray()));
-            Log.d(LOG_TAG, "unthrottlingEvents: " + Arrays.toString(mUnthrottlingEvents.toArray()));
+            Log.d(LOG_TAG, "ErrorType: " + errorType());
+            Log.d(LOG_TAG, "ErrorDetail: " + Arrays.toString(errorDetails().toArray()));
+            Log.d(LOG_TAG, "RetryArray: " + Arrays.toString(retryArray().toArray()));
+            Log.d(
+                    LOG_TAG,
+                    "InfiniteRetriesWithLastRetryTime: " + infiniteRetriesWithLastRetryTime());
+            Log.d(
+                    LOG_TAG,
+                    "UnthrottlingEvents: " + Arrays.toString(unthrottlingEvents().toArray()));
+            Log.d(LOG_TAG, "NumAttemptsPerFqdn: " + numAttemptsPerFqdn());
+            Log.d(LOG_TAG, "handoverAttemptCount: " + handoverAttemptCount());
         }
 
         boolean isFallback() {
-            if ((mErrorType == FALLBACK_ERROR_TYPE)
-                    || (mErrorDetails.size() == 1 && mErrorDetails.get(0).equals("*"))) {
+            if ((errorType() == FALLBACK_ERROR_TYPE)
+                    || (errorDetails().size() == 1 && errorDetails().get(0).equals("*"))) {
                 return true;
             }
             return false;
@@ -906,6 +1043,9 @@ public class ErrorPolicyManager {
     class ErrorInfo {
         IwlanError mError;
         ErrorPolicy mErrorPolicy;
+
+        // For the lifetime of the ErrorInfo object, this is a monotonically incremented value that
+        // can go beyond the size of mErrorPolicy's mRetryArray.
         int mCurrentRetryIndex;
         long mLastErrorTime;
         boolean mIsBackOffTimeValid = false;
@@ -963,6 +1103,11 @@ public class ErrorPolicyManager {
             return time;
         }
 
+        int getCurrentFqdnIndex(int numFqdns) {
+            ErrorPolicy errorPolicy = getErrorPolicy();
+            return errorPolicy.getCurrentFqdnIndex(mCurrentRetryIndex, numFqdns);
+        }
+
         boolean isBackOffTimeValid() {
             return mIsBackOffTimeValid;
         }
@@ -992,12 +1137,31 @@ public class ErrorPolicyManager {
             return ret;
         }
 
+        boolean shouldRetryWithInitialAttach() {
+            // UE should only uses initial attach to reset network failure, not for UE internal or
+            // DNS errors. When the number of handover failures due to network issues exceeds the
+            // configured threshold, UE should request network with initial attach instead of
+            // handover request.
+            return mErrorPolicy.getErrorType() == IKE_PROTOCOL_ERROR_TYPE
+                    && mCurrentRetryIndex + 1 >= mErrorPolicy.getHandoverAttemptCount();
+        }
+
         ErrorPolicy getErrorPolicy() {
             return mErrorPolicy;
         }
 
         IwlanError getError() {
             return mError;
+        }
+    }
+
+    static class ApnWithIwlanError {
+        @NonNull final String mApn;
+        @NonNull final IwlanError mIwlanError;
+
+        ApnWithIwlanError(String apn, IwlanError iwlanError) {
+            mApn = apn;
+            mIwlanError = iwlanError;
         }
     }
 
