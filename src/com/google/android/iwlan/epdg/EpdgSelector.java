@@ -70,15 +70,15 @@ import java.util.stream.Collectors;
 
 public class EpdgSelector {
     private static final String TAG = "EpdgSelector";
-    private Context mContext;
-    private int mSlotId;
-    private static ConcurrentHashMap<Integer, EpdgSelector> mSelectorInstances =
+    private final Context mContext;
+    private final int mSlotId;
+    private static final ConcurrentHashMap<Integer, EpdgSelector> mSelectorInstances =
             new ConcurrentHashMap<>();
     private int mV4PcoId = -1;
     private int mV6PcoId = -1;
     private byte[] mV4PcoData = null;
     private byte[] mV6PcoData = null;
-    @NonNull private ErrorPolicyManager mErrorPolicyManager;
+    @NonNull private final ErrorPolicyManager mErrorPolicyManager;
 
     private static final long DNS_RESOLVER_TIMEOUT_DURATION_SEC = 5L;
 
@@ -116,16 +116,13 @@ public class EpdgSelector {
     Future mSosDnsPrefetchFuture;
 
     final Comparator<InetAddress> inetAddressComparator =
-            new Comparator<InetAddress>() {
-                @Override
-                public int compare(InetAddress ip1, InetAddress ip2) {
-                    if ((ip1 instanceof Inet4Address) && (ip2 instanceof Inet6Address)) {
-                        return -1;
-                    } else if ((ip1 instanceof Inet6Address) && (ip2 instanceof Inet4Address)) {
-                        return 1;
-                    } else {
-                        return 0;
-                    }
+            (ip1, ip2) -> {
+                if ((ip1 instanceof Inet4Address) && (ip2 instanceof Inet6Address)) {
+                    return -1;
+                } else if ((ip1 instanceof Inet6Address) && (ip2 instanceof Inet4Address)) {
+                    return 1;
+                } else {
+                    return 0;
                 }
             };
 
@@ -135,6 +132,13 @@ public class EpdgSelector {
 
     @IntDef({PROTO_FILTER_IPV4, PROTO_FILTER_IPV6, PROTO_FILTER_IPV4V6})
     @interface ProtoFilter {}
+
+    public static final int IPV4_PREFERRED = 0;
+    public static final int IPV6_PREFERRED = 1;
+    public static final int SYSTEM_PREFERRED = 2;
+
+    @IntDef({IPV4_PREFERRED, IPV6_PREFERRED, SYSTEM_PREFERRED})
+    @interface EpdgAddressOrder {}
 
     public interface EpdgSelectorCallback {
         /*gives priority ordered list of addresses*/
@@ -235,6 +239,9 @@ public class EpdgSelector {
     private List<InetAddress> v4v6ProtocolFilter(List<InetAddress> ipList, int filter) {
         List<InetAddress> validIpList = new ArrayList<>();
         for (InetAddress ipAddress : ipList) {
+            if (IwlanHelper.isIpv4EmbeddedIpv6Address(ipAddress)) {
+                continue;
+            }
             switch (filter) {
                 case PROTO_FILTER_IPV4:
                     if (ipAddress instanceof Inet4Address) {
@@ -242,7 +249,7 @@ public class EpdgSelector {
                     }
                     break;
                 case PROTO_FILTER_IPV6:
-                    if (!IwlanHelper.isIpv4EmbeddedIpv6Address(ipAddress)) {
+                    if (ipAddress instanceof Inet6Address) {
                         validIpList.add(ipAddress);
                     }
                     break;
@@ -266,7 +273,7 @@ public class EpdgSelector {
         return allFuturesResult.thenApply(
                 v ->
                         futuresList.stream()
-                                .map(future -> future.join())
+                                .map(CompletableFuture::join)
                                 .filter(Objects::nonNull)
                                 .collect(Collectors.<T>toList()));
     }
@@ -327,7 +334,6 @@ public class EpdgSelector {
      * @param filter Selects for IPv4, IPv6 (or both) addresses from the resulting DNS records
      * @param validIpList A running list of IP addresses that needs to be updated.
      * @param network {@link Network} Network on which to run the DNS query.
-     * @return none
      */
     private void getIP(
             String domainName, int filter, List<InetAddress> validIpList, Network network) {
@@ -364,15 +370,22 @@ public class EpdgSelector {
                             }
                         };
                 DnsResolver.getInstance()
-                        .query(network, domainName, DnsResolver.FLAG_EMPTY, r -> r.run(), null, cb);
+                        .query(
+                                network,
+                                domainName,
+                                DnsResolver.FLAG_EMPTY,
+                                Runnable::run,
+                                null,
+                                cb);
                 ipList =
                         new ArrayList<>(
                                 result.get(DNS_RESOLVER_TIMEOUT_DURATION_SEC, TimeUnit.SECONDS));
             } catch (ExecutionException e) {
                 Log.e(TAG, "Cause of ExecutionException: ", e.getCause());
             } catch (InterruptedException e) {
-                if (Thread.currentThread().interrupted()) {
-                    Thread.currentThread().interrupt();
+                Thread thread = Thread.currentThread();
+                if (thread.interrupted()) {
+                    thread.interrupt();
                 }
                 Log.e(TAG, "InterruptedException: ", e);
             } catch (TimeoutException e) {
@@ -419,12 +432,7 @@ public class EpdgSelector {
         // 3. Remaining plmns in the lists.
         List<String> combinedList = new ArrayList<>();
         // Get MCCMNC from IMSI
-        String plmnFromImsi =
-                new StringBuilder()
-                        .append(subInfo.getMccString())
-                        .append("-")
-                        .append(subInfo.getMncString())
-                        .toString();
+        String plmnFromImsi = subInfo.getMccString() + "-" + subInfo.getMncString();
         combinedList.add(plmnFromImsi);
 
         // Get Ehplmns from TelephonyManager
@@ -461,15 +469,28 @@ public class EpdgSelector {
     private ArrayList<InetAddress> removeDuplicateIp(List<InetAddress> validIpList) {
         ArrayList<InetAddress> resultIpList = new ArrayList<InetAddress>();
 
-        for (Iterator<InetAddress> iterator = validIpList.iterator(); iterator.hasNext(); ) {
-            InetAddress validIp = iterator.next();
-
+        for (InetAddress validIp : validIpList) {
             if (!resultIpList.contains(validIp)) {
                 resultIpList.add(validIp);
             }
         }
 
         return resultIpList;
+    }
+
+    private void prioritizeIp(@NonNull List<InetAddress> validIpList, @EpdgAddressOrder int order) {
+        switch (order) {
+            case IPV4_PREFERRED:
+                validIpList.sort(inetAddressComparator);
+                break;
+            case IPV6_PREFERRED:
+                validIpList.sort(inetAddressComparator.reversed());
+                break;
+            case SYSTEM_PREFERRED:
+                break;
+            default:
+                Log.w(TAG, "Invalid EpdgAddressOrder : " + order);
+        }
     }
 
     private String[] splitMccMnc(String plmn) {
@@ -481,7 +502,8 @@ public class EpdgSelector {
     private List<String> getEhplmns() {
         TelephonyManager mTelephonyManager = mContext.getSystemService(TelephonyManager.class);
         mTelephonyManager =
-                mTelephonyManager.createForSubscriptionId(IwlanHelper.getSubId(mContext, mSlotId));
+                Objects.requireNonNull(mTelephonyManager)
+                        .createForSubscriptionId(IwlanHelper.getSubId(mContext, mSlotId));
 
         if (mTelephonyManager == null) {
             Log.e(TAG, "TelephonyManager is NULL");
@@ -499,7 +521,7 @@ public class EpdgSelector {
 
         // Get the static domain names from carrier config
         // Config obtained in form of a list of domain names separated by
-        // a delimeter is only used for testing purpose.
+        // a delimiter is only used for testing purpose.
         if (!inSameCountry()) {
             domainNames =
                     getDomainNames(
@@ -533,7 +555,9 @@ public class EpdgSelector {
         boolean inSameCountry = true;
 
         TelephonyManager tm = mContext.getSystemService(TelephonyManager.class);
-        tm = tm.createForSubscriptionId(IwlanHelper.getSubId(mContext, mSlotId));
+        tm =
+                Objects.requireNonNull(tm)
+                        .createForSubscriptionId(IwlanHelper.getSubId(mContext, mSlotId));
 
         if (tm != null) {
             String simCountry = tm.getSimCountryIso();
@@ -604,7 +628,8 @@ public class EpdgSelector {
 
         TelephonyManager mTelephonyManager = mContext.getSystemService(TelephonyManager.class);
         mTelephonyManager =
-                mTelephonyManager.createForSubscriptionId(IwlanHelper.getSubId(mContext, mSlotId));
+                Objects.requireNonNull(mTelephonyManager)
+                        .createForSubscriptionId(IwlanHelper.getSubId(mContext, mSlotId));
 
         if (mTelephonyManager == null) {
             Log.e(TAG, "TelephonyManager is NULL");
@@ -670,8 +695,7 @@ public class EpdgSelector {
                     domainName.setLength(0);
                 }
             } else if (cellInfo instanceof CellInfoNr) {
-                CellIdentityNr nrCellId =
-                        (CellIdentityNr) ((CellInfoNr) cellInfo).getCellIdentity();
+                CellIdentityNr nrCellId = (CellIdentityNr) cellInfo.getCellIdentity();
                 String tacString = String.format("%06x", nrCellId.getTac());
                 String[] tacSubString = new String[3];
                 tacSubString[0] = tacString.substring(0, 2);
@@ -908,7 +932,8 @@ public class EpdgSelector {
 
         TelephonyManager telephonyManager = mContext.getSystemService(TelephonyManager.class);
         telephonyManager =
-                telephonyManager.createForSubscriptionId(IwlanHelper.getSubId(mContext, mSlotId));
+                Objects.requireNonNull(telephonyManager)
+                        .createForSubscriptionId(IwlanHelper.getSubId(mContext, mSlotId));
 
         if (telephonyManager == null) {
             Log.e(TAG, "TelephonyManager is NULL");
@@ -928,8 +953,7 @@ public class EpdgSelector {
 
         final String cellMcc = telephonyManager.getNetworkOperator().substring(0, 3);
         final String cellMnc = telephonyManager.getNetworkOperator().substring(3);
-        final String plmnFromNetwork =
-                new StringBuilder().append(cellMcc).append("-").append(cellMnc).toString();
+        final String plmnFromNetwork = cellMcc + "-" + cellMnc;
         final String registeredhostName = composeFqdnWithMccMnc(cellMcc, cellMnc, isEmergency);
 
         /*
@@ -959,7 +983,7 @@ public class EpdgSelector {
                 .append(cellMcc)
                 .append(".visited-country.pub.3gppnetwork.org");
 
-        Log.d(TAG, "Visited Country FQDN with " + domainName.toString());
+        Log.d(TAG, "Visited Country FQDN with " + domainName);
 
         CompletableFuture<List<NaptrTarget>> naptrDnsResult = new CompletableFuture<>();
         DnsResolver.Callback<List<NaptrTarget>> naptrDnsCb =
@@ -978,7 +1002,7 @@ public class EpdgSelector {
                         naptrDnsResult.completeExceptionally(error);
                     }
                 };
-        NaptrDnsResolver.query(network, domainName.toString(), r -> r.run(), null, naptrDnsCb);
+        NaptrDnsResolver.query(network, domainName.toString(), Runnable::run, null, naptrDnsCb);
 
         try {
             final List<NaptrTarget> naptrResponse =
@@ -998,8 +1022,9 @@ public class EpdgSelector {
         } catch (ExecutionException e) {
             Log.e(TAG, "Cause of ExecutionException: ", e.getCause());
         } catch (InterruptedException e) {
-            if (Thread.currentThread().interrupted()) {
-                Thread.currentThread().interrupt();
+            Thread thread = Thread.currentThread();
+            if (thread.interrupted()) {
+                thread.interrupt();
             }
             Log.e(TAG, "InterruptedException: ", e);
         } catch (TimeoutException e) {
@@ -1040,7 +1065,7 @@ public class EpdgSelector {
      * @param isEmergency Specifies whether the ePDG server lookup is to make an emergency call.
      * @param network {@link Network} The server lookups will be performed over this Network.
      * @param selectorCallback {@link EpdgSelectorCallback} The result will be returned through this
-     *     callback. If null, the caller is not interested in the result. Typically this means the
+     *     callback. If null, the caller is not interested in the result. Typically, this means the
      *     caller is performing DNS prefetch of the ePDG server addresses to warm the native
      *     dnsresolver module's caches.
      * @return {link IwlanError} denoting the status of this operation.
@@ -1048,6 +1073,7 @@ public class EpdgSelector {
     public IwlanError getValidatedServerList(
             int transactionId,
             @ProtoFilter int filter,
+            @EpdgAddressOrder int order,
             boolean isRoaming,
             boolean isEmergency,
             @NonNull Network network,
@@ -1117,11 +1143,15 @@ public class EpdgSelector {
                     if (selectorCallback != null) {
                         if (mErrorPolicyManager.getMostRecentDataFailCause()
                                 == DataFailCause.IWLAN_CONGESTION) {
+                            Objects.requireNonNull(plmnDomainNamesToIpAddress)
+                                    .values()
+                                    .removeIf(List::isEmpty);
+
                             int numFqdns = plmnDomainNamesToIpAddress.size();
                             int index = mErrorPolicyManager.getCurrentFqdnIndex(numFqdns);
                             if (index >= 0 && index < numFqdns) {
                                 Object[] keys = plmnDomainNamesToIpAddress.keySet().toArray();
-                                validIpList = plmnDomainNamesToIpAddress.get(keys[index]);
+                                validIpList = plmnDomainNamesToIpAddress.get((String) keys[index]);
                             } else {
                                 Log.w(
                                         TAG,
@@ -1133,7 +1163,7 @@ public class EpdgSelector {
                         }
 
                         if (!validIpList.isEmpty()) {
-                            Collections.sort(validIpList, inetAddressComparator);
+                            prioritizeIp(validIpList, order);
                             selectorCallback.onServerListChanged(
                                     transactionId, removeDuplicateIp(validIpList));
                         } else {
