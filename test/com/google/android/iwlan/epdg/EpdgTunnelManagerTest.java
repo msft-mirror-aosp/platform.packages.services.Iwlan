@@ -536,7 +536,7 @@ public class EpdgTunnelManagerTest {
         final String secondApnName = "mms";
 
         IkeSessionArgumentCaptors firstTunnelArgumentCaptors =
-                verifyBringUpTunnelWithDnsQuery(firstApnName, null);
+                verifyBringUpTunnelWithDnsQuery(firstApnName);
         ChildSessionCallback firstCallback =
                 firstTunnelArgumentCaptors.mChildSessionCallbackCaptor.getValue();
 
@@ -1215,6 +1215,10 @@ public class EpdgTunnelManagerTest {
         mEpdgTunnelManager.setIsEpdgAddressSelected(true);
     }
 
+    private IkeSessionArgumentCaptors verifyBringUpTunnelWithDnsQuery(String apnName) {
+        return verifyBringUpTunnelWithDnsQuery(apnName, null);
+    }
+
     private IkeSessionArgumentCaptors verifyBringUpTunnelWithDnsQuery(
             String apnName, IkeSession ikeSession) {
         reset(mMockIwlanTunnelCallback);
@@ -1286,6 +1290,9 @@ public class EpdgTunnelManagerTest {
     }
 
     private void verifyTunnelOnOpened(String apnName, ChildSessionCallback childSessionCallback) {
+        doReturn(0L)
+                .when(mEpdgTunnelManager)
+                .reportIwlanError(eq(apnName), eq(new IwlanError(IwlanError.NO_ERROR)));
         mEpdgTunnelManager
                 .getTmIkeSessionCallback(apnName, mEpdgTunnelManager.getCurrentTokenForApn(apnName))
                 .onOpened(mMockIkeSessionConfiguration);
@@ -1299,6 +1306,8 @@ public class EpdgTunnelManagerTest {
         childSessionCallback.onOpened(mMockChildSessionConfiguration);
         mTestLooper.dispatchAll();
 
+        verify(mEpdgTunnelManager, times(1))
+                .reportIwlanError(eq(apnName), eq(new IwlanError(IwlanError.NO_ERROR)));
         verify(mMockIwlanTunnelCallback, times(1)).onOpened(eq(apnName), any());
     }
 
@@ -1322,7 +1331,7 @@ public class EpdgTunnelManagerTest {
         final String secondApnName = "mms";
 
         IkeSessionArgumentCaptors firstTunnelArgumentCaptors =
-                verifyBringUpTunnelWithDnsQuery(firstApnName, null);
+                verifyBringUpTunnelWithDnsQuery(firstApnName);
         ChildSessionCallback firstCallback =
                 firstTunnelArgumentCaptors.mChildSessionCallbackCaptor.getValue();
 
@@ -1700,6 +1709,29 @@ public class EpdgTunnelManagerTest {
         mEpdgTunnelManager.setIsEpdgAddressSelected(false);
 
         verify(mEpdgTunnelManager, times(1)).reportIwlanError(eq(testApnName), eq(error));
+    }
+
+    @Test
+    public void testNeverReportIwlanErrorWhenCloseAnOpenedTunnel() throws Exception {
+        IkeInternalException ikeException =
+                new IkeInternalException(new IOException("Retransmitting failure"));
+
+        IkeSessionArgumentCaptors ikeSessionArgumentCaptors =
+                verifyBringUpTunnelWithDnsQuery(TEST_APN_NAME);
+
+        ChildSessionCallback childSessionCallback =
+                ikeSessionArgumentCaptors.mChildSessionCallbackCaptor.getValue();
+        verifyTunnelOnOpened(TEST_APN_NAME, childSessionCallback);
+
+        reset(mEpdgTunnelManager); // reset number of times of reportIwlanError()
+
+        mEpdgTunnelManager
+                .getTmIkeSessionCallback(TEST_APN_NAME, 0)
+                .onClosedExceptionally(ikeException);
+        mTestLooper.dispatchAll();
+        verify(mEpdgTunnelManager, never()).reportIwlanError(eq(TEST_APN_NAME), any());
+        verify(mMockIwlanTunnelCallback, times(1))
+                .onClosed(eq(TEST_APN_NAME), eq(new IwlanError(ikeException)));
     }
 
     @Test
