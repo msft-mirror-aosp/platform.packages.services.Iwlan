@@ -197,6 +197,10 @@ public class ErrorPolicyManagerTest {
         return buildIwlanIkeProtocolError(IkeProtocolException.ERROR_TYPE_CHILD_SA_NOT_FOUND);
     }
 
+    private static IwlanError buildIwlanIkeInternalAddressFailure() {
+        return buildIwlanIkeProtocolError(IkeProtocolException.ERROR_TYPE_INTERNAL_ADDRESS_FAILURE);
+    }
+
     @Test
     public void testValidCarrierConfig() throws Exception {
         String apn = "ims";
@@ -275,7 +279,7 @@ public class ErrorPolicyManagerTest {
         time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
         assertEquals(10, time);
         time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
-        assertEquals(10, time);
+        assertEquals(20, time);
     }
 
     @Test
@@ -311,6 +315,10 @@ public class ErrorPolicyManagerTest {
         // parsing (or lack of explicit carrier-defined policy).
         IwlanError iwlanError = buildIwlanIkeAuthFailedError();
         long time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
+        assertEquals(5, time);
+        time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
+        assertEquals(10, time);
+        time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
         assertEquals(10, time);
         time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
         assertEquals(20, time);
@@ -318,13 +326,13 @@ public class ErrorPolicyManagerTest {
         assertEquals(40, time);
         time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
         assertEquals(80, time);
-        time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
-        assertEquals(160, time);
-        time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
-        assertEquals(86400, time);
 
         iwlanError = buildIwlanIkeProtocolError(9002);
         time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
+        assertEquals(5, time);
+        time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
+        assertEquals(10, time);
+        time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
         assertEquals(10, time);
         time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
         assertEquals(20, time);
@@ -332,10 +340,16 @@ public class ErrorPolicyManagerTest {
         assertEquals(40, time);
         time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
         assertEquals(80, time);
+
+        iwlanError = buildIwlanIkeInternalAddressFailure();
         time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
-        assertEquals(160, time);
+        assertEquals(0, time);
         time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
-        assertEquals(86400, time);
+        assertEquals(0, time);
+        time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
+        assertEquals(0, time);
+        time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
+        assertEquals(10, time);
     }
 
     @Test
