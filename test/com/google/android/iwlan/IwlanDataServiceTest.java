@@ -99,8 +99,6 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.LongSummaryStatistics;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 
 public class IwlanDataServiceTest {
     private static final int DEFAULT_SLOT_INDEX = 0;
@@ -138,7 +136,6 @@ public class IwlanDataServiceTest {
     private LinkProperties mLinkProperties;
     private List<DataCallResponse> mResultDataCallList;
     private @DataServiceCallback.ResultCode int mResultCode;
-    private CountDownLatch latch;
     private IwlanDataService mIwlanDataService;
     private IwlanDataServiceProvider mSpyIwlanDataServiceProvider;
     private TestLooper mTestLooper = new TestLooper();
@@ -173,7 +170,6 @@ public class IwlanDataServiceTest {
                 List<DataCallResponse> dataCallList) {
             mResultCode = resultCode;
             mResultDataCallList = new ArrayList<DataCallResponse>(dataCallList);
-            latch.countDown();
         }
 
         @Override
@@ -482,7 +478,6 @@ public class IwlanDataServiceTest {
         List<InetAddress> mGatewayAddressList;
         List<InetAddress> mPCSFAddressList;
 
-        latch = new CountDownLatch(1);
         IwlanDataServiceCallback callback = new IwlanDataServiceCallback("requestDataCallList");
         TunnelLinkProperties mLinkProperties =
                 TunnelLinkPropertiesTest.createTestTunnelLinkProperties();
@@ -496,7 +491,6 @@ public class IwlanDataServiceTest {
                 true /* isImsOrEmergency */);
         mSpyIwlanDataServiceProvider.requestDataCallList(new DataServiceCallback(callback));
         mTestLooper.dispatchAll();
-        latch.await(1, TimeUnit.SECONDS);
 
         assertEquals(mResultCode, DataServiceCallback.RESULT_SUCCESS);
         assertEquals(mResultDataCallList.size(), 1);
@@ -537,11 +531,9 @@ public class IwlanDataServiceTest {
 
     @Test
     public void testRequestDataCallListEmpty() throws Exception {
-        latch = new CountDownLatch(1);
         IwlanDataServiceCallback callback = new IwlanDataServiceCallback("requestDataCallList");
         mSpyIwlanDataServiceProvider.requestDataCallList(new DataServiceCallback(callback));
         mTestLooper.dispatchAll();
-        latch.await(1, TimeUnit.SECONDS);
 
         assertEquals(mResultCode, DataServiceCallback.RESULT_SUCCESS);
         assertEquals(mResultDataCallList.size(), 0);
