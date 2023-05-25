@@ -957,7 +957,7 @@ public class IwlanDataService extends DataService {
         }
 
         private void updateNetwork(
-                @NonNull Network network, @Nullable LinkProperties linkProperties) {
+                @Nullable Network network, @Nullable LinkProperties linkProperties) {
             if (mIwlanDataService.isNetworkConnected(
                     isActiveDataOnOtherSub(getSlotIndex()),
                     IwlanHelper.isCrossSimCallingEnabled(mContext, getSlotIndex()))) {
