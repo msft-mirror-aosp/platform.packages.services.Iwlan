@@ -80,12 +80,16 @@ public class EpdgSelector {
     private byte[] mV6PcoData = null;
     @NonNull private final ErrorPolicyManager mErrorPolicyManager;
 
-    private static final long DNS_RESOLVER_TIMEOUT_DURATION_SEC = 5L;
+    // The default DNS timeout in the DNS module is set to 5 seconds. To account for IPC overhead,
+    // IWLAN applies an internal timeout of 6 seconds, slightly longer than the default timeout
+    private static final long DNS_RESOLVER_TIMEOUT_DURATION_SEC = 6L;
 
-    private static final long PARALLEL_DNS_RESOLVER_TIMEOUT_DURATION_SEC = 20L;
+    private static final long PARALLEL_STATIC_RESOLUTION_TIMEOUT_DURATION_SEC = 6L;
+    private static final long PARALLEL_PLMN_RESOLUTION_TIMEOUT_DURATION_SEC = 20L;
     private static final int NUM_EPDG_SELECTION_EXECUTORS = 2; // 1 each for normal selection, SOS.
     private static final int MAX_EPDG_SELECTION_THREADS = 2; // 1 each for prefetch, tunnel bringup.
     private static final int MAX_DNS_RESOLVER_THREADS = 25; // Do not expect > 25 FQDNs per carrier.
+    private static final String NO_DOMAIN = "NO_DOMAIN";
 
     BlockingQueue<Runnable> dnsResolutionQueue =
             new ArrayBlockingQueue<>(
@@ -142,7 +146,7 @@ public class EpdgSelector {
 
     public interface EpdgSelectorCallback {
         /*gives priority ordered list of addresses*/
-        void onServerListChanged(int transactionId, ArrayList<InetAddress> validIPList);
+        void onServerListChanged(int transactionId, List<InetAddress> validIPList);
 
         void onError(int transactionId, IwlanError error);
     }
@@ -204,7 +208,7 @@ public class EpdgSelector {
     }
 
     private CompletableFuture<Map.Entry<String, List<InetAddress>>> submitDnsResolverQuery(
-            String domainName, Network network, Executor executor) {
+            String domainName, Network network, int queryType, Executor executor) {
         CompletableFuture<Map.Entry<String, List<InetAddress>>> result = new CompletableFuture();
 
         final DnsResolver.Callback<List<InetAddress>> cb =
@@ -232,7 +236,7 @@ public class EpdgSelector {
                     }
                 };
         DnsResolver.getInstance()
-                .query(network, domainName, DnsResolver.FLAG_EMPTY, executor, null, cb);
+                .query(network, domainName, queryType, DnsResolver.FLAG_EMPTY, executor, null, cb);
         return result;
     }
 
@@ -278,6 +282,22 @@ public class EpdgSelector {
                                 .collect(Collectors.<T>toList()));
     }
 
+    @VisibleForTesting
+    protected boolean hasIpv4Address(Network network) {
+        return IwlanHelper.hasIpv4Address(IwlanHelper.getAllAddressesForNetwork(network, mContext));
+    }
+
+    @VisibleForTesting
+    protected boolean hasIpv6Address(Network network) {
+        return IwlanHelper.hasIpv6Address(IwlanHelper.getAllAddressesForNetwork(network, mContext));
+    }
+
+    private void printParallelDnsResult(Map<String, List<InetAddress>> domainNameToIpAddresses) {
+        Log.d(TAG, "Parallel DNS resolution result:");
+        for (String domain : domainNameToIpAddresses.keySet()) {
+            Log.d(TAG, domain + ": " + domainNameToIpAddresses.get(domain));
+        }
+    }
     /**
      * Returns a list of unique IP addresses corresponding to the given domain names, in the same
      * order of the input. Runs DNS resolution across parallel threads.
@@ -285,27 +305,46 @@ public class EpdgSelector {
      * @param domainNames Domain names for which DNS resolution needs to be performed.
      * @param filter Selects for IPv4, IPv6 (or both) addresses from the resulting DNS records
      * @param network {@link Network} Network on which to run the DNS query.
+     * @param timeout timeout in seconds.
      * @return List of unique IP addresses corresponding to the domainNames.
      */
     private LinkedHashMap<String, List<InetAddress>> getIP(
-            List<String> domainNames, int filter, Network network) {
+            List<String> domainNames, int filter, Network network, long timeout) {
         // LinkedHashMap preserves insertion order (and hence priority) of domain names passed in.
         LinkedHashMap<String, List<InetAddress>> domainNameToIpAddr = new LinkedHashMap<>();
 
         List<CompletableFuture<Map.Entry<String, List<InetAddress>>>> futuresList =
                 new ArrayList<>();
         for (String domainName : domainNames) {
+            if (InetAddresses.isNumericAddress(domainName)) {
+                Log.d(TAG, domainName + " is a numeric IP address!");
+                InetAddress inetAddr = InetAddresses.parseNumericAddress(domainName);
+                domainNameToIpAddr.put(NO_DOMAIN, new ArrayList<>(List.of(inetAddr)));
+                continue;
+            }
+
             domainNameToIpAddr.put(domainName, new ArrayList<>());
-            futuresList.add(submitDnsResolverQuery(domainName, network, mDnsResolutionExecutor));
+            // Dispatches separate IPv4 and IPv6 queries to avoid being blocked on either result.
+            if (hasIpv4Address(network)) {
+                futuresList.add(
+                        submitDnsResolverQuery(
+                                domainName, network, DnsResolver.TYPE_A, mDnsResolutionExecutor));
+            }
+            if (hasIpv6Address(network)) {
+                futuresList.add(
+                        submitDnsResolverQuery(
+                                domainName,
+                                network,
+                                DnsResolver.TYPE_AAAA,
+                                mDnsResolutionExecutor));
+            }
         }
         CompletableFuture<List<Map.Entry<String, List<InetAddress>>>> allFuturesResult =
                 allOf(futuresList);
 
         List<Map.Entry<String, List<InetAddress>>> resultList = null;
         try {
-            resultList =
-                    allFuturesResult.get(
-                            PARALLEL_DNS_RESOLVER_TIMEOUT_DURATION_SEC, TimeUnit.SECONDS);
+            resultList = allFuturesResult.get(timeout, TimeUnit.SECONDS);
         } catch (ExecutionException e) {
             Log.e(TAG, "Cause of ExecutionException: ", e.getCause());
         } catch (InterruptedException e) {
@@ -318,8 +357,17 @@ public class EpdgSelector {
                 Log.w(TAG, "No IP addresses in parallel DNS query!");
             } else {
                 for (Map.Entry<String, List<InetAddress>> entry : resultList) {
-                    domainNameToIpAddr.put(
-                            entry.getKey(), v4v6ProtocolFilter(entry.getValue(), filter));
+                    String resultDomainName = entry.getKey();
+                    List<InetAddress> resultIpAddr = v4v6ProtocolFilter(entry.getValue(), filter);
+
+                    if (!domainNameToIpAddr.containsKey(resultDomainName)) {
+                        Log.w(
+                                TAG,
+                                "Unexpected domain name in DnsResolver result: "
+                                        + resultDomainName);
+                        continue;
+                    }
+                    domainNameToIpAddr.get(resultDomainName).addAll(resultIpAddr);
                 }
             }
         }
@@ -343,12 +391,8 @@ public class EpdgSelector {
         Log.d(TAG, "Input domainName : " + domainName);
 
         if (InetAddresses.isNumericAddress(domainName)) {
-            try {
-                Log.d(TAG, domainName + " is a numeric ip address");
-                ipList.add(InetAddress.getByName(domainName));
-            } catch (UnknownHostException e) {
-                Log.e(TAG, "Exception when resolving domainName : " + domainName + ".", e);
-            }
+            Log.d(TAG, domainName + " is a numeric IP address!");
+            ipList.add(InetAddresses.parseNumericAddress(domainName));
         } else {
             try {
                 CompletableFuture<List<InetAddress>> result = new CompletableFuture();
@@ -398,15 +442,7 @@ public class EpdgSelector {
     }
 
     private String[] getPlmnList() {
-        List<String> plmnsFromSubInfo = new ArrayList<>();
-
-        List<String> plmnsFromCarrierConfig =
-                new ArrayList<>(
-                        Arrays.asList(
-                                IwlanHelper.getConfig(
-                                        CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY,
-                                        mContext,
-                                        mSlotId)));
+        List<String> plmnsFromCarrierConfig = getPlmnsFromCarrierConfig();
         Log.d(TAG, "plmnsFromCarrierConfig:" + plmnsFromCarrierConfig);
 
         // Get Ehplmns & mccmnc from SubscriptionManager
@@ -424,46 +460,66 @@ public class EpdgSelector {
             return plmnsFromCarrierConfig.toArray(new String[plmnsFromCarrierConfig.size()]);
         }
 
-        // There are three sources of plmns - sim plmn, plmn list from carrier config and
-        // Ehplmn list from subscription info.
-        // The plmns are prioritized as follows:
-        // 1. Sim plmn
-        // 2. Plmns common to both lists.
-        // 3. Remaining plmns in the lists.
-        List<String> combinedList = new ArrayList<>();
         // Get MCCMNC from IMSI
-        String plmnFromImsi = subInfo.getMccString() + "-" + subInfo.getMncString();
-        combinedList.add(plmnFromImsi);
+        String plmnFromImsi = subInfo.getMccString() + subInfo.getMncString();
 
-        // Get Ehplmns from TelephonyManager
-        for (String ehplmn : getEhplmns()) {
-            if (ehplmn.length() == 5 || ehplmn.length() == 6) {
-                StringBuilder str = new StringBuilder(ehplmn);
-                str.insert(3, "-");
-                plmnsFromSubInfo.add(str.toString());
+        int[] prioritizedPlmnTypes =
+                IwlanHelper.getConfig(
+                        CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
+                        mContext,
+                        mSlotId);
+
+        List<String> ehplmns = getEhplmns();
+        String registeredPlmn = getRegisteredPlmn();
+
+        List<String> combinedList = new ArrayList<>();
+        for (int plmnType : prioritizedPlmnTypes) {
+            switch (plmnType) {
+                case CarrierConfigManager.Iwlan.EPDG_PLMN_RPLMN:
+                    if (isInEpdgSelectionInfo(registeredPlmn)) {
+                        combinedList.add(registeredPlmn);
+                    }
+                    break;
+                case CarrierConfigManager.Iwlan.EPDG_PLMN_HPLMN:
+                    combinedList.add(plmnFromImsi);
+                    break;
+                case CarrierConfigManager.Iwlan.EPDG_PLMN_EHPLMN_ALL:
+                    combinedList.addAll(getEhplmns());
+                    break;
+                case CarrierConfigManager.Iwlan.EPDG_PLMN_EHPLMN_FIRST:
+                    if (!ehplmns.isEmpty()) {
+                        combinedList.add(ehplmns.get(0));
+                    }
+                    break;
+                default:
+                    Log.e(TAG, "Unknown PLMN type: " + plmnType);
+                    break;
             }
         }
 
-        Log.d(TAG, "plmnsFromSubInfo:" + plmnsFromSubInfo);
-
-        // To avoid double adding plmn from imsi
-        plmnsFromCarrierConfig.removeIf(i -> i.equals(plmnFromImsi));
-        plmnsFromSubInfo.removeIf(i -> i.equals(plmnFromImsi));
-
-        for (Iterator<String> iterator = plmnsFromCarrierConfig.iterator(); iterator.hasNext(); ) {
-            String plmn = iterator.next();
-            if (plmnsFromSubInfo.contains(plmn)) {
-                combinedList.add(plmn);
-                plmnsFromSubInfo.remove(plmn);
-                iterator.remove();
-            }
-        }
-
-        combinedList.addAll(plmnsFromSubInfo);
-        combinedList.addAll(plmnsFromCarrierConfig);
+        combinedList =
+                combinedList.stream()
+                        .distinct()
+                        .filter(EpdgSelector::isValidPlmn)
+                        .map(plmn -> new StringBuilder(plmn).insert(3, "-").toString())
+                        .toList();
 
         Log.d(TAG, "Final plmn list:" + combinedList);
         return combinedList.toArray(new String[combinedList.size()]);
+    }
+
+    private List<String> getPlmnsFromCarrierConfig() {
+        return Arrays.asList(
+                IwlanHelper.getConfig(
+                        CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY, mContext, mSlotId));
+    }
+
+    private boolean isInEpdgSelectionInfo(String plmn) {
+        if (!isValidPlmn(plmn)) {
+            return false;
+        }
+        List<String> plmnsFromCarrierConfig = getPlmnsFromCarrierConfig();
+        return plmnsFromCarrierConfig.contains(new StringBuilder(plmn).insert(3, "-").toString());
     }
 
     private ArrayList<InetAddress> removeDuplicateIp(List<InetAddress> validIpList) {
@@ -497,6 +553,25 @@ public class EpdgSelector {
         String[] mccmnc = plmn.split("-");
         mccmnc[1] = String.format("%03d", Integer.parseInt(mccmnc[1]));
         return mccmnc;
+    }
+
+    /**
+     * @return the registered PLMN, null if not registered with 3gpp or failed to get telephony
+     *     manager
+     */
+    @Nullable
+    private String getRegisteredPlmn() {
+        TelephonyManager telephonyManager = mContext.getSystemService(TelephonyManager.class);
+        if (telephonyManager == null) {
+            Log.e(TAG, "TelephonyManager is NULL");
+            return null;
+        }
+
+        telephonyManager =
+                telephonyManager.createForSubscriptionId(IwlanHelper.getSubId(mContext, mSlotId));
+
+        String registeredPlmn = telephonyManager.getNetworkOperator();
+        return registeredPlmn.isEmpty() ? null : registeredPlmn;
     }
 
     private List<String> getEhplmns() {
@@ -537,9 +612,14 @@ public class EpdgSelector {
         }
 
         Log.d(TAG, "Static Domain Names: " + Arrays.toString(domainNames));
-        for (String domainName : domainNames) {
-            getIP(domainName, filter, validIpList, network);
-        }
+        LinkedHashMap<String, List<InetAddress>> domainNameToIpAddr =
+                getIP(
+                        Arrays.asList(domainNames),
+                        filter,
+                        network,
+                        PARALLEL_STATIC_RESOLUTION_TIMEOUT_DURATION_SEC);
+        printParallelDnsResult(domainNameToIpAddr);
+        domainNameToIpAddr.values().forEach(validIpList::addAll);
     }
 
     private String[] getDomainNames(String key) {
@@ -614,7 +694,8 @@ public class EpdgSelector {
         }
 
         LinkedHashMap<String, List<InetAddress>> domainNameToIpAddr =
-                getIP(domainNames, filter, network);
+                getIP(domainNames, filter, network, PARALLEL_PLMN_RESOLUTION_TIMEOUT_DURATION_SEC);
+        printParallelDnsResult(domainNameToIpAddr);
         domainNameToIpAddr.values().forEach(validIpList::addAll);
         return domainNameToIpAddr;
     }
@@ -1179,5 +1260,15 @@ public class EpdgSelector {
         trySubmitEpdgSelectionExecutor(epdgSelectionRunnable, isPrefetch, isEmergency);
 
         return new IwlanError(IwlanError.NO_ERROR);
+    }
+
+    /**
+     * Validates a PLMN (Public Land Mobile Network) identifier string.
+     *
+     * @param plmn The PLMN identifier string to validate.
+     * @return True if the PLMN identifier is valid, false otherwise.
+     */
+    private static boolean isValidPlmn(String plmn) {
+        return plmn != null && plmn.matches("\\d{5,6}");
     }
 }
