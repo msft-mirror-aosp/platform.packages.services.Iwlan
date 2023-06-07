@@ -157,7 +157,7 @@ public class ErrorPolicyManager {
 
     private int carrierId = TelephonyManager.UNKNOWN_CARRIER_ID;
 
-    private String carrierConfigErrorPolicyString;
+    private String mCarrierConfigErrorPolicyString;
 
     @VisibleForTesting
     static final String KEY_ERROR_POLICY_CONFIG_STRING = "iwlan.key_error_policy_config_string";
@@ -501,7 +501,7 @@ public class ErrorPolicyManager {
             throw new AssertionError(e);
         }
 
-        carrierConfigErrorPolicyString = null;
+        mCarrierConfigErrorPolicyString = null;
         readFromCarrierConfig(IwlanHelper.getCarrierId(mContext, mSlotId));
         updateUnthrottlingEvents();
     }
@@ -792,13 +792,15 @@ public class ErrorPolicyManager {
                 IwlanHelper.getConfig(KEY_ERROR_POLICY_CONFIG_STRING, mContext, mSlotId);
         if (carrierConfigErrorPolicy == null) {
             Log.e(LOG_TAG, "ErrorPolicy from Carrier Config is NULL");
+            mCarrierConfigPolicies.clear();
+            mCarrierConfigErrorPolicyString = null;
             return;
         }
         try {
             Map<String, List<ErrorPolicy>> errorPolicies =
                     readErrorPolicies(new JSONArray(carrierConfigErrorPolicy));
             if (errorPolicies.size() > 0) {
-                carrierConfigErrorPolicyString = carrierConfigErrorPolicy;
+                mCarrierConfigErrorPolicyString = carrierConfigErrorPolicy;
                 carrierId = currentCarrierId;
                 mCarrierConfigPolicies.clear();
                 mCarrierConfigPolicies.putAll(errorPolicies);
@@ -809,7 +811,7 @@ public class ErrorPolicyManager {
                     "Unable to parse the ErrorPolicy from CarrierConfig\n"
                             + carrierConfigErrorPolicy);
             mCarrierConfigPolicies.clear();
-            carrierConfigErrorPolicyString = null;
+            mCarrierConfigErrorPolicyString = null;
             e.printStackTrace();
         }
     }
@@ -1175,9 +1177,9 @@ public class ErrorPolicyManager {
         String errorPolicyConfig =
                 IwlanHelper.getConfig(KEY_ERROR_POLICY_CONFIG_STRING, mContext, mSlotId);
         return (currentCarrierId != carrierId)
-                || (carrierConfigErrorPolicyString == null)
+                || (mCarrierConfigErrorPolicyString == null)
                 || (errorPolicyConfig != null
-                        && !carrierConfigErrorPolicyString.equals(errorPolicyConfig));
+                        && !mCarrierConfigErrorPolicyString.equals(errorPolicyConfig));
     }
 
     private final class EpmHandler extends Handler {
