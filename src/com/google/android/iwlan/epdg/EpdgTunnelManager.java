@@ -1523,6 +1523,8 @@ public class EpdgTunnelManager {
                                     (int) mEpdgServerSelectionDuration,
                                     (int) mIkeTunnelEstablishmentDuration);
 
+                    reportIwlanError(apnName, new IwlanError(IwlanError.NO_ERROR));
+
                     setIsEpdgAddressSelected(true);
                     mValidEpdgInfo.resetIndex();
                     printRequestQueue("EVENT_CHILD_SESSION_OPENED");
@@ -1563,10 +1565,12 @@ public class EpdgTunnelManager {
                         iface.close();
                     }
 
-                    if (tunnelConfig.isBackoffTimeValid()) {
-                        reportIwlanError(apnName, iwlanError, tunnelConfig.getBackoffTime());
-                    } else {
-                        reportIwlanError(apnName, iwlanError);
+                    if (!tunnelConfig.hasTunnelOpened()) {
+                        if (tunnelConfig.isBackoffTimeValid()) {
+                            reportIwlanError(apnName, iwlanError, tunnelConfig.getBackoffTime());
+                        } else {
+                            reportIwlanError(apnName, iwlanError);
+                        }
                     }
 
                     Log.d(TAG, "Tunnel Closed: " + iwlanError);
