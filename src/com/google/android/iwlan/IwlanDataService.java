@@ -975,12 +975,12 @@ public class IwlanDataService extends DataService {
                     // This may not result in actual closing of Ike Session since
                     // epdg selection may not be complete yet.
                     tunnelState.setState(TunnelState.TUNNEL_IN_FORCE_CLEAN_WAS_IN_BRINGUP);
-                        getTunnelManager()
-                                .closeTunnel(
-                                        entry.getKey(),
-                                        true /* forceClose */,
-                                        getIwlanTunnelCallback(),
-                                        getIwlanTunnelMetrics());
+                    getTunnelManager()
+                            .closeTunnel(
+                                    entry.getKey(),
+                                    true /* forceClose */,
+                                    getIwlanTunnelCallback(),
+                                    getIwlanTunnelMetrics());
                 }
             }
         }
@@ -1664,6 +1664,7 @@ public class IwlanDataService extends DataService {
                             openedMetricsData.getIkeTunnelEstablishmentDuration());
 
                     metricsAtom.sendMetricsData();
+                    metricsAtom.setMessageId(metricsAtom.INVALID_MESSAGE_ID);
                     break;
 
                 case EVENT_TUNNEL_CLOSED_METRICS:
@@ -1689,6 +1690,7 @@ public class IwlanDataService extends DataService {
                             closedMetricsData.getIkeTunnelEstablishmentDuration());
 
                     metricsAtom.sendMetricsData();
+                    metricsAtom.setMessageId(metricsAtom.INVALID_MESSAGE_ID);
                     iwlanDataServiceProvider.mMetricsAtomForApn.remove(apnName);
                     break;
 
