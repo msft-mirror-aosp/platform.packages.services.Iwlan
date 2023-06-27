@@ -266,6 +266,8 @@ public class IwlanDataServiceTest {
 
         when(mMockConnectivityManager.getLinkProperties(eq(mMockNetwork)))
                 .thenReturn(mLinkProperties);
+
+        when(mMockTunnelLinkProperties.ifaceName()).thenReturn("mockipsec0");
     }
 
     @After
