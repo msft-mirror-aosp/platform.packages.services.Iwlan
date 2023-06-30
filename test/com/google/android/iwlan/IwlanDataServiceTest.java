@@ -534,6 +534,8 @@ public class IwlanDataServiceTest {
     @Test
     public void testOnCrossSimCallingEnable_doNotUpdateTunnelManagerIfNoNetwork() throws Exception {
         when(mMockImsMmTelManager.isCrossSimCallingEnabled()).thenReturn(true);
+        onSystemDefaultNetworkLost();
+
         mIwlanDataService
                 .mIwlanDataServiceHandler
                 .obtainMessage(
