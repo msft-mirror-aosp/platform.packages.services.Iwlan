@@ -81,6 +81,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.LongSummaryStatistics;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class IwlanDataService extends DataService {
@@ -124,13 +125,6 @@ public class IwlanDataService extends DataService {
 
     private static Transport sDefaultDataTransport = Transport.UNSPECIFIED_NETWORK;
 
-    enum LinkProtocolType {
-        UNKNOWN,
-        IPV4,
-        IPV6,
-        IPV4V6
-    }
-
     // TODO: see if network monitor callback impl can be shared between dataservice and
     // networkservice
     // This callback runs in the same thread as IwlanDataServiceHandler
@@ -171,12 +165,12 @@ public class IwlanDataService extends DataService {
                 @NonNull Network network, @NonNull LinkProperties linkProperties) {
             Log.d(TAG, "onLinkPropertiesChanged: " + linkProperties);
 
-            if (!sNetwork.equals(network)) {
+            if (!network.equals(sNetwork)) {
                 Log.d(TAG, "Ignore LinkProperties changes for unused Network.");
                 return;
             }
 
-            if (!sLinkProperties.equals(linkProperties)) {
+            if (!linkProperties.equals(sLinkProperties)) {
                 for (IwlanDataServiceProvider dp : sIwlanDataServiceProviders.values()) {
                     dp.dnsPrefetchCheck();
                     sLinkProperties = linkProperties;
@@ -601,6 +595,7 @@ public class IwlanDataService extends DataService {
             events.add(IwlanEventListener.CARRIER_CONFIG_UNKNOWN_CARRIER_EVENT);
             events.add(IwlanEventListener.WIFI_CALLING_ENABLE_EVENT);
             events.add(IwlanEventListener.WIFI_CALLING_DISABLE_EVENT);
+            events.add(IwlanEventListener.CROSS_SIM_CALLING_ENABLE_EVENT);
             events.add(IwlanEventListener.CELLINFO_CHANGED_EVENT);
             events.add(IwlanEventListener.CALL_STATE_CHANGED_EVENT);
             IwlanEventListener.getInstance(mContext, slotIndex)
@@ -962,14 +957,14 @@ public class IwlanDataService extends DataService {
         }
 
         private void updateNetwork(
-                @NonNull Network network, @Nullable LinkProperties linkProperties) {
+                @Nullable Network network, @Nullable LinkProperties linkProperties) {
             if (mIwlanDataService.isNetworkConnected(
                     isActiveDataOnOtherSub(getSlotIndex()),
                     IwlanHelper.isCrossSimCallingEnabled(mContext, getSlotIndex()))) {
                 getTunnelManager().updateNetwork(network, linkProperties);
             }
 
-            if (network.equals(sNetwork)) {
+            if (Objects.equals(network, sNetwork)) {
                 return;
             }
             for (Map.Entry<String, TunnelState> entry : mTunnelStateForApn.entrySet()) {
@@ -1362,6 +1357,12 @@ public class IwlanDataService extends DataService {
                             (IwlanDataServiceProvider) getDataServiceProvider(msg.arg1);
 
                     iwlanDataServiceProvider.mWfcEnabled = false;
+                    break;
+
+                case IwlanEventListener.CROSS_SIM_CALLING_ENABLE_EVENT:
+                    iwlanDataServiceProvider =
+                            (IwlanDataServiceProvider) getDataServiceProvider(msg.arg1);
+                    iwlanDataServiceProvider.updateNetwork(sNetwork, sLinkProperties);
                     break;
 
                 case IwlanEventListener.CELLINFO_CHANGED_EVENT:
@@ -2045,6 +2046,8 @@ public class IwlanDataService extends DataService {
                 return "WIFI_CALLING_ENABLE_EVENT";
             case IwlanEventListener.WIFI_CALLING_DISABLE_EVENT:
                 return "WIFI_CALLING_DISABLE_EVENT";
+            case IwlanEventListener.CROSS_SIM_CALLING_ENABLE_EVENT:
+                return "CROSS_SIM_CALLING_ENABLE_EVENT";
             case IwlanEventListener.CELLINFO_CHANGED_EVENT:
                 return "CELLINFO_CHANGED_EVENT";
             case EVENT_TUNNEL_OPENED_METRICS:
