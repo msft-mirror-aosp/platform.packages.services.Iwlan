@@ -2074,11 +2074,13 @@ public class IwlanDataService extends DataService {
         Context context = getApplicationContext().createAttributionContext(CONTEXT_ATTRIBUTION_TAG);
         setAppContext(context);
         IwlanBroadcastReceiver.startListening(mContext);
+        IwlanCarrierConfigChangeListener.startListening(mContext);
         IwlanHelper.startCountryDetector(mContext);
     }
 
     @Override
     public void onDestroy() {
+        IwlanCarrierConfigChangeListener.stopListening(mContext);
         IwlanBroadcastReceiver.stopListening(mContext);
     }
 

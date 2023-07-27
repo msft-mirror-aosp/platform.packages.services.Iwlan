@@ -70,7 +70,6 @@ public class IwlanBroadcastReceiver extends BroadcastReceiver {
         String action = intent.getAction();
         Log.d(TAG, "onReceive: " + action);
         switch (action) {
-            case CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED:
             case Intent.ACTION_AIRPLANE_MODE_CHANGED:
             case WifiManager.WIFI_STATE_CHANGED_ACTION:
                 IwlanEventListener.onBroadcastReceived(intent);
