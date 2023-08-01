@@ -325,7 +325,7 @@ public class IwlanEventListener {
      * @param subId sub id which carrier config is changed
      * @param carrierId carrier id
      */
-    public static void onCarrierConfigChanged(
+    public static synchronized void onCarrierConfigChanged(
             Context context, int slotId, int subId, int carrierId) {
         getInstance(context, slotId).onCarrierConfigChanged(subId, carrierId);
     }
