@@ -534,6 +534,8 @@ public class IwlanDataServiceTest {
     @Test
     public void testOnCrossSimCallingEnable_doNotUpdateTunnelManagerIfNoNetwork() throws Exception {
         when(mMockImsMmTelManager.isCrossSimCallingEnabled()).thenReturn(true);
+        onSystemDefaultNetworkLost();
+
         mIwlanDataService
                 .mIwlanDataServiceHandler
                 .obtainMessage(
@@ -1769,5 +1771,39 @@ public class IwlanDataServiceTest {
         Method method = target.getClass().getDeclaredMethod(methodName, parameterTypes);
         method.setAccessible(true);
         return method.invoke(target, args);
+    }
+
+    @Test
+    public void testNetworkChangeDuringTunnelBringUp_closeTunnel() {
+        DataProfile dp = buildImsDataProfile();
+        Network newNetwork1 = createMockNetwork(mLinkProperties);
+        onSystemDefaultNetworkConnected(
+                newNetwork1, mLinkProperties, TRANSPORT_WIFI, DEFAULT_SUB_INDEX);
+
+        mSpyIwlanDataServiceProvider.setupDataCall(
+                AccessNetworkType.IWLAN, /* AccessNetworkType */
+                dp, /* dataProfile */
+                false, /* isRoaming */
+                true, /* allowRoaming */
+                DataService.REQUEST_REASON_NORMAL, /* DataService.REQUEST_REASON_NORMAL */
+                null, /* LinkProperties */
+                1, /* pduSessionId */
+                null, /* sliceInfo */
+                null, /* trafficDescriptor */
+                true, /* matchAllRuleAllowed */
+                mMockDataServiceCallback);
+        mTestLooper.dispatchAll();
+
+        /* Check bringUpTunnel() is called. */
+        verify(mMockEpdgTunnelManager, times(1))
+                .bringUpTunnel(
+                        any(TunnelSetupRequest.class),
+                        any(IwlanTunnelCallback.class),
+                        any(IwlanTunnelMetricsImpl.class));
+
+        Network newNetwork2 = createMockNetwork(mLinkProperties);
+        onSystemDefaultNetworkConnected(
+                newNetwork2, mLinkProperties, TRANSPORT_WIFI, DEFAULT_SUB_INDEX);
+        verify(mMockEpdgTunnelManager, times(1)).closeTunnel(any(), anyBoolean(), any(), any());
     }
 }

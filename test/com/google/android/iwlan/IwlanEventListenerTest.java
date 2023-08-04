@@ -22,13 +22,11 @@ import static org.mockito.Mockito.*;
 
 import android.content.ContentResolver;
 import android.content.Context;
-import android.content.Intent;
 import android.net.Uri;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Handler;
 import android.os.Message;
-import android.telephony.CarrierConfigManager;
 import android.telephony.CellInfo;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
@@ -63,6 +61,8 @@ public class IwlanEventListenerTest {
     @Mock private TelephonyManager mMockTelephonyManager;
 
     private static final int DEFAULT_SLOT_INDEX = 0;
+    private static final int OTHER_SLOT_INDEX = 1;
+    private static final int DEFAULT_SUB_ID = 0;
     private static final int DEFAULT_CARRIER_INDEX = 0;
     private static final String WIFI_SSID_1 = "TEST_AP_NAME_1";
     private static final String WIFI_SSID_2 = "TEST_AP_NAME_2";
@@ -206,24 +206,18 @@ public class IwlanEventListenerTest {
         events.add(IwlanEventListener.CARRIER_CONFIG_UNKNOWN_CARRIER_EVENT);
         mIwlanEventListener.addEventListener(events, mMockHandler);
 
-        // Send ACTION_CARRIER_CONFIG_CHANGED intent with valid Carrier id
-        final Intent validCarrierIdintent =
-                new Intent(CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED);
-        validCarrierIdintent.putExtra(CarrierConfigManager.EXTRA_SLOT_INDEX, DEFAULT_SLOT_INDEX);
-        validCarrierIdintent.putExtra(TelephonyManager.EXTRA_CARRIER_ID, DEFAULT_CARRIER_INDEX);
-
-        mIwlanEventListener.onBroadcastReceived(validCarrierIdintent);
+        // onCarrierConfigChanged with valid Carrier id
+        mIwlanEventListener.onCarrierConfigChanged(
+                mMockContext, DEFAULT_SLOT_INDEX, DEFAULT_SUB_ID, DEFAULT_CARRIER_INDEX);
 
         verify(mMockMessage, times(1)).sendToTarget();
 
-        // Send ACTION_CARRIER_CONFIG_CHANGED intent with invalid Carrier id
-        final Intent invalidCarrierIdintent =
-                new Intent(CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED);
-        invalidCarrierIdintent.putExtra(CarrierConfigManager.EXTRA_SLOT_INDEX, DEFAULT_SLOT_INDEX);
-        invalidCarrierIdintent.putExtra(
-                TelephonyManager.EXTRA_CARRIER_ID, TelephonyManager.UNKNOWN_CARRIER_ID);
-
-        mIwlanEventListener.onBroadcastReceived(invalidCarrierIdintent);
+        // onCarrierConfigChanged with invalid Carrier id
+        mIwlanEventListener.onCarrierConfigChanged(
+                mMockContext,
+                DEFAULT_SLOT_INDEX,
+                DEFAULT_SUB_ID,
+                TelephonyManager.UNKNOWN_CARRIER_ID);
 
         verify(mMockMessage_2, times(1)).sendToTarget();
     }
@@ -300,6 +294,38 @@ public class IwlanEventListenerTest {
         mTelephonyCallback.onCallStateChanged(TelephonyManager.CALL_STATE_OFFHOOK);
 
         verify(mMockMessage, times(1)).sendToTarget();
+    }
+
+    @Test
+    public void testCallStateChangedMultipleSlots() throws Exception {
+        IwlanEventListener otherSlotIwlanEventListener =
+                IwlanEventListener.getInstance(mMockContext, OTHER_SLOT_INDEX);
+
+        when(mMockHandler.obtainMessage(
+                        eq(IwlanEventListener.CALL_STATE_CHANGED_EVENT),
+                        eq(DEFAULT_SLOT_INDEX),
+                        eq(TelephonyManager.CALL_STATE_OFFHOOK)))
+                .thenReturn(mMockMessage);
+        when(mMockHandler.obtainMessage(
+                        eq(IwlanEventListener.CALL_STATE_CHANGED_EVENT),
+                        eq(OTHER_SLOT_INDEX),
+                        eq(TelephonyManager.CALL_STATE_OFFHOOK)))
+                .thenReturn(mMockMessage_2);
+
+        events = new ArrayList<Integer>();
+        events.add(IwlanEventListener.CALL_STATE_CHANGED_EVENT);
+        mIwlanEventListener.addEventListener(events, mMockHandler);
+        otherSlotIwlanEventListener.addEventListener(events, mMockHandler);
+
+        mIwlanEventListener.registerTelephonyCallback();
+        otherSlotIwlanEventListener.registerTelephonyCallback();
+
+        TelephonyCallback.CallStateListener mTelephonyCallback =
+                mIwlanEventListener.getTelephonyCallback();
+        mTelephonyCallback.onCallStateChanged(TelephonyManager.CALL_STATE_OFFHOOK);
+
+        verify(mMockMessage, times(1)).sendToTarget();
+        verify(mMockMessage_2, never()).sendToTarget();
     }
 
     @Test
