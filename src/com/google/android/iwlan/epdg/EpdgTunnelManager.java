@@ -166,6 +166,7 @@ public class EpdgTunnelManager {
     private int mTransactionId = 0;
     private boolean mHasConnectedToEpdg;
     private final IkeSessionCreator mIkeSessionCreator;
+    private IpSecManager mIpSecManager;
 
     private Map<String, TunnelConfig> mApnNameToTunnelConfig = new ConcurrentHashMap<>();
     private final Map<String, Integer> mApnNameToCurrentToken = new ConcurrentHashMap<>();
@@ -252,7 +253,28 @@ public class EpdgTunnelManager {
         private boolean mIsBackoffTimeValid = false;
         private long mBackoffTime;
 
+        @NonNull final IkeSession mIkeSession;
+
+        IwlanError mError;
+        private IpSecManager.IpSecTunnelInterface mIface;
         private IkeSessionState mIkeSessionState;
+
+        public TunnelConfig(
+                IkeSession ikeSession,
+                TunnelCallback tunnelCallback,
+                TunnelMetricsInterface tunnelMetrics,
+                IpSecManager.IpSecTunnelInterface iface,
+                InetAddress srcIpv6Addr,
+                int srcIpv6PrefixLength) {
+            mTunnelCallback = tunnelCallback;
+            mTunnelMetrics = tunnelMetrics;
+            mIkeSession = ikeSession;
+            mError = new IwlanError(IwlanError.NO_ERROR);
+            mSrcIpv6Address = srcIpv6Addr;
+            mSrcIpv6AddressPrefixLen = srcIpv6PrefixLength;
+            mIface = iface;
+            setIkeSessionState(IkeSessionState.IKE_SESSION_INIT_IN_PROGRESS);
+        }
 
         public IkeSessionState getIkeSessionState() {
             return mIkeSessionState;
@@ -281,26 +303,6 @@ public class EpdgTunnelManager {
         public void setBackoffTime(long backoffTime) {
             mIsBackoffTimeValid = true;
             mBackoffTime = backoffTime;
-        }
-
-        @NonNull final IkeSession mIkeSession;
-        IwlanError mError;
-        private IpSecManager.IpSecTunnelInterface mIface;
-
-        public TunnelConfig(
-                IkeSession ikeSession,
-                TunnelCallback tunnelCallback,
-                TunnelMetricsInterface tunnelMetrics,
-                InetAddress srcIpv6Addr,
-                int srcIpv6PrefixLength) {
-            mTunnelCallback = tunnelCallback;
-            mTunnelMetrics = tunnelMetrics;
-            mIkeSession = ikeSession;
-            mError = new IwlanError(IwlanError.NO_ERROR);
-            mSrcIpv6Address = srcIpv6Addr;
-            mSrcIpv6AddressPrefixLen = srcIpv6PrefixLength;
-
-            setIkeSessionState(IkeSessionState.IKE_SESSION_INIT_IN_PROGRESS);
         }
 
         @NonNull
@@ -384,10 +386,6 @@ public class EpdgTunnelManager {
 
         public IpSecManager.IpSecTunnelInterface getIface() {
             return mIface;
-        }
-
-        public void setIface(IpSecManager.IpSecTunnelInterface iface) {
-            mIface = iface;
         }
 
         public InetAddress getSrcIpv6Address() {
@@ -603,6 +601,7 @@ public class EpdgTunnelManager {
         mContext = context;
         mSlotId = slotId;
         mIkeSessionCreator = new IkeSessionCreator();
+        mIpSecManager = mContext.getSystemService(IpSecManager.class);
         TAG = EpdgTunnelManager.class.getSimpleName() + "[" + mSlotId + "]";
         initHandler();
     }
@@ -732,12 +731,32 @@ public class EpdgTunnelManager {
         return true;
     }
 
+    private IkeSessionParams tryBuildIkeSessionParams(
+            TunnelSetupRequest setupRequest, String apnName, int token) {
+        try {
+            return buildIkeSessionParams(setupRequest, apnName, token);
+        } catch (IwlanSimNotReadyException e) {
+            return null;
+        }
+    }
+
+    private IpSecManager.IpSecTunnelInterface tryCreateIpSecTunnelInterface() {
+        try {
+            return mIpSecManager.createIpSecTunnelInterface(
+                    DUMMY_ADDR /* unused */, DUMMY_ADDR /* unused */, mDefaultNetwork);
+        } catch (IpSecManager.ResourceUnavailableException | IOException e) {
+            Log.e(TAG, "Failed to create tunnel interface. " + e);
+            return null;
+        }
+    }
+
     private void onBringUpTunnel(
             TunnelSetupRequest setupRequest,
             TunnelCallback tunnelCallback,
             TunnelMetricsInterface tunnelMetrics) {
         String apnName = setupRequest.apnName();
         IkeSessionParams ikeSessionParams;
+        IpSecManager.IpSecTunnelInterface iface;
 
         Log.d(
                 TAG,
@@ -748,10 +767,18 @@ public class EpdgTunnelManager {
 
         final int token = incrementAndGetCurrentTokenForApn(apnName);
 
-        try {
-            ikeSessionParams = buildIkeSessionParams(setupRequest, apnName, token);
-        } catch (IwlanSimNotReadyException e) {
+        ikeSessionParams = tryBuildIkeSessionParams(setupRequest, apnName, token);
+        if (Objects.isNull(ikeSessionParams)) {
             IwlanError iwlanError = new IwlanError(IwlanError.SIM_NOT_READY_EXCEPTION);
+            reportIwlanError(apnName, iwlanError);
+            tunnelCallback.onClosed(apnName, iwlanError);
+            tunnelMetrics.onClosed(new OnClosedMetrics.Builder().setApnName(apnName).build());
+            return;
+        }
+
+        iface = tryCreateIpSecTunnelInterface();
+        if (Objects.isNull(iface)) {
+            IwlanError iwlanError = new IwlanError(IwlanError.TUNNEL_TRANSFORM_FAILED);
             reportIwlanError(apnName, iwlanError);
             tunnelCallback.onClosed(apnName, iwlanError);
             tunnelMetrics.onClosed(new OnClosedMetrics.Builder().setApnName(apnName).build());
@@ -775,6 +802,7 @@ public class EpdgTunnelManager {
                 ikeSession,
                 tunnelCallback,
                 tunnelMetrics,
+                iface,
                 isSrcIpv6Present ? setupRequest.srcIpv6Address().get() : null,
                 setupRequest.srcIpv6AddressPrefixLength());
     }
@@ -1620,27 +1648,10 @@ public class EpdgTunnelManager {
                 case EVENT_IPSEC_TRANSFORM_CREATED:
                     IpsecTransformData transformData = (IpsecTransformData) msg.obj;
                     apnName = transformData.getApnName();
-                    IpSecManager ipSecManager = mContext.getSystemService(IpSecManager.class);
                     tunnelConfig = mApnNameToTunnelConfig.get(apnName);
 
-                    if (tunnelConfig.getIface() == null) {
-                        try {
-                            tunnelConfig.setIface(
-                                    ipSecManager.createIpSecTunnelInterface(
-                                            DUMMY_ADDR /* unused */,
-                                            DUMMY_ADDR /* unused */,
-                                            mDefaultNetwork));
-                        } catch (IpSecManager.ResourceUnavailableException | IOException e) {
-                            Log.e(TAG, "Failed to create tunnel interface. " + e);
-                            closeIkeSession(
-                                    apnName, new IwlanError(IwlanError.TUNNEL_TRANSFORM_FAILED));
-                            return;
-                        }
-                    }
-
                     try {
-                        assert ipSecManager != null;
-                        ipSecManager.applyTunnelModeTransform(
+                        mIpSecManager.applyTunnelModeTransform(
                                 tunnelConfig.getIface(),
                                 transformData.getDirection(),
                                 transformData.getTransform());
@@ -2243,6 +2254,7 @@ public class EpdgTunnelManager {
             IkeSession ikeSession,
             TunnelCallback tunnelCallback,
             TunnelMetricsInterface tunnelMetrics,
+            IpSecManager.IpSecTunnelInterface iface,
             InetAddress srcIpv6Addr,
             int srcIPv6AddrPrefixLen) {
         mApnNameToTunnelConfig.put(
@@ -2251,6 +2263,7 @@ public class EpdgTunnelManager {
                         ikeSession,
                         tunnelCallback,
                         tunnelMetrics,
+                        iface,
                         srcIpv6Addr,
                         srcIPv6AddrPrefixLen));
         Log.d(TAG, "Added apn: " + apnName + " to TunnelConfig");
