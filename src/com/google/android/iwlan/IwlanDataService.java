@@ -263,16 +263,16 @@ public class IwlanDataService extends DataService {
                 this.mPduSessionId = mPduSessionId;
             }
 
-            public int getProtocolType() {
-                return mProtocolType;
-            }
-
             public int getLinkMtu() {
                 if ((sDefaultDataTransport == Transport.MOBILE) && sNetworkConnected) {
                     return LINK_MTU_CST;
                 } else {
                     return LINK_MTU; // TODO: need to subtract tunnelling overhead
                 }
+            }
+
+            public @ApnSetting.ProtocolType int getRequestedProtocolType() {
+                return mProtocolType;
             }
 
             public void setProtocolType(int protocolType) {
@@ -614,23 +614,20 @@ public class IwlanDataService extends DataService {
             }
 
             DataCallResponse.Builder responseBuilder = new DataCallResponse.Builder();
-            responseBuilder
-                    .setId(apn.hashCode())
-                    .setProtocolType(tunnelState.getProtocolType())
-                    .setCause(DataFailCause.NONE);
-
-            responseBuilder.setLinkStatus(DataCallResponse.LINK_STATUS_INACTIVE);
             int state = tunnelState.getState();
-
-            if (state == TunnelState.TUNNEL_UP) {
-                responseBuilder.setLinkStatus(DataCallResponse.LINK_STATUS_ACTIVE);
-            }
-
             TunnelLinkProperties tunnelLinkProperties = tunnelState.getTunnelLinkProperties();
             if (tunnelLinkProperties == null) {
-                Log.d(TAG, "PDN with empty linkproperties. TunnelState : " + state);
+                Log.d(TAG, "PDN with empty linkProperties. TunnelState : " + state);
                 return responseBuilder.build();
             }
+            responseBuilder
+                    .setId(apn.hashCode())
+                    .setProtocolType(tunnelLinkProperties.getProtocolType())
+                    .setCause(DataFailCause.NONE)
+                    .setLinkStatus(
+                            state == TunnelState.TUNNEL_UP
+                                    ? DataCallResponse.LINK_STATUS_ACTIVE
+                                    : DataCallResponse.LINK_STATUS_INACTIVE);
 
             // fill wildcard address for gatewayList (used by DataConnection to add routes)
             List<InetAddress> gatewayList = new ArrayList<>();
@@ -1215,7 +1212,7 @@ public class IwlanDataService extends DataService {
                         DataCallResponse.Builder respBuilder = new DataCallResponse.Builder();
                         respBuilder
                                 .setId(apnName.hashCode())
-                                .setProtocolType(tunnelState.getProtocolType());
+                                .setProtocolType(tunnelState.getRequestedProtocolType());
 
                         if (iwlanDataServiceProvider.shouldRetryWithInitialAttachForHandoverRequest(
                                 apnName, tunnelState)) {
