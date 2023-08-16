@@ -67,6 +67,7 @@ import android.telephony.data.DataCallResponse;
 import android.telephony.data.DataProfile;
 import android.telephony.data.DataService;
 import android.telephony.data.DataServiceCallback;
+import android.telephony.data.NetworkSliceInfo;
 import android.telephony.data.IDataServiceCallback;
 import android.telephony.ims.ImsManager;
 import android.telephony.ims.ImsMmTelManager;
@@ -76,8 +77,8 @@ import com.google.android.iwlan.IwlanDataService.IwlanDataServiceProvider.IwlanT
 import com.google.android.iwlan.IwlanDataService.IwlanDataServiceProvider.TunnelState;
 import com.google.android.iwlan.epdg.EpdgSelector;
 import com.google.android.iwlan.epdg.EpdgTunnelManager;
+import com.google.android.iwlan.epdg.NetworkSliceSelectionAssistanceInformation;
 import com.google.android.iwlan.epdg.TunnelLinkProperties;
-import com.google.android.iwlan.epdg.TunnelLinkPropertiesTest;
 import com.google.android.iwlan.epdg.TunnelSetupRequest;
 import com.google.android.iwlan.proto.MetricsAtom;
 
@@ -586,8 +587,7 @@ public class IwlanDataServiceTest {
         List<InetAddress> mPCSFAddressList;
 
         IwlanDataServiceCallback callback = new IwlanDataServiceCallback("requestDataCallList");
-        TunnelLinkProperties mLinkProperties =
-                TunnelLinkPropertiesTest.createTestTunnelLinkProperties();
+        TunnelLinkProperties mLinkProperties = createTunnelLinkProperties();
         mSpyIwlanDataServiceProvider.setTunnelState(
                 dp,
                 new DataServiceCallback(callback),
@@ -604,7 +604,7 @@ public class IwlanDataServiceTest {
         for (DataCallResponse dataCallInfo : mResultDataCallList) {
             assertEquals(dataCallInfo.getId(), TEST_APN_NAME.hashCode());
             assertEquals(dataCallInfo.getLinkStatus(), DataCallResponse.LINK_STATUS_ACTIVE);
-            assertEquals(dataCallInfo.getProtocolType(), ApnSetting.PROTOCOL_IPV4V6);
+            assertEquals(dataCallInfo.getProtocolType(), ApnSetting.PROTOCOL_IP);
             assertEquals(dataCallInfo.getInterfaceName(), INTERFACE_NAME);
 
             mInternalAddressList = dataCallInfo.getAddresses();
@@ -775,7 +775,7 @@ public class IwlanDataServiceTest {
                         any(IwlanTunnelMetricsImpl.class));
 
         /* Check callback result is RESULT_SUCCESS when onOpened() is called. */
-        TunnelLinkProperties tp = TunnelLinkPropertiesTest.createTestTunnelLinkProperties();
+        TunnelLinkProperties tp = createTunnelLinkProperties();
 
         ArgumentCaptor<DataCallResponse> dataCallResponseCaptor =
                 ArgumentCaptor.forClass(DataCallResponse.class);
@@ -1807,5 +1807,30 @@ public class IwlanDataServiceTest {
         onSystemDefaultNetworkConnected(
                 newNetwork2, mLinkProperties, TRANSPORT_WIFI, DEFAULT_SUB_INDEX);
         verify(mMockEpdgTunnelManager, times(1)).closeTunnel(any(), anyBoolean(), any(), any());
+    }
+
+    public static TunnelLinkProperties createTunnelLinkProperties() throws Exception {
+        final String IP_ADDRESS = "192.0.2.1";
+        final String DNS_ADDRESS = "8.8.8.8";
+        final String PSCF_ADDRESS = "10.159.204.230";
+        final String INTERFACE_NAME = "ipsec6";
+        final NetworkSliceInfo SLICE_INFO =
+                NetworkSliceSelectionAssistanceInformation.getSliceInfo(new byte[] {1});
+
+        List<LinkAddress> mInternalAddressList = new ArrayList<>();
+        List<InetAddress> mDNSAddressList = new ArrayList<>();
+        List<InetAddress> mPCSFAddressList = new ArrayList<>();
+
+        mInternalAddressList.add(new LinkAddress(InetAddress.getByName(IP_ADDRESS), 3));
+        mDNSAddressList.add(InetAddress.getByName(DNS_ADDRESS));
+        mPCSFAddressList.add(InetAddress.getByName(PSCF_ADDRESS));
+
+        return TunnelLinkProperties.builder()
+                .setInternalAddresses(mInternalAddressList)
+                .setDnsAddresses(mDNSAddressList)
+                .setPcscfAddresses(mPCSFAddressList)
+                .setIfaceName(INTERFACE_NAME)
+                .setSliceInfo(SLICE_INFO)
+                .build();
     }
 }
