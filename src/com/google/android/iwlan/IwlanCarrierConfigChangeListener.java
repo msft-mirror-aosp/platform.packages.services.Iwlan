@@ -17,12 +17,8 @@
 package com.google.android.iwlan;
 
 import android.content.Context;
-import android.os.Handler;
-import android.os.HandlerThread;
-import android.os.Looper;
 import android.telephony.CarrierConfigManager;
 import android.util.Log;
-import com.android.internal.annotations.VisibleForTesting;
 
 public class IwlanCarrierConfigChangeListener
         implements CarrierConfigManager.CarrierConfigChangeListener {
@@ -31,9 +27,6 @@ public class IwlanCarrierConfigChangeListener
 
     private static boolean mIsListenerRegistered = false;
     private static IwlanCarrierConfigChangeListener mInstance;
-    private static HandlerThread mHandlerThread;
-
-    private Handler mHandler;
 
     public static void startListening(Context context) {
         if (mIsListenerRegistered) {
@@ -42,8 +35,7 @@ public class IwlanCarrierConfigChangeListener
         }
         var carrierConfigManager = context.getSystemService(CarrierConfigManager.class);
         if (carrierConfigManager != null) {
-            carrierConfigManager.registerCarrierConfigChangeListener(
-                    getInstance().getHandler()::post, getInstance());
+            carrierConfigManager.registerCarrierConfigChangeListener(Runnable::run, getInstance());
             mIsListenerRegistered = true;
         }
     }
@@ -62,20 +54,9 @@ public class IwlanCarrierConfigChangeListener
 
     private static IwlanCarrierConfigChangeListener getInstance() {
         if (mInstance == null) {
-            mHandlerThread = new HandlerThread("IwlanCarrierConfigChangeListenerThread");
-            mHandlerThread.start();
-            mInstance = new IwlanCarrierConfigChangeListener(mHandlerThread.getLooper());
+            mInstance = new IwlanCarrierConfigChangeListener();
         }
         return mInstance;
-    }
-
-    @VisibleForTesting
-    IwlanCarrierConfigChangeListener(Looper looper) {
-        mHandler = new Handler(looper);
-    }
-
-    private Handler getHandler() {
-        return mHandler;
     }
 
     @Override

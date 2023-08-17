@@ -22,7 +22,6 @@ import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSess
 import static org.mockito.Mockito.lenient;
 
 import android.content.Context;
-import android.os.test.TestLooper;
 
 import org.junit.After;
 import org.junit.Before;
@@ -34,7 +33,6 @@ import org.mockito.MockitoSession;
 public class IwlanCarrierConfigChangeListenerTest {
     private static final String TAG = "IwlanCarrierConfigChangeListenerTest";
     private IwlanCarrierConfigChangeListener mIwlanCarrierConfigChangeListener;
-    private TestLooper mTestLooper = new TestLooper();
 
     private static final int TEST_SUB_ID = 5;
     private static final int TEST_SLOT_ID = 6;
@@ -55,8 +53,7 @@ public class IwlanCarrierConfigChangeListenerTest {
 
         lenient().when(IwlanDataService.getContext()).thenReturn(mMockContext);
 
-        mIwlanCarrierConfigChangeListener =
-                new IwlanCarrierConfigChangeListener(mTestLooper.getLooper());
+        mIwlanCarrierConfigChangeListener = new IwlanCarrierConfigChangeListener();
     }
 
     @After
@@ -68,7 +65,6 @@ public class IwlanCarrierConfigChangeListenerTest {
     public void testCarrierConfigChanged() {
         mIwlanCarrierConfigChangeListener.onCarrierConfigChanged(
                 TEST_SLOT_ID, TEST_SUB_ID, TEST_CARRIER_ID, TEST_CARRIER_ID);
-        mTestLooper.dispatchAll();
 
         verify(
                 () ->
