@@ -67,9 +67,13 @@ import java.net.UnknownHostException;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
+import com.google.android.iwlan.flags.FeatureFlags;
+
 public class EpdgSelectorTest {
+
     private static final String TAG = "EpdgSelectorTest";
     private EpdgSelector mEpdgSelector;
     public static final int DEFAULT_SLOT_INDEX = 0;
@@ -108,6 +112,7 @@ public class EpdgSelectorTest {
     @Mock private CellInfoNr mMockCellInfoNr;
     @Mock private CellIdentityNr mMockCellIdentityNr;
     @Mock private DnsResolver mMockDnsResolver;
+    @Mock private FeatureFlags mfakeFeatureFlags;
 
     private PersistableBundle mTestBundle;
     private FakeDns mFakeDns;
@@ -124,7 +129,7 @@ public class EpdgSelectorTest {
 
         when(ErrorPolicyManager.getInstance(mMockContext, DEFAULT_SLOT_INDEX))
                 .thenReturn(mMockErrorPolicyManager);
-        mEpdgSelector = spy(new EpdgSelector(mMockContext, DEFAULT_SLOT_INDEX));
+        mEpdgSelector = spy(new EpdgSelector(mMockContext, DEFAULT_SLOT_INDEX, mfakeFeatureFlags));
 
         when(mMockContext.getSystemService(eq(SubscriptionManager.class)))
                 .thenReturn(mMockSubscriptionManager);
@@ -1076,5 +1081,37 @@ public class EpdgSelectorTest {
             // If no answers, do nothing. sendDnsProbeWithTimeout will time out and throw UHE.
             return null;
         }
+    }
+
+    @SuppressWarnings("FutureReturnValueIgnored")
+    @Test
+    public void testMultipleBackToBackSetupDataCallRequest() throws Exception {
+        when(mfakeFeatureFlags.preventEpdgSelectionThreadsExhausted()).thenReturn(true);
+        EpdgSelector epdgSelector =
+                new EpdgSelector(mMockContext, DEFAULT_SLOT_INDEX, mfakeFeatureFlags);
+        Runnable runnable = mock(Runnable.class);
+        // Prefetch
+        epdgSelector.trySubmitEpdgSelectionExecutor(runnable, true, false);
+        // First set up data call
+        epdgSelector.trySubmitEpdgSelectionExecutor(runnable, false, false);
+        // Second set up data call
+        epdgSelector.trySubmitEpdgSelectionExecutor(runnable, false, false);
+    }
+
+    @SuppressWarnings("FutureReturnValueIgnored")
+    @Test
+    public void testBackToBackSetupDataCallRequest() throws Exception {
+        when(mfakeFeatureFlags.preventEpdgSelectionThreadsExhausted()).thenReturn(false);
+        EpdgSelector epdgSelector =
+                new EpdgSelector(mMockContext, DEFAULT_SLOT_INDEX, mfakeFeatureFlags);
+        Runnable runnable = mock(Runnable.class);
+        // Prefetch
+        epdgSelector.trySubmitEpdgSelectionExecutor(runnable, true, false);
+        // First set up data call
+        epdgSelector.trySubmitEpdgSelectionExecutor(runnable, false, false);
+        // Second set up data call request exhausts the thread pool
+        assertThrows(
+                RejectedExecutionException.class,
+                () -> epdgSelector.trySubmitEpdgSelectionExecutor(runnable, false, false));
     }
 }

@@ -48,6 +48,8 @@ import com.google.android.iwlan.ErrorPolicyManager;
 import com.google.android.iwlan.IwlanError;
 import com.google.android.iwlan.IwlanHelper;
 import com.google.android.iwlan.epdg.NaptrDnsResolver.NaptrTarget;
+import com.google.android.iwlan.flags.FeatureFlags;
+import com.google.android.iwlan.flags.FeatureFlagsImpl;
 
 import java.net.Inet4Address;
 import java.net.Inet6Address;
@@ -69,6 +71,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 public class EpdgSelector {
+    private final FeatureFlags mFeatureFlags;
     private static final String TAG = "EpdgSelector";
     private final Context mContext;
     private final int mSlotId;
@@ -87,37 +90,18 @@ public class EpdgSelector {
     private static final long PARALLEL_STATIC_RESOLUTION_TIMEOUT_DURATION_SEC = 6L;
     private static final long PARALLEL_PLMN_RESOLUTION_TIMEOUT_DURATION_SEC = 20L;
     private static final int NUM_EPDG_SELECTION_EXECUTORS = 2; // 1 each for normal selection, SOS.
-    private static final int MAX_EPDG_SELECTION_THREADS = 2; // 1 each for prefetch, tunnel bringup.
     private static final int MAX_DNS_RESOLVER_THREADS = 25; // Do not expect > 25 FQDNs per carrier.
     private static final String NO_DOMAIN = "NO_DOMAIN";
 
-    BlockingQueue<Runnable> dnsResolutionQueue =
-            new ArrayBlockingQueue<>(
-                    MAX_DNS_RESOLVER_THREADS
-                            * MAX_EPDG_SELECTION_THREADS
-                            * NUM_EPDG_SELECTION_EXECUTORS);
+    BlockingQueue<Runnable> dnsResolutionQueue;
 
-    Executor mDnsResolutionExecutor =
-            new ThreadPoolExecutor(
-                    0, MAX_DNS_RESOLVER_THREADS, 60L, TimeUnit.SECONDS, dnsResolutionQueue);
+    Executor mDnsResolutionExecutor;
 
-    ExecutorService mEpdgSelectionExecutor =
-            new ThreadPoolExecutor(
-                    0,
-                    MAX_EPDG_SELECTION_THREADS,
-                    60L,
-                    TimeUnit.SECONDS,
-                    new SynchronousQueue<Runnable>());
-    Future mDnsPrefetchFuture;
+    ExecutorService mEpdgSelectionExecutor;
+    Future<?> mDnsPrefetchFuture;
 
-    ExecutorService mSosEpdgSelectionExecutor =
-            new ThreadPoolExecutor(
-                    0,
-                    MAX_EPDG_SELECTION_THREADS,
-                    60L,
-                    TimeUnit.SECONDS,
-                    new SynchronousQueue<Runnable>());
-    Future mSosDnsPrefetchFuture;
+    ExecutorService mSosEpdgSelectionExecutor;
+    Future<?> mSosDnsPrefetchFuture;
 
     final Comparator<InetAddress> inetAddressComparator =
             (ip1, ip2) -> {
@@ -152,15 +136,47 @@ public class EpdgSelector {
     }
 
     @VisibleForTesting
-    EpdgSelector(Context context, int slotId) {
+    EpdgSelector(Context context, int slotId, FeatureFlags featureFlags) {
         mContext = context;
         mSlotId = slotId;
-
+        mFeatureFlags = featureFlags;
         mErrorPolicyManager = ErrorPolicyManager.getInstance(mContext, mSlotId);
+        initializeExecutors();
+    }
+
+    private void initializeExecutors() {
+        int maxEpdgSelectionThreads = mFeatureFlags.preventEpdgSelectionThreadsExhausted() ? 3 : 2;
+
+        dnsResolutionQueue =
+                new ArrayBlockingQueue<>(
+                        MAX_DNS_RESOLVER_THREADS
+                                * maxEpdgSelectionThreads
+                                * NUM_EPDG_SELECTION_EXECUTORS);
+
+        mDnsResolutionExecutor =
+                new ThreadPoolExecutor(
+                        0, MAX_DNS_RESOLVER_THREADS, 60L, TimeUnit.SECONDS, dnsResolutionQueue);
+
+        mEpdgSelectionExecutor =
+                new ThreadPoolExecutor(
+                        0,
+                        maxEpdgSelectionThreads,
+                        60L,
+                        TimeUnit.SECONDS,
+                        new SynchronousQueue<>());
+
+        mSosEpdgSelectionExecutor =
+                new ThreadPoolExecutor(
+                        0,
+                        maxEpdgSelectionThreads,
+                        60L,
+                        TimeUnit.SECONDS,
+                        new SynchronousQueue<>());
     }
 
     public static EpdgSelector getSelectorInstance(Context context, int slotId) {
-        mSelectorInstances.computeIfAbsent(slotId, k -> new EpdgSelector(context, slotId));
+        mSelectorInstances.computeIfAbsent(
+                slotId, k -> new EpdgSelector(context, slotId, new FeatureFlagsImpl()));
         return mSelectorInstances.get(slotId);
     }
 
@@ -1113,8 +1129,9 @@ public class EpdgSelector {
         }
     }
 
-    // Cancels duplicate prefetches a prefetch is already running. Always schedules tunnel bringup.
-    private void trySubmitEpdgSelectionExecutor(
+    // Cancels duplicate prefetches if a prefetch is already running. Always schedules tunnel
+    // bringup.
+    protected void trySubmitEpdgSelectionExecutor(
             Runnable runnable, boolean isPrefetch, boolean isEmergency) {
         if (isEmergency) {
             if (isPrefetch) {
