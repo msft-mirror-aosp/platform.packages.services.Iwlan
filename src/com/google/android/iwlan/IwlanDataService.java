@@ -404,7 +404,7 @@ public class IwlanDataService extends DataService {
             public void onOpened(String apnName, TunnelLinkProperties linkProperties) {
                 Log.d(
                         SUB_TAG,
-                        "Tunnel opened!. APN: " + apnName + "linkproperties: " + linkProperties);
+                        "Tunnel opened! APN: " + apnName + ", linkProperties: " + linkProperties);
                 getIwlanDataServiceHandler()
                         .sendMessage(
                                 getIwlanDataServiceHandler()
@@ -417,7 +417,7 @@ public class IwlanDataService extends DataService {
             }
 
             public void onClosed(String apnName, IwlanError error) {
-                Log.d(SUB_TAG, "Tunnel closed!. APN: " + apnName + " Error: " + error);
+                Log.d(SUB_TAG, "Tunnel closed! APN: " + apnName + ", Error: " + error);
                 // this is called, when a tunnel that is up, is closed.
                 // the expectation is error==NO_ERROR for user initiated/normal close.
                 getIwlanDataServiceHandler()
