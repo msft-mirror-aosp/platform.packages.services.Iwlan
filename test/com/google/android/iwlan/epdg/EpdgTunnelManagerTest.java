@@ -1867,23 +1867,13 @@ public class EpdgTunnelManagerTest {
     }
 
     @Test
-    public void testEnableN1modeCapabilityWithValidPduSessionId_nonInclusion() throws Exception {
-        verifyN1modeCapability(0, false);
+    public void testUnsetPduSessionIdInclusion() throws Exception {
+        verifyN1modeCapability(0);
     }
 
     @Test
-    public void testDisableN1modeCapabilityWithInvalidPduSessionId_nonInclusion() throws Exception {
-        verifyN1modeCapability(0, false);
-    }
-
-    @Test
-    public void testEnableN1modeCapabilityWithValidPduSessionId_inclusion() throws Exception {
-        verifyN1modeCapability(8, true);
-    }
-
-    @Test
-    public void testDisableN1modeCapabilityWithValidPduSessionId_nonInclusion() throws Exception {
-        verifyN1modeCapability(8, false);
+    public void testPduSessionIdInclusion() throws Exception {
+        verifyN1modeCapability(8);
     }
 
     @Test
@@ -1992,9 +1982,7 @@ public class EpdgTunnelManagerTest {
         verify(mMockIwlanTunnelCallback, times(1)).onClosed(eq(testApnName), eq(error));
     }
 
-    private void verifyN1modeCapability(int pduSessionId, boolean isN1ModeSupported)
-            throws Exception {
-        doReturn(isN1ModeSupported).when(mEpdgTunnelManager).isN1ModeSupported();
+    private void verifyN1modeCapability(int pduSessionId) throws Exception {
 
         String testApnName = "www.xyz.com";
         byte pduSessionIdToByte = (byte) pduSessionId;
@@ -2048,11 +2036,7 @@ public class EpdgTunnelManagerTest {
 
         byte pduSessionIdByte =
                 ikeSessionParams.getIke3gppExtension().getIke3gppParams().getPduSessionId();
-        if (isN1ModeSupported && pduSessionId != 0) {
-            assertEquals(pduSessionIdToByte, pduSessionIdByte);
-        } else {
-            assertEquals(0, pduSessionIdByte);
-        }
+        assertEquals(pduSessionIdToByte, pduSessionIdByte);
     }
 
     @Test
@@ -2630,33 +2614,6 @@ public class EpdgTunnelManagerTest {
         verify(mMockIkeSession, times(1)).setNetwork(eq(newNetwork));
         verify(mEpdgTunnelManager, never()).reportIwlanError(eq(TEST_APN_NAME), eq(error));
         verify(mMockIwlanTunnelCallback, times(1)).onClosed(eq(TEST_APN_NAME), eq(error));
-    }
-
-    private boolean verifyIsN1ModeSupported(int[] nrAvailability) {
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putIntArray(
-                CarrierConfigManager.KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY, nrAvailability);
-
-        setupMockForGetConfig(bundle);
-
-        return mEpdgTunnelManager.isN1ModeSupported();
-    }
-
-    @Test
-    public void testIsN1ModeSupportedTrue() throws Exception {
-        assertTrue(
-                verifyIsN1ModeSupported(
-                        new int[] {
-                            CarrierConfigManager.CARRIER_NR_AVAILABILITY_NSA,
-                            CarrierConfigManager.CARRIER_NR_AVAILABILITY_SA
-                        }));
-    }
-
-    @Test
-    public void testIsN1ModeSupportedFalse() throws Exception {
-        assertFalse(
-                verifyIsN1ModeSupported(
-                        new int[] {CarrierConfigManager.CARRIER_NR_AVAILABILITY_NSA}));
     }
 
     @Test
