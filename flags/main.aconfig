@@ -12,3 +12,9 @@ flag {
     description: "Exclude the failed ip address in epdg selection until tunnel establish successfully or all ip address candidates are failed"
     bug: "300026897"
 }
+flag {
+    name: "update_n1_mode_on_ui_change"
+    namespace: "iwlan_telephony"
+    description: "Enables a 5G SA capable UE to re-establish PDN connections over Wi-Fi with/without N1_MODE_CAPABILITY, when the user enables/disables 5G via UI/UX."
+    bug: "273384888"
+}
