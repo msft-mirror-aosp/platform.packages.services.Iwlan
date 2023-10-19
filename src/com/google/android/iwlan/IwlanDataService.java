@@ -53,6 +53,8 @@ import android.telephony.data.ApnSetting;
 import android.telephony.data.DataCallResponse;
 import android.telephony.data.DataProfile;
 import android.telephony.data.DataService;
+import android.telephony.data.DataService.SetupDataReason;
+import android.telephony.data.DataService.DeactivateDataReason;
 import android.telephony.data.DataServiceCallback;
 import android.telephony.data.NetworkSliceInfo;
 import android.telephony.data.TrafficDescriptor;
@@ -747,7 +749,7 @@ public class IwlanDataService extends DataService {
                 @NonNull DataProfile dataProfile,
                 boolean isRoaming,
                 boolean allowRoaming,
-                int reason,
+                @SetupDataReason int reason,
                 @Nullable LinkProperties linkProperties,
                 @IntRange(from = 0, to = 15) int pduSessionId,
                 @Nullable NetworkSliceInfo sliceInfo,
@@ -760,18 +762,18 @@ public class IwlanDataService extends DataService {
                     SUB_TAG,
                     "Setup data call with network: "
                             + accessNetworkType
+                            + ", reason: "
+                            + requestReasonToString(reason)
+                            + ", pduSessionId: "
+                            + pduSessionId
                             + ", DataProfile: "
                             + dataProfile
                             + ", isRoaming:"
                             + isRoaming
                             + ", allowRoaming: "
                             + allowRoaming
-                            + ", reason: "
-                            + reason
                             + ", linkProperties: "
-                            + linkProperties
-                            + ", pduSessionId: "
-                            + pduSessionId);
+                            + linkProperties);
 
             SetupDataCallData setupDataCallData =
                     new SetupDataCallData(
@@ -832,15 +834,15 @@ public class IwlanDataService extends DataService {
          * @param callback The result callback for this request. Null if the client does not care
          */
         @Override
-        public void deactivateDataCall(int cid, int reason, DataServiceCallback callback) {
+        public void deactivateDataCall(
+                int cid, @DeactivateDataReason int reason, DataServiceCallback callback) {
             Log.d(
                     SUB_TAG,
-                    "Deactivate data call "
-                            + " reason: "
-                            + reason
-                            + " cid: "
+                    "Deactivate data call with reason: "
+                            + requestReasonToString(reason)
+                            + ", cid: "
                             + cid
-                            + "callback: "
+                            + ", callback: "
                             + callback);
 
             DeactivateDataCallData deactivateDataCallData =
@@ -2093,6 +2095,21 @@ public class IwlanDataService extends DataService {
         getIwlanDataServiceHandler()
                 .sendMessage(getIwlanDataServiceHandler().obtainMessage(EVENT_FORCE_CLOSE_TUNNEL));
         return super.onUnbind(intent);
+    }
+
+    private String requestReasonToString(int reason) {
+        switch (reason) {
+            case DataService.REQUEST_REASON_UNKNOWN:
+                return "UNKNOWN";
+            case DataService.REQUEST_REASON_NORMAL:
+                return "NORMAL";
+            case DataService.REQUEST_REASON_SHUTDOWN:
+                return "SHUTDOWN";
+            case DataService.REQUEST_REASON_HANDOVER:
+                return "HANDOVER";
+            default:
+                return "UNKNOWN(" + reason + ")";
+        }
     }
 
     @Override
