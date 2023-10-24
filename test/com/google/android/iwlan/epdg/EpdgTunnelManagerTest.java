@@ -207,9 +207,7 @@ public class EpdgTunnelManagerTest {
 
         when(mMockIkeSessionConnectionInfo.getNetwork()).thenReturn(mMockDefaultNetwork);
 
-        doReturn(EXPECTED_LOCAL_ADDRESSES)
-                .when(mEpdgTunnelManager)
-                .getAddressForNetwork(any(), any());
+        doReturn(EXPECTED_LOCAL_ADDRESSES).when(mEpdgTunnelManager).getAddressForNetwork(any());
 
         when(mMockLinkProperties.isReachable(any())).thenReturn(true);
         mEpdgTunnelManager.updateNetwork(mMockDefaultNetwork, mMockLinkProperties);
@@ -2180,7 +2178,7 @@ public class EpdgTunnelManagerTest {
         doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(TEST_APN_NAME));
         doReturn(EXPECTED_IPV6_LOCAL_ADDRESSES)
                 .when(mEpdgTunnelManager)
-                .getAddressForNetwork(any(), any());
+                .getAddressForNetwork(any());
 
         PersistableBundle bundle = new PersistableBundle();
         bundle.putInt(

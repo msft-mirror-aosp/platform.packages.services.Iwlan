@@ -110,8 +110,15 @@ public class IwlanHelper {
         return info;
     }
 
-    // Retrieves all IP addresses for this Network, including stacked IPv4 link addresses.
-    public static List<InetAddress> getAllAddressesForNetwork(Network network, Context context) {
+    /**
+     * Retrieves all IP addresses of a Network, including stacked IPv4 addresses.
+     *
+     * @param context a valid {@link Context} instance.
+     * @param network the network for which IP addresses are to be retrieved.
+     * @return a list of all IP addresses for the specified network. Returns an empty list if none
+     *     are found.
+     */
+    public static List<InetAddress> getAllAddressesForNetwork(Context context, Network network) {
         ConnectivityManager connectivityManager =
                 context.getSystemService(ConnectivityManager.class);
         List<InetAddress> gatewayList = new ArrayList<>();
