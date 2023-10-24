@@ -2297,8 +2297,8 @@ public class EpdgTunnelManager {
     }
 
     @VisibleForTesting
-    List<InetAddress> getAddressForNetwork(Network network, Context context) {
-        return IwlanHelper.getAllAddressesForNetwork(network, context);
+    List<InetAddress> getAddressForNetwork(Network network) {
+        return IwlanHelper.getAllAddressesForNetwork(mContext, network);
     }
 
     @VisibleForTesting
@@ -2420,7 +2420,7 @@ public class EpdgTunnelManager {
     @VisibleForTesting
     IpPreferenceConflict isIpPreferenceConflictsWithNetwork(
             @CarrierConfigManager.Iwlan.EpdgAddressIpPreference int ipPreference) {
-        List<InetAddress> localAddresses = getAddressForNetwork(mDefaultNetwork, mContext);
+        List<InetAddress> localAddresses = getAddressForNetwork(mDefaultNetwork);
         if (localAddresses == null || localAddresses.size() == 0) {
             Log.e(TAG, "No local addresses available for Network " + mDefaultNetwork);
             return new IpPreferenceConflict(true, IwlanError.EPDG_SELECTOR_SERVER_SELECTION_FAILED);
