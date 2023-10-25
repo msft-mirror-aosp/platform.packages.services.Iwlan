@@ -300,12 +300,12 @@ public class EpdgSelector {
 
     @VisibleForTesting
     protected boolean hasIpv4Address(Network network) {
-        return IwlanHelper.hasIpv4Address(IwlanHelper.getAllAddressesForNetwork(network, mContext));
+        return IwlanHelper.hasIpv4Address(IwlanHelper.getAllAddressesForNetwork(mContext, network));
     }
 
     @VisibleForTesting
     protected boolean hasIpv6Address(Network network) {
-        return IwlanHelper.hasIpv6Address(IwlanHelper.getAllAddressesForNetwork(network, mContext));
+        return IwlanHelper.hasIpv6Address(IwlanHelper.getAllAddressesForNetwork(mContext, network));
     }
 
     private void printParallelDnsResult(Map<String, List<InetAddress>> domainNameToIpAddresses) {
