@@ -820,10 +820,10 @@ public class ErrorPolicyManagerTest {
         assertEquals(DataFailCause.IWLAN_PDN_CONNECTION_REJECTION, failCause);
 
         long retryTime =
-                Math.round((double) mErrorPolicyManager.getCurrentRetryTimeMs(apn1) / 1000);
+                Math.round((double) mErrorPolicyManager.getRemainingRetryTimeMs(apn1) / 1000);
         assertEquals(4, retryTime);
 
-        retryTime = Math.round((double) mErrorPolicyManager.getCurrentRetryTimeMs(apn2) / 1000);
+        retryTime = Math.round((double) mErrorPolicyManager.getRemainingRetryTimeMs(apn2) / 1000);
         assertEquals(5, retryTime);
     }
 
@@ -868,7 +868,7 @@ public class ErrorPolicyManagerTest {
         IwlanError iwlanError = buildIwlanIkeAuthFailedError();
         long time = mErrorPolicyManager.reportIwlanError(apn, iwlanError, 2);
 
-        time = Math.round((double) mErrorPolicyManager.getCurrentRetryTimeMs(apn) / 1000);
+        time = Math.round((double) mErrorPolicyManager.getRemainingRetryTimeMs(apn) / 1000);
         assertEquals(time, 2);
 
         // advanceClockByTimeMs for 2 seconds and make sure that we can bring up tunnel after 2 secs
@@ -885,7 +885,7 @@ public class ErrorPolicyManagerTest {
         assertFalse(bringUpTunnel);
 
         time = mErrorPolicyManager.reportIwlanError(apn, iwlanError, 5);
-        time = Math.round((double) mErrorPolicyManager.getCurrentRetryTimeMs(apn) / 1000);
+        time = Math.round((double) mErrorPolicyManager.getRemainingRetryTimeMs(apn) / 1000);
         assertEquals(time, 5);
 
         // test whether the same error reported later starts from the beginning of retry array

@@ -24,6 +24,7 @@ import android.os.Looper;
 import android.os.Message;
 import android.support.annotation.IntDef;
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.telephony.DataFailCause;
 import android.telephony.TelephonyManager;
 import android.telephony.data.DataService;
@@ -149,8 +150,8 @@ public class ErrorPolicyManager {
     // String APN as key to identify the ErrorPolicies associated with it.
     private final Map<String, List<ErrorPolicy>> mCarrierConfigPolicies = new HashMap<>();
 
-    // String APN as key to identify the ErrorInfo associated with that APN
-    private final Map<String, ErrorInfo> mLastErrorForApn = new ConcurrentHashMap<>();
+    /** String APN as key to identify the {@link RetryAction} associated with that APN */
+    private final Map<String, RetryAction> mLastRetryActionForApn = new ConcurrentHashMap<>();
 
     // Records the most recently reported IwlanError (including NO_ERROR), and the corresponding
     // APN.
@@ -196,6 +197,33 @@ public class ErrorPolicyManager {
         mInstances.remove(mSlotId);
     }
 
+    private boolean shouldAccumulateRetryIndex(
+            @Nullable RetryAction prevRetryAction, IwlanError newIwlanError) {
+        if (!(prevRetryAction instanceof PolicyDerivedRetryAction)) {
+            return false;
+        }
+
+        boolean isSameIwlanError = prevRetryAction.error().equals(newIwlanError);
+        // If prev and current error are both IKE_PROTOCOL_EXCEPTION, keep the retry index
+        // TODO: b/292312000 - Workaround for RetryIndex lost
+        boolean areBothIkeProtocolException =
+                (newIwlanError.getErrorType() == IwlanError.IKE_PROTOCOL_EXCEPTION
+                        && prevRetryAction.error().getErrorType()
+                                == IwlanError.IKE_PROTOCOL_EXCEPTION);
+        boolean shouldAccumulateRetryIndex = isSameIwlanError || areBothIkeProtocolException;
+
+        if (!shouldAccumulateRetryIndex) {
+            Log.d(
+                    LOG_TAG,
+                    "Doesn't match to the previous error, prev: "
+                            + prevRetryAction
+                            + ", new: "
+                            + newIwlanError);
+        }
+
+        return shouldAccumulateRetryIndex;
+    }
+
     /**
      * Updates the last error details and returns the retry time. Return value is -1, which should
      * be ignored, when the error is IwlanError.NO_ERROR.
@@ -206,80 +234,66 @@ public class ErrorPolicyManager {
      */
     public synchronized long reportIwlanError(String apn, IwlanError iwlanError) {
         // Fail by default
-        long retryTime = -1;
         mMostRecentError = new ApnWithIwlanError(apn, iwlanError);
 
         if (iwlanError.getErrorType() == IwlanError.NO_ERROR) {
             Log.d(LOG_TAG, "reportIwlanError: NO_ERROR");
-            mLastErrorForApn.remove(apn);
-            return retryTime;
+            mLastRetryActionForApn.remove(apn);
+            return -1;
         }
         mErrorStats.update(apn, iwlanError);
 
-        // remove the entry with the same error if it has back off time
-        if (mLastErrorForApn.containsKey(apn)
-                && mLastErrorForApn.get(apn).getError().equals(iwlanError)
-                && mLastErrorForApn.get(apn).isBackOffTimeValid()) {
-            mLastErrorForApn.remove(apn);
-        }
-        if (!mLastErrorForApn.containsKey(apn)
-                || !mLastErrorForApn.get(apn).getError().equals(iwlanError)) {
-            Log.d(LOG_TAG, "Doesn't match to the previous error" + iwlanError);
-            ErrorPolicy policy = findErrorPolicy(apn, iwlanError);
-            ErrorInfo errorInfo = new ErrorInfo(iwlanError, policy);
-            if (mLastErrorForApn.containsKey(apn)) {
-                ErrorInfo prevErrorInfo = mLastErrorForApn.get(apn);
-                IwlanError prevIwlanError = prevErrorInfo.getError();
-                // If prev and current error are both IKE_PROTOCOL_EXCEPTION, keep the retry index
-                // TODO: b/292312000 - Workaround for RetryIndex lost
-                if (iwlanError.getErrorType() == IwlanError.IKE_PROTOCOL_EXCEPTION
-                        && prevIwlanError.getErrorType() == IwlanError.IKE_PROTOCOL_EXCEPTION) {
-                    errorInfo.setCurrentRetryIndex(prevErrorInfo.getCurrentRetryIndex());
-                }
-            }
-            mLastErrorForApn.put(apn, errorInfo);
-        }
-        retryTime = mLastErrorForApn.get(apn).updateCurrentRetryTime();
-        return retryTime;
+        @Nullable RetryAction prevRetryAction = mLastRetryActionForApn.get(apn);
+        boolean shouldAccumulateRetryIndex =
+                shouldAccumulateRetryIndex(prevRetryAction, iwlanError);
+
+        ErrorPolicy policy = findErrorPolicy(apn, iwlanError);
+        PolicyDerivedRetryAction newRetryAction =
+                shouldAccumulateRetryIndex
+                        ? PolicyDerivedRetryAction.create(
+                                iwlanError,
+                                policy,
+                                ((PolicyDerivedRetryAction) prevRetryAction).currentRetryIndex()
+                                        + 1)
+                        : PolicyDerivedRetryAction.create(iwlanError, policy, 0);
+        mLastRetryActionForApn.put(apn, newRetryAction);
+
+        Log.d(
+                LOG_TAG,
+                "Current RetryAction index: "
+                        + newRetryAction.currentRetryIndex()
+                        + " and time: "
+                        + newRetryAction.totalRetryTimeMs());
+        return newRetryAction.totalRetryTimeMs() / 1000;
     }
 
     /**
-     * Updates the last error details with back off time. Return value is -1, which should be
-     * ignored, when the error is IwlanError.NO_ERROR.
+     * Updates the last error details with backoff time.
      *
      * @param apn apn name for which the error happened
      * @param iwlanError Error
-     * @param backOffTime in seconds
-     * @return retry time which is the backoff time. -1 if it is NO_ERROR
+     * @param backoffTime in seconds
+     * @return retry time which is the backoff time. -1 if it is {@link IwlanError#NO_ERROR}
      */
-    public synchronized long reportIwlanError(String apn, IwlanError iwlanError, long backOffTime) {
+    public synchronized long reportIwlanError(String apn, IwlanError iwlanError, long backoffTime) {
         // Fail by default
         long retryTime = -1;
 
         if (iwlanError.getErrorType() == IwlanError.NO_ERROR) {
             Log.d(LOG_TAG, "reportIwlanError: NO_ERROR");
-            mLastErrorForApn.remove(apn);
+            mLastRetryActionForApn.remove(apn);
             return retryTime;
         }
         mErrorStats.update(apn, iwlanError);
 
-        // remove the entry with the same error if it doesn't have back off time.
-        if (mLastErrorForApn.containsKey(apn)
-                && mLastErrorForApn.get(apn).getError().equals(iwlanError)
-                && !mLastErrorForApn.get(apn).isBackOffTimeValid()) {
-            mLastErrorForApn.remove(apn);
-        }
-        retryTime = backOffTime;
-        if (!mLastErrorForApn.containsKey(apn)
-                || !mLastErrorForApn.get(apn).getError().equals(iwlanError)) {
-            Log.d(LOG_TAG, "Doesn't match to the previous error" + iwlanError);
-            ErrorPolicy policy = findErrorPolicy(apn, iwlanError);
-            ErrorInfo errorInfo = new ErrorInfo(iwlanError, policy, backOffTime);
-            mLastErrorForApn.put(apn, errorInfo);
-        } else {
-            ErrorInfo info = mLastErrorForApn.get(apn);
-            info.setBackOffTime(backOffTime);
-        }
+        retryTime = backoffTime;
+        ErrorPolicy policy = findErrorPolicy(apn, iwlanError);
+        // For configured backoff time case, simply create new RetryAction, nothing need to keep
+        IkeBackoffNotifyRetryAction newRetryAction =
+                IkeBackoffNotifyRetryAction.create(iwlanError, policy, backoffTime);
+        mLastRetryActionForApn.put(apn, newRetryAction);
+
+        Log.d(LOG_TAG, "Current configured backoff time: " + newRetryAction.backoffTime());
         return retryTime;
     }
 
@@ -291,8 +305,10 @@ public class ErrorPolicyManager {
      */
     public synchronized boolean canBringUpTunnel(String apn) {
         boolean ret = true;
-        if (mLastErrorForApn.containsKey(apn)) {
-            ret = mLastErrorForApn.get(apn).canBringUpTunnel();
+        if (mLastRetryActionForApn.containsKey(apn)) {
+            RetryAction lastRetryAction = mLastRetryActionForApn.get(apn);
+            long remainingRetryTime = getRemainingRetryTimeMs(lastRetryAction);
+            ret = remainingRetryTime <= 0;
         }
         Log.d(LOG_TAG, "canBringUpTunnel: " + ret);
         return ret;
@@ -308,10 +324,10 @@ public class ErrorPolicyManager {
      * @return DataFailCause corresponding to the error for the apn
      */
     public synchronized int getDataFailCause(String apn) {
-        if (!mLastErrorForApn.containsKey(apn)) {
+        if (!mLastRetryActionForApn.containsKey(apn)) {
             return DataFailCause.NONE;
         }
-        IwlanError error = mLastErrorForApn.get(apn).getError();
+        IwlanError error = mLastRetryActionForApn.get(apn).error();
         return getDataFailCause(error);
     }
 
@@ -429,16 +445,29 @@ public class ErrorPolicyManager {
      * @param apn apn name for which curren retry time is needed
      * @return long current retry time in milliseconds
      */
-    public synchronized long getCurrentRetryTimeMs(String apn) {
-        if (!mLastErrorForApn.containsKey(apn)) {
+    public synchronized long getRemainingRetryTimeMs(String apn) {
+        RetryAction lastRetryAction = mLastRetryActionForApn.get(apn);
+        if (lastRetryAction == null) {
             return -1;
         }
-        return mLastErrorForApn.get(apn).getCurrentRetryTime();
+        return getRemainingRetryTimeMs(lastRetryAction);
+    }
+
+    /**
+     * Get the remaining time in millis should be waited before retry, based on the current time and
+     * the RetryAction.
+     */
+    private static long getRemainingRetryTimeMs(RetryAction retryAction) {
+        long totalRetryTimeMs = retryAction.totalRetryTimeMs();
+        long errorTime = retryAction.lastErrorTime();
+        long currentTime = IwlanHelper.elapsedRealtime();
+        return Math.max(0, totalRetryTimeMs - (currentTime - errorTime));
     }
 
     /**
      * Returns the index of the FQDN to use for ePDG server selection, based on how many FQDNs are
      * available, the position of the RetryArray index, and configuration of 'NumAttemptsPerFqdn'.
+     * This method assumes backoff time is not configured.
      *
      * @param numFqdns number of FQDNs discovered during ePDG server selection.
      * @return int index of the FQDN to use for ePDG server selection. -1 (invalid) if RetryArray or
@@ -446,11 +475,11 @@ public class ErrorPolicyManager {
      */
     public synchronized int getCurrentFqdnIndex(int numFqdns) {
         String apn = mMostRecentError.mApn;
-        if (!mLastErrorForApn.containsKey(apn)) {
+        if (!mLastRetryActionForApn.containsKey(apn)) {
             return -1;
         }
-        ErrorInfo errorInfo = mLastErrorForApn.get(apn);
-        return errorInfo.getCurrentFqdnIndex(numFqdns);
+        RetryAction retryAction = mLastRetryActionForApn.get(apn);
+        return retryAction.getCurrentFqdnIndex(numFqdns);
     }
 
     /**
@@ -460,8 +489,8 @@ public class ErrorPolicyManager {
      * @return IwlanError or null if there is no error
      */
     public synchronized IwlanError getLastError(String apn) {
-        if (mLastErrorForApn.containsKey(apn)) {
-            return mLastErrorForApn.get(apn).getError();
+        if (mLastRetryActionForApn.containsKey(apn)) {
+            return mLastRetryActionForApn.get(apn).error();
         }
         return new IwlanError(IwlanError.NO_ERROR);
     }
@@ -475,8 +504,8 @@ public class ErrorPolicyManager {
      *     bringup request when handover request fails
      */
     public synchronized boolean shouldRetryWithInitialAttach(String apn) {
-        ErrorInfo errorInfo = mLastErrorForApn.get(apn);
-        return errorInfo != null && errorInfo.shouldRetryWithInitialAttach();
+        RetryAction retryAction = mLastRetryActionForApn.get(apn);
+        return retryAction != null && retryAction.shouldRetryWithInitialAttach();
     }
 
     public void logErrorPolicies() {
@@ -498,9 +527,10 @@ public class ErrorPolicyManager {
 
     public synchronized void dump(PrintWriter pw) {
         pw.println("---- ErrorPolicyManager ----");
-        for (Map.Entry<String, ErrorInfo> entry : mLastErrorForApn.entrySet()) {
-            pw.print("APN: " + entry.getKey() + " IwlanError: " + entry.getValue().getError());
-            pw.println(" currentRetryTime: " + entry.getValue().getCurrentRetryTime());
+        for (Map.Entry<String, RetryAction> entry : mLastRetryActionForApn.entrySet()) {
+            pw.print("APN: " + entry.getKey() + " IwlanError: " + entry.getValue().error());
+            pw.println(" lastErrorTime: " + entry.getValue().lastErrorTime());
+            pw.println(" totalRetryTime: " + entry.getValue().totalRetryTimeMs());
         }
         pw.println(mErrorStats);
         pw.println("----------------------------");
@@ -868,15 +898,15 @@ public class ErrorPolicyManager {
     private synchronized void unthrottleLastErrorOnEvent(int event) {
         Log.d(LOG_TAG, "unthrottleLastErrorOnEvent: " + event);
         if (event == IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT) {
-            mLastErrorForApn.clear();
+            mLastRetryActionForApn.clear();
             return;
         }
         String apn;
-        for (Map.Entry<String, ErrorInfo> entry : mLastErrorForApn.entrySet()) {
-            ErrorPolicy errorPolicy = entry.getValue().getErrorPolicy();
+        for (Map.Entry<String, RetryAction> entry : mLastRetryActionForApn.entrySet()) {
+            ErrorPolicy errorPolicy = entry.getValue().errorPolicy();
             if (errorPolicy.canUnthrottle(event)) {
                 apn = entry.getKey();
-                mLastErrorForApn.remove(apn);
+                mLastRetryActionForApn.remove(apn);
                 DataService.DataServiceProvider provider =
                         IwlanDataService.getDataServiceProvider(mSlotId);
                 if (provider != null) {
@@ -1072,126 +1102,88 @@ public class ErrorPolicyManager {
         }
     }
 
-    class ErrorInfo {
-        IwlanError mError;
-        ErrorPolicy mErrorPolicy;
+    /**
+     * A data class to store the error cause and the applied error policy. This class is responsible
+     * to calculate the retry time base on the error policy / config.
+     */
+    interface RetryAction {
+        IwlanError error();
 
-        // For the lifetime of the ErrorInfo object, this is a monotonically incremented value that
-        // can go beyond the size of mErrorPolicy's mRetryArray.
-        int mCurrentRetryIndex;
-        long mLastErrorTime;
-        boolean mIsBackOffTimeValid;
-        long mBackOffTime;
+        ErrorPolicy errorPolicy();
 
-        ErrorInfo(IwlanError error, ErrorPolicy errorPolicy) {
-            mError = error;
-            mErrorPolicy = errorPolicy;
-            mCurrentRetryIndex = -1;
-            mLastErrorTime = IwlanHelper.elapsedRealtime();
+        long lastErrorTime();
+
+        /** The total time should be waited between lastErrorTime and next retry. */
+        long totalRetryTimeMs();
+
+        boolean shouldRetryWithInitialAttach();
+
+        int getCurrentFqdnIndex(int numFqdns);
+    }
+
+    /** RetryAction with retry time defined by retry index and error policy */
+    @AutoValue
+    abstract static class PolicyDerivedRetryAction implements RetryAction {
+        abstract int currentRetryIndex();
+
+        @Override
+        public long totalRetryTimeMs() {
+            return TimeUnit.SECONDS.toMillis(errorPolicy().getRetryTime(currentRetryIndex()));
         }
 
-        ErrorInfo(IwlanError error, ErrorPolicy errorPolicy, long backOffTime) {
-            mError = error;
-            mErrorPolicy = errorPolicy;
-            mCurrentRetryIndex = -1;
-            mIsBackOffTimeValid = true;
-            mBackOffTime = backOffTime;
-            mLastErrorTime = IwlanHelper.elapsedRealtime();
+        @Override
+        public int getCurrentFqdnIndex(int numFqdns) {
+            ErrorPolicy errorPolicy = errorPolicy();
+            return errorPolicy.getCurrentFqdnIndex(currentRetryIndex(), numFqdns);
         }
 
-        int getCurrentRetryIndex() {
-            return mCurrentRetryIndex;
-        }
-
-        void setCurrentRetryIndex(int currentRetryIndex) {
-            mCurrentRetryIndex = currentRetryIndex;
-        }
-
-        /**
-         * Updates the current retry index and returns the retry time at new index position and also
-         * updates mLastErrorTime to current time. returns -1 if the index is out of bounds
-         */
-        long updateCurrentRetryTime() {
-            if (mErrorPolicy == null) {
-                return -1;
-            }
-            long time = mErrorPolicy.getRetryTime(++mCurrentRetryIndex);
-            mLastErrorTime = IwlanHelper.elapsedRealtime();
-            Log.d(LOG_TAG, "Current RetryArray index: " + mCurrentRetryIndex + " time: " + time);
-            return time;
-        }
-
-        /**
-         * Return the current retry time without changing the index. returns -1 if the index is out
-         * of bounds.
-         */
-        long getCurrentRetryTime() {
-            long time = -1;
-
-            if (mIsBackOffTimeValid) {
-                time = TimeUnit.SECONDS.toMillis(mBackOffTime);
-            } else if (mErrorPolicy == null) {
-                return time;
-            } else {
-                time = TimeUnit.SECONDS.toMillis(mErrorPolicy.getRetryTime(mCurrentRetryIndex));
-            }
-            long currentTime = IwlanHelper.elapsedRealtime();
-            time = Math.max(0, time - (currentTime - mLastErrorTime));
-            Log.d(
-                    LOG_TAG,
-                    "Current RetryArray index: " + mCurrentRetryIndex + " and time: " + time);
-            return time;
-        }
-
-        int getCurrentFqdnIndex(int numFqdns) {
-            ErrorPolicy errorPolicy = getErrorPolicy();
-            return errorPolicy.getCurrentFqdnIndex(mCurrentRetryIndex, numFqdns);
-        }
-
-        boolean isBackOffTimeValid() {
-            return mIsBackOffTimeValid;
-        }
-
-        void setBackOffTime(long backOffTime) {
-            mBackOffTime = backOffTime;
-            mLastErrorTime = IwlanHelper.elapsedRealtime();
-        }
-
-        boolean canBringUpTunnel() {
-            long retryTime;
-            boolean ret = true;
-
-            if (mIsBackOffTimeValid) {
-                retryTime = TimeUnit.SECONDS.toMillis(mBackOffTime);
-            } else if (mErrorPolicy == null) {
-                return ret;
-            } else {
-                retryTime =
-                        TimeUnit.SECONDS.toMillis(mErrorPolicy.getRetryTime(mCurrentRetryIndex));
-            }
-            long currentTime = IwlanHelper.elapsedRealtime();
-            long timeDifference = currentTime - mLastErrorTime;
-            if (timeDifference < retryTime) {
-                ret = false;
-            }
-            return ret;
-        }
-
-        boolean shouldRetryWithInitialAttach() {
+        @Override
+        public boolean shouldRetryWithInitialAttach() {
             // UE should only uses initial attach to reset network failure, not for UE internal or
             // DNS errors. When the number of handover failures due to network issues exceeds the
             // configured threshold, UE should request network with initial attach instead of
             // handover request.
-            return mErrorPolicy.getErrorType() == IKE_PROTOCOL_ERROR_TYPE
-                    && mCurrentRetryIndex + 1 >= mErrorPolicy.getHandoverAttemptCount();
+            ErrorPolicy errorPolicy = errorPolicy();
+            return errorPolicy.getErrorType() == IKE_PROTOCOL_ERROR_TYPE
+                    && currentRetryIndex() + 1 >= errorPolicy.getHandoverAttemptCount();
         }
 
-        ErrorPolicy getErrorPolicy() {
-            return mErrorPolicy;
+        /** Create a new PolicyDerivedRetryAction */
+        static PolicyDerivedRetryAction create(
+                IwlanError error, ErrorPolicy errorPolicy, int currentRetryIndex) {
+            return new AutoValue_ErrorPolicyManager_PolicyDerivedRetryAction(
+                    error, errorPolicy, IwlanHelper.elapsedRealtime(), currentRetryIndex);
+        }
+    }
+
+    /** RetryAction with retry time defined by backoff time in tunnel config */
+    @AutoValue
+    abstract static class IkeBackoffNotifyRetryAction implements RetryAction {
+        abstract long backoffTime();
+
+        @Override
+        public long totalRetryTimeMs() {
+            return TimeUnit.SECONDS.toMillis(backoffTime());
         }
 
-        IwlanError getError() {
-            return mError;
+        @Override
+        public int getCurrentFqdnIndex(int numFqdns) {
+            // Not applicable for backoff time configured case, therefore returning 0 here
+            return 0;
+        }
+
+        @Override
+        public boolean shouldRetryWithInitialAttach() {
+            // TODO(b/308745683): Initial attach condition is undefined for backoff config case
+            ErrorPolicy errorPolicy = errorPolicy();
+            return errorPolicy.getErrorType() == IKE_PROTOCOL_ERROR_TYPE
+                    && errorPolicy.getHandoverAttemptCount() == 0;
+        }
+
+        static IkeBackoffNotifyRetryAction create(
+                IwlanError error, ErrorPolicy errorPolicy, long backoffTime) {
+            return new AutoValue_ErrorPolicyManager_IkeBackoffNotifyRetryAction(
+                    error, errorPolicy, IwlanHelper.elapsedRealtime(), backoffTime);
         }
     }
 
