@@ -52,7 +52,9 @@ import org.mockito.MockitoAnnotations;
 import org.mockito.MockitoSession;
 import org.mockito.quality.Strictness;
 
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -1136,6 +1138,44 @@ public class ErrorPolicyManagerTest {
     private void advanceClockByTimeMs(long time) {
         mMockedClockTime += time;
         mTestLooper.dispatchAll();
+    }
+
+    @Test
+    public void testShouldNotThrowWhenDefaultConfigInvalid() throws Exception {
+        String apn = "ims";
+        AssetManager mockAssetManager = mock(AssetManager.class);
+        doReturn(mockAssetManager).when(mMockContext).getAssets();
+
+        // when the default config do not match all error with "ErrorType": "*"
+        String defaultConfigErrorTypeJson =
+                "{\"ErrorType\": \"IKE_PROTOCOL_ERROR_TYPE\", \"ErrorDetails\": [\"*\"], "
+                        + "\"RetryArray\": [\"0\"], \"UnthrottlingEvents\": []}";
+        String defaultConfigJson =
+                "[{\"ApnName\": \"*\", \"ErrorTypes\": [" + defaultConfigErrorTypeJson + "]}]";
+        InputStream defaultConfigInputStream =
+                new ByteArrayInputStream(defaultConfigJson.getBytes(StandardCharsets.UTF_8));
+        doReturn(defaultConfigInputStream).when(mockAssetManager).open(any());
+        PersistableBundle bundle = new PersistableBundle();
+
+        // need to reconstruct error policy manager with the mocked default config
+        mErrorPolicyManager.releaseInstance();
+        mErrorPolicyManager = spy(ErrorPolicyManager.getInstance(mMockContext, DEFAULT_SLOT_INDEX));
+        doReturn(mTestLooper.getLooper()).when(mErrorPolicyManager).getLooper();
+        mErrorPolicyManager.initHandler();
+
+        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, null);
+        setupMockForCarrierConfig(bundle);
+
+        mErrorPolicyManager
+                .mHandler
+                .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
+                .sendToTarget();
+        mTestLooper.dispatchAll();
+
+        // if some error happen and no policy in carrier config match, and the default config do
+        // not have at least 1 policy can apply to all error, it should not throw error
+        IwlanError iwlanError = new IwlanError(IwlanError.EPDG_SELECTOR_SERVER_SELECTION_FAILED);
+        mErrorPolicyManager.reportIwlanError(apn, iwlanError);
     }
 
     private void setupMockForCarrierConfig(PersistableBundle bundle) {

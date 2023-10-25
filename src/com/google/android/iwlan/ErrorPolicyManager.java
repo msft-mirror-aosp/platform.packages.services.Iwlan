@@ -127,6 +127,14 @@ public class ErrorPolicyManager {
     /** Private IKEv2 notify message types, as defined in TS 124 502 (section 9.2.4.1) */
     private static final int IKE_PROTOCOL_ERROR_CONGESTION = 15500;
 
+    private static final ErrorPolicy FALLBACK_ERROR_POLICY =
+            builder()
+                    .setErrorType(FALLBACK_ERROR_TYPE)
+                    .setRetryArray(List.of(5, -1))
+                    .setErrorDetails(List.of("*"))
+                    .setUnthrottlingEvents(List.of())
+                    .build();
+
     private final String LOG_TAG;
 
     private static final Map<Integer, ErrorPolicyManager> mInstances = new ConcurrentHashMap<>();
@@ -531,11 +539,16 @@ public class ErrorPolicyManager {
         }
         if (policy == null && mDefaultPolicies.containsKey("*")) {
             policy = getPreferredErrorPolicy(mDefaultPolicies.get("*"), iwlanError);
-        } else if (policy == null) {
+        }
+
+        if (policy == null) {
             // there should at least be one default policy defined in Default config
             // that will apply to all errors.
+            // should not reach here in any situation, default config should be configured in
+            // defaultiwlanerrorconfig.json. here is just for prevent runtime exception
             logErrorPolicies();
-            throw new AssertionError("no Default policy defined in the config");
+            Log.e(LOG_TAG, "No matched error policy");
+            policy = FALLBACK_ERROR_POLICY;
         }
         return policy;
     }
