@@ -78,6 +78,13 @@ public class EpdgSelectorTest {
     private EpdgSelector mEpdgSelector;
     public static final int DEFAULT_SLOT_INDEX = 0;
 
+    private static final byte[] TEST_PCO_NO_DATA = {0x00};
+    private static final byte[] TEST_PCO_PLMN_DATA = {0x38, 0x01, 0x24, 0x00};
+    private static final byte[] TEST_PCO_IPV4_DATA = {0x38, 0x01, 0x24, 0x7F, 0x00, 0x00, 0x01};
+    private static final byte[] TEST_PCO_IPV6_DATA = {
+        0x38, 0x01, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x01
+    };
     private static final String TEST_IP_ADDRESS = "127.0.0.1";
     private static final String TEST_IP_ADDRESS_1 = "127.0.0.2";
     private static final String TEST_IP_ADDRESS_2 = "127.0.0.3";
@@ -620,12 +627,8 @@ public class EpdgSelectorTest {
         addTestPcoIdsToTestConfigBundle();
 
         mEpdgSelector.clearPcoData();
-        boolean retIPv6 =
-                mEpdgSelector.setPcoData(
-                        testPcoIdIPv6, InetAddress.getByName(TEST_IPV6_ADDRESS).getAddress());
-        boolean retIPv4 =
-                mEpdgSelector.setPcoData(
-                        testPcoIdIPv4, InetAddress.getByName(TEST_IP_ADDRESS).getAddress());
+        assertTrue(mEpdgSelector.setPcoData(testPcoIdIPv6, TEST_PCO_IPV6_DATA));
+        assertTrue(mEpdgSelector.setPcoData(testPcoIdIPv4, TEST_PCO_IPV4_DATA));
 
         ArrayList<InetAddress> testInetAddresses =
                 getValidatedServerListWithDefaultParams(false /* isEmergency */);
@@ -633,6 +636,40 @@ public class EpdgSelectorTest {
         assertEquals(2, testInetAddresses.size());
         assertTrue(testInetAddresses.contains(InetAddress.getByName(TEST_IP_ADDRESS)));
         assertTrue(testInetAddresses.contains(InetAddress.getByName(TEST_IPV6_ADDRESS)));
+    }
+
+    @Test
+    public void testPcoResolutionMethodWithNoPcoData() throws Exception {
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
+                new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PCO});
+        addTestPcoIdsToTestConfigBundle();
+
+        mEpdgSelector.clearPcoData();
+        assertTrue(mEpdgSelector.setPcoData(testPcoIdIPv6, TEST_PCO_NO_DATA));
+        assertTrue(mEpdgSelector.setPcoData(testPcoIdIPv4, TEST_PCO_NO_DATA));
+
+        ArrayList<InetAddress> testInetAddresses =
+                getValidatedServerListWithDefaultParams(false /* isEmergency */);
+
+        assertEquals(0, testInetAddresses.size());
+    }
+
+    @Test
+    public void testPcoResolutionMethodWithOnlyPlmnData() throws Exception {
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
+                new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PCO});
+        addTestPcoIdsToTestConfigBundle();
+
+        mEpdgSelector.clearPcoData();
+        assertTrue(mEpdgSelector.setPcoData(testPcoIdIPv6, TEST_PCO_PLMN_DATA));
+        assertTrue(mEpdgSelector.setPcoData(testPcoIdIPv4, TEST_PCO_PLMN_DATA));
+
+        ArrayList<InetAddress> testInetAddresses =
+                getValidatedServerListWithDefaultParams(false /* isEmergency */);
+
+        assertEquals(0, testInetAddresses.size());
     }
 
     private void addTestPcoIdsToTestConfigBundle() {
