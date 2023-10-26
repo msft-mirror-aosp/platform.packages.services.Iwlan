@@ -1269,26 +1269,26 @@ public class IwlanDataServiceTest {
     }
 
     private DataProfile buildDataProfile(int supportedApnTypesBitmask) {
-        DataProfile dp =
-                new DataProfile.Builder()
-                        .setProfileId(1)
-                        .setApn(TEST_APN_NAME)
-                        .setProtocolType(ApnSetting.PROTOCOL_IPV4V6) // IPv4v6
-                        .setAuthType(0) // none
-                        .setUserName("")
-                        .setPassword("")
-                        .setType(1) // 3gpp
-                        // .setMaxConnectionsTime(1)
-                        // .setMaxConnections(3)
-                        // .setWaitTime(10)
-                        .enable(true)
-                        .setSupportedApnTypesBitmask(supportedApnTypesBitmask)
-                        .setRoamingProtocolType(ApnSetting.PROTOCOL_IPV4V6) // IPv4v6
-                        .setBearerBitmask((int) TelephonyManager.NETWORK_TYPE_BITMASK_IWLAN)
-                        .setPersistent(true)
-                        .setPreferred(true)
-                        .build();
-        return dp;
+        return new DataProfile.Builder()
+                .setApnSetting(
+                        new ApnSetting.Builder()
+                                .setProfileId(1)
+                                .setEntryName(TEST_APN_NAME)
+                                .setApnName(TEST_APN_NAME)
+                                .setProtocol(ApnSetting.PROTOCOL_IPV4V6)
+                                .setAuthType(ApnSetting.AUTH_TYPE_NONE)
+                                .setUser("")
+                                .setPassword("")
+                                .setApnTypeBitmask(supportedApnTypesBitmask)
+                                .setRoamingProtocol(ApnSetting.PROTOCOL_IPV4V6)
+                                .setNetworkTypeBitmask(
+                                        (int) TelephonyManager.NETWORK_TYPE_BITMASK_IWLAN)
+                                .setPersistent(true)
+                                .build())
+                .setType(1) // 3gpp
+                .enable(true)
+                .setPreferred(true)
+                .build();
     }
 
     private NetworkCapabilities prepareNetworkCapabilitiesForTest(
