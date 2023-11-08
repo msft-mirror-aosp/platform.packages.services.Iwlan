@@ -52,7 +52,9 @@ import org.mockito.MockitoAnnotations;
 import org.mockito.MockitoSession;
 import org.mockito.quality.Strictness;
 
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -818,10 +820,10 @@ public class ErrorPolicyManagerTest {
         assertEquals(DataFailCause.IWLAN_PDN_CONNECTION_REJECTION, failCause);
 
         long retryTime =
-                Math.round((double) mErrorPolicyManager.getCurrentRetryTimeMs(apn1) / 1000);
+                Math.round((double) mErrorPolicyManager.getRemainingRetryTimeMs(apn1) / 1000);
         assertEquals(4, retryTime);
 
-        retryTime = Math.round((double) mErrorPolicyManager.getCurrentRetryTimeMs(apn2) / 1000);
+        retryTime = Math.round((double) mErrorPolicyManager.getRemainingRetryTimeMs(apn2) / 1000);
         assertEquals(5, retryTime);
     }
 
@@ -866,7 +868,7 @@ public class ErrorPolicyManagerTest {
         IwlanError iwlanError = buildIwlanIkeAuthFailedError();
         long time = mErrorPolicyManager.reportIwlanError(apn, iwlanError, 2);
 
-        time = Math.round((double) mErrorPolicyManager.getCurrentRetryTimeMs(apn) / 1000);
+        time = Math.round((double) mErrorPolicyManager.getRemainingRetryTimeMs(apn) / 1000);
         assertEquals(time, 2);
 
         // advanceClockByTimeMs for 2 seconds and make sure that we can bring up tunnel after 2 secs
@@ -883,7 +885,7 @@ public class ErrorPolicyManagerTest {
         assertFalse(bringUpTunnel);
 
         time = mErrorPolicyManager.reportIwlanError(apn, iwlanError, 5);
-        time = Math.round((double) mErrorPolicyManager.getCurrentRetryTimeMs(apn) / 1000);
+        time = Math.round((double) mErrorPolicyManager.getRemainingRetryTimeMs(apn) / 1000);
         assertEquals(time, 5);
 
         // test whether the same error reported later starts from the beginning of retry array
@@ -1136,6 +1138,44 @@ public class ErrorPolicyManagerTest {
     private void advanceClockByTimeMs(long time) {
         mMockedClockTime += time;
         mTestLooper.dispatchAll();
+    }
+
+    @Test
+    public void testShouldNotThrowWhenDefaultConfigInvalid() throws Exception {
+        String apn = "ims";
+        AssetManager mockAssetManager = mock(AssetManager.class);
+        doReturn(mockAssetManager).when(mMockContext).getAssets();
+
+        // when the default config do not match all error with "ErrorType": "*"
+        String defaultConfigErrorTypeJson =
+                "{\"ErrorType\": \"IKE_PROTOCOL_ERROR_TYPE\", \"ErrorDetails\": [\"*\"], "
+                        + "\"RetryArray\": [\"0\"], \"UnthrottlingEvents\": []}";
+        String defaultConfigJson =
+                "[{\"ApnName\": \"*\", \"ErrorTypes\": [" + defaultConfigErrorTypeJson + "]}]";
+        InputStream defaultConfigInputStream =
+                new ByteArrayInputStream(defaultConfigJson.getBytes(StandardCharsets.UTF_8));
+        doReturn(defaultConfigInputStream).when(mockAssetManager).open(any());
+        PersistableBundle bundle = new PersistableBundle();
+
+        // need to reconstruct error policy manager with the mocked default config
+        mErrorPolicyManager.releaseInstance();
+        mErrorPolicyManager = spy(ErrorPolicyManager.getInstance(mMockContext, DEFAULT_SLOT_INDEX));
+        doReturn(mTestLooper.getLooper()).when(mErrorPolicyManager).getLooper();
+        mErrorPolicyManager.initHandler();
+
+        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, null);
+        setupMockForCarrierConfig(bundle);
+
+        mErrorPolicyManager
+                .mHandler
+                .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
+                .sendToTarget();
+        mTestLooper.dispatchAll();
+
+        // if some error happen and no policy in carrier config match, and the default config do
+        // not have at least 1 policy can apply to all error, it should not throw error
+        IwlanError iwlanError = new IwlanError(IwlanError.EPDG_SELECTOR_SERVER_SELECTION_FAILED);
+        mErrorPolicyManager.reportIwlanError(apn, iwlanError);
     }
 
     private void setupMockForCarrierConfig(PersistableBundle bundle) {
