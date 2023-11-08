@@ -6,3 +6,9 @@ flag {
     description: "Update number of epdg selection threads to prevent thread pool exhausted."
     bug: "278788983"
 }
+flag {
+    name: "aead_algos_enabled"
+    namespace: "iwlan_telephony"
+    description: "Add AES_GCM algorithm support in IWLAN."
+    bug: "306119890"
+}
