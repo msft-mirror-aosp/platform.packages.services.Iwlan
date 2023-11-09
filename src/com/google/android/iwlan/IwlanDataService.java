@@ -53,8 +53,6 @@ import android.telephony.data.ApnSetting;
 import android.telephony.data.DataCallResponse;
 import android.telephony.data.DataProfile;
 import android.telephony.data.DataService;
-import android.telephony.data.DataService.SetupDataReason;
-import android.telephony.data.DataService.DeactivateDataReason;
 import android.telephony.data.DataServiceCallback;
 import android.telephony.data.NetworkSliceInfo;
 import android.telephony.data.TrafficDescriptor;
@@ -1246,7 +1244,7 @@ public class IwlanDataService extends DataService {
                                             ErrorPolicyManager.getInstance(
                                                             mContext,
                                                             iwlanDataServiceProvider.getSlotIndex())
-                                                    .getCurrentRetryTimeMs(apnName);
+                                                    .getRemainingRetryTimeMs(apnName);
                             respBuilder.setRetryDurationMillis(retryTimeMillis);
                             metricsAtom.setRetryDurationMillis(retryTimeMillis);
                         } else {
