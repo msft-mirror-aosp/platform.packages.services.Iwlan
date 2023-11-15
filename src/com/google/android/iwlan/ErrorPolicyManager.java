@@ -57,6 +57,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 public class ErrorPolicyManager {
 
@@ -901,20 +902,26 @@ public class ErrorPolicyManager {
             mLastRetryActionForApn.clear();
             return;
         }
-        String apn;
-        for (Map.Entry<String, RetryAction> entry : mLastRetryActionForApn.entrySet()) {
-            ErrorPolicy errorPolicy = entry.getValue().errorPolicy();
-            if (errorPolicy.canUnthrottle(event)) {
-                apn = entry.getKey();
-                mLastRetryActionForApn.remove(apn);
-                DataService.DataServiceProvider provider =
-                        IwlanDataService.getDataServiceProvider(mSlotId);
-                if (provider != null) {
-                    provider.notifyApnUnthrottled(apn);
-                }
-                Log.d(LOG_TAG, "unthrottled error for: " + apn);
-            }
+        DataService.DataServiceProvider provider = IwlanDataService.getDataServiceProvider(mSlotId);
+
+        Set<String> canUnthrottleApnSet =
+                mLastRetryActionForApn.entrySet().stream()
+                        .filter(entry -> entry.getValue().errorPolicy().canUnthrottle(event))
+                        .map(Map.Entry::getKey)
+                        .collect(Collectors.toUnmodifiableSet());
+
+        mLastRetryActionForApn.keySet().removeAll(canUnthrottleApnSet);
+
+        if (provider == null) {
+            Log.w(LOG_TAG, "DataServiceProvider not found for slot: " + mSlotId);
+            return;
         }
+
+        canUnthrottleApnSet.forEach(
+                apn -> {
+                    provider.notifyApnUnthrottled(apn);
+                    Log.d(LOG_TAG, "unthrottled error for: " + apn);
+                });
     }
 
     @VisibleForTesting
