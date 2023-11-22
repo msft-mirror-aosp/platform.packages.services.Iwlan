@@ -102,7 +102,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class EpdgTunnelManager {
-
     private final Context mContext;
     private final int mSlotId;
     private Handler mHandler;
@@ -225,6 +224,12 @@ public class EpdgTunnelManager {
                         SaProposal.PSEUDORANDOM_FUNCTION_SHA2_384,
                         SaProposal.PSEUDORANDOM_FUNCTION_SHA2_512);
     }
+
+    private static final int PDU_SESSION_ID_UNSET = 0;
+
+    // TODO(b/239753287): Some networks request DEVICE_IDENTITY, but errors out when parsing
+    //  the response. Temporarily disabled.
+    private static final boolean INCLUDE_DEVICE_IDENTITY = false;
 
     private final EpdgSelector.EpdgSelectorCallback mSelectorCallback =
             new EpdgSelector.EpdgSelectorCallback() {
@@ -985,7 +990,7 @@ public class EpdgTunnelManager {
         }
 
         IkeSessionParams.Builder builder =
-                new IkeSessionParams.Builder(mContext)
+                new IkeSessionParams.Builder()
                         // permanently hardcode DSCP to 46 (Expedited Forwarding class)
                         // See https://www.iana.org/assignments/dscp-registry/dscp-registry.xhtml
                         // This will make WiFi prioritize IKE signallig under WMM AC_VO
@@ -1029,36 +1034,7 @@ public class EpdgTunnelManager {
             builder.removeIkeOption(IkeSessionParams.IKE_OPTION_MOBIKE);
         }
 
-        Ike3gppParams.Builder builder3gppParams = null;
-
-        // TODO(b/239753287): Telus carrier requests DEVICE_IDENTITY, but errors out when parsing
-        //  the response. Temporarily disabled.
-        if (false) {
-            String imei = getMobileDeviceIdentity();
-            if (imei != null) {
-                if (builder3gppParams == null) {
-                    builder3gppParams = new Ike3gppParams.Builder();
-                }
-                Log.d(TAG, "DEVICE_IDENTITY set in Ike3gppParams");
-                builder3gppParams.setMobileDeviceIdentity(imei);
-            }
-        }
-
-        if (isN1ModeSupported()) {
-            if (setupRequest.pduSessionId() != 0) {
-                // Configures the PduSession ID in N1_MODE_CAPABILITY payload
-                // to notify the server that UE supports N1_MODE
-                builder3gppParams = new Ike3gppParams.Builder();
-                builder3gppParams.setPduSessionId((byte) setupRequest.pduSessionId());
-            }
-        }
-
-        if (builder3gppParams != null) {
-            Ike3gppExtension extension =
-                    new Ike3gppExtension(
-                            builder3gppParams.build(), new TmIke3gppCallback(apnName, token));
-            builder.setIke3gppExtension(extension);
-        }
+        builder.setIke3gppExtension(buildIke3gppExtension(setupRequest, apnName, token));
 
         int nattKeepAliveTimer =
                 getConfig(CarrierConfigManager.Iwlan.KEY_NATT_KEEP_ALIVE_TIMER_SEC_INT);
@@ -1072,6 +1048,28 @@ public class EpdgTunnelManager {
         builder.setNattKeepAliveDelaySeconds(nattKeepAliveTimer);
 
         return builder.build();
+    }
+
+    private Ike3gppExtension buildIke3gppExtension(
+            TunnelSetupRequest setupRequest, String apnName, int token) {
+        Ike3gppParams.Builder builder3gppParams = new Ike3gppParams.Builder();
+
+        if (INCLUDE_DEVICE_IDENTITY) {
+            String imei = getMobileDeviceIdentity();
+            if (imei != null) {
+                Log.d(TAG, "DEVICE_IDENTITY set in Ike3gppParams");
+                builder3gppParams.setMobileDeviceIdentity(imei);
+            }
+        }
+
+        if (isN1ModeSupported() && setupRequest.pduSessionId() != PDU_SESSION_ID_UNSET) {
+            // Configures the PduSession ID in N1_MODE_CAPABILITY payload
+            // to notify the server that UE supports N1_MODE
+            builder3gppParams.setPduSessionId((byte) setupRequest.pduSessionId());
+        }
+
+        return new Ike3gppExtension(
+                builder3gppParams.build(), new TmIke3gppCallback(apnName, token));
     }
 
     private boolean isValidChildSessionLifetime(int hardLifetimeSeconds, int softLifetimeSeconds) {
@@ -1212,7 +1210,7 @@ public class EpdgTunnelManager {
                         }
                     }
                 } else {
-                    Log.w(TAG, "Device does not support encryption alog:  " + encryptionAlgo);
+                    Log.w(TAG, "Device does not support encryption algo:  " + encryptionAlgo);
                 }
             }
         }
@@ -1224,7 +1222,7 @@ public class EpdgTunnelManager {
                 if (ChildSaProposal.getSupportedIntegrityAlgorithms().contains(integrityAlgo)) {
                     saProposalBuilder.addIntegrityAlgorithm(integrityAlgo);
                 } else {
-                    Log.w(TAG, "Device does not support integrity alog:  " + integrityAlgo);
+                    Log.w(TAG, "Device does not support integrity algo:  " + integrityAlgo);
                 }
             }
         }
@@ -2227,7 +2225,7 @@ public class EpdgTunnelManager {
         final int BACKOFF_TIME_VALUE_MASK = 0x1F;
         final int BACKOFF_TIMER_UNIT_MASK = 0xE0;
         final Long[] BACKOFF_TIMER_UNIT_INCREMENT_SECS = {
-            10L * 60L, // 10 mins
+            10L * 60L, // 10 minutes
             60L * 60L, // 1 hour
             10L * 60L * 60L, // 10 hours
             2L, // 2 seconds
@@ -2285,10 +2283,8 @@ public class EpdgTunnelManager {
         int[] nrCarrierCaps =
                 getConfig(CarrierConfigManager.KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY);
         Log.d(TAG, "KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY : " + Arrays.toString(nrCarrierCaps));
-        if (Arrays.stream(nrCarrierCaps)
-                .anyMatch(cap -> cap == CarrierConfigManager.CARRIER_NR_AVAILABILITY_SA)) {
-            return true;
-        } else return false;
+        return Arrays.stream(nrCarrierCaps)
+                .anyMatch(cap -> cap == CarrierConfigManager.CARRIER_NR_AVAILABILITY_SA);
     }
 
     @VisibleForTesting
