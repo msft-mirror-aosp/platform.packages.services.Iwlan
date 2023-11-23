@@ -74,6 +74,7 @@ import android.util.Log;
 import com.android.internal.annotations.VisibleForTesting;
 
 import com.google.android.iwlan.ErrorPolicyManager;
+import com.google.android.iwlan.IwlanCarrierConfig;
 import com.google.android.iwlan.IwlanError;
 import com.google.android.iwlan.IwlanHelper;
 import com.google.android.iwlan.IwlanTunnelMetricsImpl;
@@ -882,10 +883,30 @@ public class EpdgTunnelManager {
                 new TunnelModeChildSessionParams.Builder()
                         .setLifetimeSeconds(hardTimeSeconds, softTimeSeconds);
 
-        if (mFeatureFlags.aeadAlgosEnabled() && isChildSessionAeadAlgosAvailable()) {
-            childSessionParamsBuilder.addChildSaProposal(buildAeadChildSaProposal());
+        if (mFeatureFlags.multipleSaProposals()
+                && IwlanCarrierConfig.getConfigBoolean(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan
+                                .KEY_SUPPORTS_CHILD_SESSION_MULTIPLE_SA_PROPOSALS_BOOL)) {
+            EpdgChildSaProposal epdgChildSaProposal = createEpdgChildSaProposal();
+
+            if (isChildSessionAeadAlgosAvailable()) {
+                childSessionParamsBuilder.addChildSaProposal(
+                        epdgChildSaProposal.buildProposedChildSaAeadProposal());
+            }
+            childSessionParamsBuilder.addChildSaProposal(
+                    epdgChildSaProposal.buildProposedChildSaProposal());
+            childSessionParamsBuilder.addChildSaProposal(
+                    epdgChildSaProposal.buildSupportedChildSaAeadProposal());
+            childSessionParamsBuilder.addChildSaProposal(
+                    epdgChildSaProposal.buildSupportedChildSaProposal());
         } else {
-            childSessionParamsBuilder.addChildSaProposal(buildChildSaProposal());
+            if (mFeatureFlags.aeadAlgosEnabled() && isChildSessionAeadAlgosAvailable()) {
+                childSessionParamsBuilder.addChildSaProposal(buildAeadChildSaProposal());
+            } else {
+                childSessionParamsBuilder.addChildSaProposal(buildChildSaProposal());
+            }
         }
 
         boolean handoverIPv4Present = setupRequest.srcIpv4Address().isPresent();
@@ -1023,10 +1044,26 @@ public class EpdgTunnelManager {
                         .setRetransmissionTimeoutsMillis(getRetransmissionTimeoutsFromConfig())
                         .setDpdDelaySeconds(getDpdDelayFromConfig());
 
-        if (mFeatureFlags.aeadAlgosEnabled() && isIkeSessionAeadAlgosAvailable()) {
-            builder.addIkeSaProposal(buildIkeSaAeadProposal());
+        if (mFeatureFlags.multipleSaProposals()
+                && IwlanCarrierConfig.getConfigBoolean(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan
+                                .KEY_SUPPORTS_IKE_SESSION_MULTIPLE_SA_PROPOSALS_BOOL)) {
+            EpdgIkeSaProposal epdgIkeSaProposal = createEpdgIkeSaProposal();
+
+            if (isIkeSessionAeadAlgosAvailable()) {
+                builder.addIkeSaProposal(epdgIkeSaProposal.buildProposedIkeSaAeadProposal());
+            }
+            builder.addIkeSaProposal(epdgIkeSaProposal.buildProposedIkeSaProposal());
+            builder.addIkeSaProposal(epdgIkeSaProposal.buildSupportedIkeSaAeadProposal());
+            builder.addIkeSaProposal(epdgIkeSaProposal.buildSupportedIkeSaProposal());
         } else {
-            builder.addIkeSaProposal(buildIkeSaProposal());
+            if (mFeatureFlags.aeadAlgosEnabled() && isIkeSessionAeadAlgosAvailable()) {
+                builder.addIkeSaProposal(buildIkeSaAeadProposal());
+            } else {
+                builder.addIkeSaProposal(buildIkeSaProposal());
+            }
         }
 
         if (numPdnTunnels() == 0) {
@@ -1135,6 +1172,124 @@ public class EpdgTunnelManager {
 
     private <T> T getConfig(String configKey) {
         return IwlanHelper.getConfig(configKey, mContext, mSlotId);
+    }
+
+    private void createEpdgSaProposal(EpdgSaProposal epdgSaProposal, boolean isChildProposal) {
+        epdgSaProposal.addProposedDhGroups(
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_DIFFIE_HELLMAN_GROUPS_INT_ARRAY));
+
+        int[] encryptionAlgos =
+                isChildProposal
+                        ? IwlanCarrierConfig.getConfigIntArray(
+                                mContext,
+                                mSlotId,
+                                CarrierConfigManager.Iwlan
+                                    .KEY_SUPPORTED_CHILD_SESSION_ENCRYPTION_ALGORITHMS_INT_ARRAY)
+                        : IwlanCarrierConfig.getConfigIntArray(
+                                mContext,
+                                mSlotId,
+                                CarrierConfigManager.Iwlan
+                                    .KEY_SUPPORTED_IKE_SESSION_ENCRYPTION_ALGORITHMS_INT_ARRAY);
+
+        for (int encryptionAlgo : encryptionAlgos) {
+            if (encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_CBC) {
+                int[] aesCbcKeyLens =
+                        isChildProposal
+                                ? IwlanCarrierConfig.getConfigIntArray(
+                                        mContext,
+                                        mSlotId,
+                                        CarrierConfigManager.Iwlan
+                                                .KEY_CHILD_SESSION_AES_CBC_KEY_SIZE_INT_ARRAY)
+                                : IwlanCarrierConfig.getConfigIntArray(
+                                        mContext,
+                                        mSlotId,
+                                        CarrierConfigManager.Iwlan
+                                                .KEY_IKE_SESSION_AES_CBC_KEY_SIZE_INT_ARRAY);
+                epdgSaProposal.addProposedEncryptionAlgorithm(encryptionAlgo, aesCbcKeyLens);
+            }
+
+            if (encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_CTR) {
+                int[] aesCtrKeyLens =
+                        isChildProposal
+                                ? IwlanCarrierConfig.getConfigIntArray(
+                                        mContext,
+                                        mSlotId,
+                                        CarrierConfigManager.Iwlan
+                                                .KEY_CHILD_SESSION_AES_CTR_KEY_SIZE_INT_ARRAY)
+                                : IwlanCarrierConfig.getConfigIntArray(
+                                        mContext,
+                                        mSlotId,
+                                        CarrierConfigManager.Iwlan
+                                                .KEY_IKE_SESSION_AES_CTR_KEY_SIZE_INT_ARRAY);
+                epdgSaProposal.addProposedEncryptionAlgorithm(encryptionAlgo, aesCtrKeyLens);
+            }
+        }
+
+        if (encryptionAlgos.length > 0) {
+            epdgSaProposal.addProposedIntegrityAlgorithm(
+                    IwlanCarrierConfig.getConfigIntArray(
+                            mContext,
+                            mSlotId,
+                            CarrierConfigManager.Iwlan
+                                    .KEY_SUPPORTED_INTEGRITY_ALGORITHMS_INT_ARRAY));
+        }
+
+        int[] aeadAlgos =
+                isChildProposal
+                        ? IwlanCarrierConfig.getConfigIntArray(
+                                mContext,
+                                mSlotId,
+                                CarrierConfigManager.Iwlan
+                                        .KEY_SUPPORTED_CHILD_SESSION_AEAD_ALGORITHMS_INT_ARRAY)
+                        : IwlanCarrierConfig.getConfigIntArray(
+                                mContext,
+                                mSlotId,
+                                CarrierConfigManager.Iwlan
+                                        .KEY_SUPPORTED_IKE_SESSION_AEAD_ALGORITHMS_INT_ARRAY);
+        for (int aeadAlgo : aeadAlgos) {
+            if (!validateConfig(aeadAlgo, VALID_AEAD_ALGOS, CONFIG_TYPE_ENCRYPT_ALGO)) {
+                continue;
+            }
+            if ((aeadAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_8)
+                    || (aeadAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12)
+                    || (aeadAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16)) {
+                int[] aesGcmKeyLens =
+                        isChildProposal
+                                ? IwlanCarrierConfig.getConfigIntArray(
+                                        mContext,
+                                        mSlotId,
+                                        CarrierConfigManager.Iwlan
+                                                .KEY_CHILD_SESSION_AES_GCM_KEY_SIZE_INT_ARRAY)
+                                : IwlanCarrierConfig.getConfigIntArray(
+                                        mContext,
+                                        mSlotId,
+                                        CarrierConfigManager.Iwlan
+                                                .KEY_IKE_SESSION_AES_GCM_KEY_SIZE_INT_ARRAY);
+                epdgSaProposal.addProposedAeadAlgorithm(aeadAlgo, aesGcmKeyLens);
+            }
+        }
+    }
+
+    private EpdgChildSaProposal createEpdgChildSaProposal() {
+        EpdgChildSaProposal epdgChildSaProposal = new EpdgChildSaProposal();
+        createEpdgSaProposal(epdgChildSaProposal, true);
+        return epdgChildSaProposal;
+    }
+
+    private EpdgIkeSaProposal createEpdgIkeSaProposal() {
+        EpdgIkeSaProposal epdgIkeSaProposal = new EpdgIkeSaProposal();
+
+        createEpdgSaProposal(epdgIkeSaProposal, false);
+
+        epdgIkeSaProposal.addProposedPrfAlgorithm(
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_SUPPORTED_PRF_ALGORITHMS_INT_ARRAY));
+        return epdgIkeSaProposal;
     }
 
     private IkeSaProposal buildIkeSaProposal() {

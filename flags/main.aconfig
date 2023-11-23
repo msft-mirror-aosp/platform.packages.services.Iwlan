@@ -12,3 +12,9 @@ flag {
     description: "Add AES_GCM algorithm support in IWLAN."
     bug: "306119890"
 }
+flag {
+    name: "multiple_sa_proposals"
+    namespace: "iwlan_telephony"
+    description: "Add multiple proposals of IKE SA and Child SA"
+    bug: "287296642"
+}
