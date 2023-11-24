@@ -81,6 +81,8 @@ import com.google.android.iwlan.TunnelMetricsInterface;
 import com.google.android.iwlan.TunnelMetricsInterface.OnClosedMetrics;
 import com.google.android.iwlan.TunnelMetricsInterface.OnOpenedMetrics;
 import com.google.android.iwlan.exceptions.IwlanSimNotReadyException;
+import com.google.android.iwlan.flags.FeatureFlags;
+import com.google.android.iwlan.flags.FeatureFlagsImpl;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -102,6 +104,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class EpdgTunnelManager {
+    private final FeatureFlags mFeatureFlags;
     private final Context mContext;
     private final int mSlotId;
     private Handler mHandler;
@@ -182,6 +185,7 @@ public class EpdgTunnelManager {
     private static final Set<Integer> VALID_PRF_ALGOS;
     private static final Set<Integer> VALID_INTEGRITY_ALGOS;
     private static final Set<Integer> VALID_ENCRYPTION_ALGOS;
+    private static final Set<Integer> VALID_AEAD_ALGOS;
 
     private static final String CONFIG_TYPE_DH_GROUP = "dh group";
     private static final String CONFIG_TYPE_KEY_LEN = "algorithm key length";
@@ -215,6 +219,12 @@ public class EpdgTunnelManager {
                         SaProposal.INTEGRITY_ALGORITHM_HMAC_SHA2_256_128,
                         SaProposal.INTEGRITY_ALGORITHM_HMAC_SHA2_384_192,
                         SaProposal.INTEGRITY_ALGORITHM_HMAC_SHA2_512_256);
+
+        VALID_AEAD_ALGOS =
+                Set.of(
+                        SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_8,
+                        SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12,
+                        SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16);
 
         VALID_PRF_ALGOS =
                 Set.of(
@@ -604,9 +614,11 @@ public class EpdgTunnelManager {
         }
     }
 
-    private EpdgTunnelManager(Context context, int slotId) {
+    @VisibleForTesting
+    EpdgTunnelManager(Context context, int slotId, FeatureFlags featureFlags) {
         mContext = context;
         mSlotId = slotId;
+        mFeatureFlags = featureFlags;
         mIkeSessionCreator = new IkeSessionCreator();
         mIpSecManager = mContext.getSystemService(IpSecManager.class);
         TAG = EpdgTunnelManager.class.getSimpleName() + "[" + mSlotId + "]";
@@ -634,7 +646,7 @@ public class EpdgTunnelManager {
      */
     public static EpdgTunnelManager getInstance(@NonNull Context context, int subId) {
         return mTunnelManagerInstances.computeIfAbsent(
-                subId, k -> new EpdgTunnelManager(context, subId));
+                subId, k -> new EpdgTunnelManager(context, subId, new FeatureFlagsImpl()));
     }
 
     @VisibleForTesting
@@ -870,7 +882,11 @@ public class EpdgTunnelManager {
                 new TunnelModeChildSessionParams.Builder()
                         .setLifetimeSeconds(hardTimeSeconds, softTimeSeconds);
 
-        childSessionParamsBuilder.addChildSaProposal(buildChildSaProposal());
+        if (mFeatureFlags.aeadAlgosEnabled() && isChildSessionAeadAlgosAvailable()) {
+            childSessionParamsBuilder.addChildSaProposal(buildAeadChildSaProposal());
+        } else {
+            childSessionParamsBuilder.addChildSaProposal(buildChildSaProposal());
+        }
 
         boolean handoverIPv4Present = setupRequest.srcIpv4Address().isPresent();
         boolean handoverIPv6Present = setupRequest.srcIpv6Address().isPresent();
@@ -999,7 +1015,6 @@ public class EpdgTunnelManager {
                         .setLocalIdentification(getLocalIdentification())
                         .setRemoteIdentification(getId(setupRequest.apnName(), false))
                         .setAuthEap(null, getEapConfig())
-                        .addIkeSaProposal(buildIkeSaProposal())
                         .setNetwork(mDefaultNetwork)
                         .addIkeOption(IkeSessionParams.IKE_OPTION_ACCEPT_ANY_REMOTE_ID)
                         .addIkeOption(IkeSessionParams.IKE_OPTION_MOBIKE)
@@ -1007,6 +1022,12 @@ public class EpdgTunnelManager {
                         .setLifetimeSeconds(hardTimeSeconds, softTimeSeconds)
                         .setRetransmissionTimeoutsMillis(getRetransmissionTimeoutsFromConfig())
                         .setDpdDelaySeconds(getDpdDelayFromConfig());
+
+        if (mFeatureFlags.aeadAlgosEnabled() && isIkeSessionAeadAlgosAvailable()) {
+            builder.addIkeSaProposal(buildIkeSaAeadProposal());
+        } else {
+            builder.addIkeSaProposal(buildIkeSaProposal());
+        }
 
         if (numPdnTunnels() == 0) {
             builder.addIkeOption(IkeSessionParams.IKE_OPTION_INITIAL_CONTACT);
@@ -1070,6 +1091,32 @@ public class EpdgTunnelManager {
 
         return new Ike3gppExtension(
                 builder3gppParams.build(), new TmIke3gppCallback(apnName, token));
+    }
+
+    private boolean isChildSessionAeadAlgosAvailable() {
+        int[] encryptionAlgos =
+                getConfig(
+                        CarrierConfigManager.Iwlan
+                                .KEY_SUPPORTED_CHILD_SESSION_AEAD_ALGORITHMS_INT_ARRAY);
+        for (int encryptionAlgo : encryptionAlgos) {
+            if (validateConfig(encryptionAlgo, VALID_AEAD_ALGOS, CONFIG_TYPE_ENCRYPT_ALGO)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isIkeSessionAeadAlgosAvailable() {
+        int[] encryptionAlgos =
+                getConfig(
+                        CarrierConfigManager.Iwlan
+                                .KEY_SUPPORTED_IKE_SESSION_AEAD_ALGORITHMS_INT_ARRAY);
+        for (int encryptionAlgo : encryptionAlgos) {
+            if (validateConfig(encryptionAlgo, VALID_AEAD_ALGOS, CONFIG_TYPE_ENCRYPT_ALGO)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isValidChildSessionLifetime(int hardLifetimeSeconds, int softLifetimeSeconds) {
@@ -1137,6 +1184,50 @@ public class EpdgTunnelManager {
         for (int integrityAlgo : integrityAlgos) {
             if (validateConfig(integrityAlgo, VALID_INTEGRITY_ALGOS, CONFIG_TYPE_INTEGRITY_ALGO)) {
                 saProposalBuilder.addIntegrityAlgorithm(integrityAlgo);
+            }
+        }
+
+        int[] prfAlgos =
+                getConfig(CarrierConfigManager.Iwlan.KEY_SUPPORTED_PRF_ALGORITHMS_INT_ARRAY);
+        for (int prfAlgo : prfAlgos) {
+            if (validateConfig(prfAlgo, VALID_PRF_ALGOS, CONFIG_TYPE_PRF_ALGO)) {
+                saProposalBuilder.addPseudorandomFunction(prfAlgo);
+            }
+        }
+
+        return saProposalBuilder.build();
+    }
+
+    private IkeSaProposal buildIkeSaAeadProposal() {
+        IkeSaProposal.Builder saProposalBuilder = new IkeSaProposal.Builder();
+
+        int[] dhGroups = getConfig(CarrierConfigManager.Iwlan.KEY_DIFFIE_HELLMAN_GROUPS_INT_ARRAY);
+        for (int dhGroup : dhGroups) {
+            if (validateConfig(dhGroup, VALID_DH_GROUPS, CONFIG_TYPE_DH_GROUP)) {
+                saProposalBuilder.addDhGroup(dhGroup);
+            }
+        }
+
+        int[] encryptionAlgos =
+                getConfig(
+                        CarrierConfigManager.Iwlan
+                                .KEY_SUPPORTED_IKE_SESSION_AEAD_ALGORITHMS_INT_ARRAY);
+        for (int encryptionAlgo : encryptionAlgos) {
+            if (!validateConfig(encryptionAlgo, VALID_AEAD_ALGOS, CONFIG_TYPE_ENCRYPT_ALGO)) {
+                continue;
+            }
+            if ((encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_8)
+                    || (encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12)
+                    || (encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16)) {
+                int[] aesGcmKeyLens =
+                        getConfig(
+                                CarrierConfigManager.Iwlan
+                                        .KEY_IKE_SESSION_AES_GCM_KEY_SIZE_INT_ARRAY);
+                for (int aesGcmKeyLen : aesGcmKeyLens) {
+                    if (validateConfig(aesGcmKeyLen, VALID_KEY_LENGTHS, CONFIG_TYPE_KEY_LEN)) {
+                        saProposalBuilder.addEncryptionAlgorithm(encryptionAlgo, aesGcmKeyLen);
+                    }
+                }
             }
         }
 
@@ -1223,6 +1314,42 @@ public class EpdgTunnelManager {
                     saProposalBuilder.addIntegrityAlgorithm(integrityAlgo);
                 } else {
                     Log.w(TAG, "Device does not support integrity algo:  " + integrityAlgo);
+                }
+            }
+        }
+
+        return saProposalBuilder.build();
+    }
+
+    private ChildSaProposal buildAeadChildSaProposal() {
+        ChildSaProposal.Builder saProposalBuilder = new ChildSaProposal.Builder();
+
+        int[] dhGroups = getConfig(CarrierConfigManager.Iwlan.KEY_DIFFIE_HELLMAN_GROUPS_INT_ARRAY);
+        for (int dhGroup : dhGroups) {
+            if (validateConfig(dhGroup, VALID_DH_GROUPS, CONFIG_TYPE_DH_GROUP)) {
+                saProposalBuilder.addDhGroup(dhGroup);
+            }
+        }
+
+        int[] encryptionAlgos =
+                getConfig(
+                        CarrierConfigManager.Iwlan
+                                .KEY_SUPPORTED_CHILD_SESSION_AEAD_ALGORITHMS_INT_ARRAY);
+        for (int encryptionAlgo : encryptionAlgos) {
+            if (!validateConfig(encryptionAlgo, VALID_AEAD_ALGOS, CONFIG_TYPE_ENCRYPT_ALGO)) {
+                continue;
+            }
+            if ((encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_8)
+                    || (encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12)
+                    || (encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16)) {
+                int[] aesGcmKeyLens =
+                        getConfig(
+                                CarrierConfigManager.Iwlan
+                                        .KEY_CHILD_SESSION_AES_GCM_KEY_SIZE_INT_ARRAY);
+                for (int aesGcmKeyLen : aesGcmKeyLens) {
+                    if (validateConfig(aesGcmKeyLen, VALID_KEY_LENGTHS, CONFIG_TYPE_KEY_LEN)) {
+                        saProposalBuilder.addEncryptionAlgorithm(encryptionAlgo, aesGcmKeyLen);
+                    }
                 }
             }
         }
