@@ -18,3 +18,9 @@ flag {
     description: "Add multiple proposals of IKE SA and Child SA"
     bug: "287296642"
 }
+flag {
+    name: "high_secure_transforms_prioritized"
+    namespace: "iwlan_telephony"
+    description: "Reorder IKE and Child SA security transforms with high secured as prioritized"
+    bug: "306323917"
+}

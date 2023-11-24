@@ -891,6 +891,10 @@ public class EpdgTunnelManager {
                                 .KEY_SUPPORTS_CHILD_SESSION_MULTIPLE_SA_PROPOSALS_BOOL)) {
             EpdgChildSaProposal epdgChildSaProposal = createEpdgChildSaProposal();
 
+            if (mFeatureFlags.highSecureTransformsPrioritized()) {
+                epdgChildSaProposal.enableReorderingSaferProposals();
+            }
+
             if (isChildSessionAeadAlgosAvailable()) {
                 childSessionParamsBuilder.addChildSaProposal(
                         epdgChildSaProposal.buildProposedChildSaAeadProposal());
@@ -1051,6 +1055,10 @@ public class EpdgTunnelManager {
                         CarrierConfigManager.Iwlan
                                 .KEY_SUPPORTS_IKE_SESSION_MULTIPLE_SA_PROPOSALS_BOOL)) {
             EpdgIkeSaProposal epdgIkeSaProposal = createEpdgIkeSaProposal();
+
+            if (mFeatureFlags.highSecureTransformsPrioritized()) {
+                epdgIkeSaProposal.enableReorderingSaferProposals();
+            }
 
             if (isIkeSessionAeadAlgosAvailable()) {
                 builder.addIkeSaProposal(epdgIkeSaProposal.buildProposedIkeSaAeadProposal());

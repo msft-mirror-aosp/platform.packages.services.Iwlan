@@ -38,6 +38,15 @@ public class EpdgIkeSaProposal extends EpdgSaProposal {
     }
 
     private int[] getPrfAlgos() {
+        if (isSaferProposalsPrioritized()) {
+            return mProposedPrfAlgos.stream()
+                    .sorted(
+                            (item1, item2) ->
+                                    compareTransformPriority(VALID_PRF_ALGOS, item1, item2))
+                    .mapToInt(Integer::intValue)
+                    .toArray();
+        }
+
         return mProposedPrfAlgos.stream().mapToInt(Integer::intValue).toArray();
     }
 
