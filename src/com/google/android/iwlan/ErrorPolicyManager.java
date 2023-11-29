@@ -1226,16 +1226,14 @@ public class ErrorPolicyManager {
             @Nullable RetryAction prevRetryAction = mLastRetryActionByCause.get(errorCause);
             boolean shouldAccumulateRetryIndex =
                     shouldAccumulateRetryIndex(prevRetryAction, iwlanError);
+            int newRetryIndex =
+                    shouldAccumulateRetryIndex
+                            ? ((PolicyDerivedRetryAction) prevRetryAction).currentRetryIndex() + 1
+                            : 0;
 
             ErrorPolicy policy = findErrorPolicy(mApn, iwlanError);
             PolicyDerivedRetryAction newRetryAction =
-                    shouldAccumulateRetryIndex
-                            ? PolicyDerivedRetryAction.create(
-                                    iwlanError,
-                                    policy,
-                                    ((PolicyDerivedRetryAction) prevRetryAction).currentRetryIndex()
-                                            + 1)
-                            : PolicyDerivedRetryAction.create(iwlanError, policy, 0);
+                    PolicyDerivedRetryAction.create(iwlanError, policy, newRetryIndex);
             mLastRetryActionByCause.put(errorCause, newRetryAction);
             mLastRetryAction = newRetryAction;
 
