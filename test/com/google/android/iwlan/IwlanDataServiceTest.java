@@ -1806,6 +1806,46 @@ public class IwlanDataServiceTest {
         assertEquals(null, metricsAtom.getIwlanErrorWrappedStackFirstFrame());
     }
 
+    @Test
+    public void testMetricsWhenTunnelClosedWithErrorCount() {
+        DataProfile dp = buildImsDataProfile();
+
+        mSpyIwlanDataServiceProvider.setTunnelState(
+                dp,
+                mMockDataServiceCallback,
+                TunnelState.TUNNEL_IN_BRINGUP,
+                null, /* linkProperties */
+                false /* isHandover */,
+                1 /* pduSessionId */,
+                true /* isImsOrEmergency */);
+
+        mSpyIwlanDataServiceProvider.setMetricsAtom(
+                TEST_APN_NAME,
+                64, /* type IMS */
+                true,
+                13, /* LTE */
+                false,
+                true,
+                1 /* Transport Wi-Fi */);
+
+        MetricsAtom metricsAtom = mSpyIwlanDataServiceProvider.getMetricsAtomByApn(TEST_APN_NAME);
+        assertNotNull(metricsAtom);
+
+        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
+                .thenReturn(mMockErrorPolicyManager);
+        when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
+                .thenReturn(DataFailCause.ERROR_UNSPECIFIED);
+
+        when(mMockErrorPolicyManager.getLastErrorCountOfSameCause(eq(TEST_APN_NAME))).thenReturn(5);
+
+        mSpyIwlanDataServiceProvider
+                .getIwlanTunnelCallback()
+                .onClosed(TEST_APN_NAME, new IwlanError(IwlanError.IKE_PROTOCOL_EXCEPTION));
+        mTestLooper.dispatchAll();
+
+        assertEquals(5, metricsAtom.getErrorCountOfSameCause());
+    }
+
     private void mockTunnelSetupFail(DataProfile dp) {
         mSpyIwlanDataServiceProvider.setupDataCall(
                 AccessNetworkType.IWLAN, /* AccessNetworkType */
