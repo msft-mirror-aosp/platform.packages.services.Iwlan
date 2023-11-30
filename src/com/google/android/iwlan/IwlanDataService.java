@@ -1309,6 +1309,11 @@ public class IwlanDataService extends DataService {
                         metricsAtom.setMessageId(
                                 IwlanStatsLog.IWLAN_SETUP_DATA_CALL_RESULT_REPORTED);
 
+                        metricsAtom.setErrorCountOfSameCause(
+                                ErrorPolicyManager.getInstance(
+                                                mContext, iwlanDataServiceProvider.getSlotIndex())
+                                        .getLastErrorCountOfSameCause(apnName));
+
                         iwlanDataServiceProvider.deliverCallback(
                                 IwlanDataServiceProvider.CALLBACK_TYPE_SETUP_DATACALL_COMPLETE,
                                 DataServiceCallback.RESULT_SUCCESS,
