@@ -51,6 +51,13 @@ public class IwlanCarrierConfig {
             PREFIX + "update_n1_mode_on_ui_change_bool";
 
     /**
+     * Boolean indicating if distinct ePDG selection for emergency sessions is enabled. Refer to
+     * {@link #DEFAULT_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL} for the default value.
+     */
+    public static final String KEY_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL =
+            PREFIX + "distinct_epdg_for_emergency_allowed_bool";
+
+    /**
      * Default delay in seconds for releasing the IWLAN connection after a WWAN handover. This is
      * the default value for {@link #KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT}.
      */
@@ -67,6 +74,9 @@ public class IwlanCarrierConfig {
      * 5G enabling status via the UI/UX.
      */
     public static final boolean DEFAULT_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL = true;
+
+    /** This is the default value for {@link #KEY_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL}. */
+    public static final boolean DEFAULT_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL = false;
 
     private static PersistableBundle sTestBundle = new PersistableBundle();
 
@@ -91,6 +101,9 @@ public class IwlanCarrierConfig {
                 DEFAULT_N1_MODE_EXCLUSION_FOR_EMERGENCY_SESSION_BOOL);
         bundle.putBoolean(
                 KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL, DEFAULT_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL);
+        bundle.putBoolean(
+                KEY_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL,
+                DEFAULT_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL);
         return bundle;
     }
 

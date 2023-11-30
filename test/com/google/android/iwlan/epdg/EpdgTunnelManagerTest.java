@@ -111,6 +111,7 @@ public class EpdgTunnelManagerTest {
     public static final int DEFAULT_TOKEN = 0;
 
     private static final String EPDG_ADDRESS = "127.0.0.1";
+    private static final String SEPARATE_EPDG_ADDRESS_FOR_EMERGENCY = "127.0.0.2";
     private static final String EPDG_ADDRESS_IPV6 = "2600:387:f:707::1";
     private static final String TEST_APN_NAME = "www.xyz.com";
 
@@ -120,6 +121,10 @@ public class EpdgTunnelManagerTest {
             List.of(InetAddresses.parseNumericAddress("2001:db8::1:2"));
     private static final List<InetAddress> EXPECTED_EPDG_ADDRESSES =
             List.of(InetAddresses.parseNumericAddress(EPDG_ADDRESS));
+    private static final List<InetAddress> EXPECTE_EPDG_ADDRESSES_FOR_EMERGENCY_SESSION =
+            List.of(
+                    InetAddresses.parseNumericAddress(EPDG_ADDRESS),
+                    InetAddresses.parseNumericAddress(SEPARATE_EPDG_ADDRESS_FOR_EMERGENCY));
     private static final List<InetAddress> EXPECTED_EPDG_ADDRESSES_IPV6 =
             List.of(InetAddresses.parseNumericAddress(EPDG_ADDRESS_IPV6));
     private static final List<LinkAddress> EXPECTED_INTERNAL_ADDRESSES =
@@ -329,7 +334,7 @@ public class EpdgTunnelManagerTest {
     }
 
     @Test
-    public void testBringUPTunnelWithNoBringUpInProcess() {
+    public void testBringUpTunnelWithNoBringUpInProcess() {
         String testApnName2 = "www.abc.com";
 
         TunnelSetupRequest TSR = getBasicTunnelSetupRequest(TEST_APN_NAME, ApnSetting.PROTOCOL_IP);
@@ -340,8 +345,10 @@ public class EpdgTunnelManagerTest {
                 mMockIwlanTunnelCallback,
                 mMockIwlanTunnelMetrics,
                 mMockIpSecTunnelInterface,
-                null,
-                0);
+                null /* srcIpv6Addr */,
+                0 /* srcIPv6AddrPrefixLen */,
+                false /* isEmergency */,
+                mEpdgTunnelManager.mEpdgMonitor.getEpdgAddressForNormalSession());
         doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(TEST_APN_NAME));
 
         boolean ret =
@@ -351,7 +358,7 @@ public class EpdgTunnelManagerTest {
     }
 
     @Test
-    public void testBringUPTunnelSuccess() throws Exception {
+    public void testBringUpTunnelSuccess() throws Exception {
 
         TunnelSetupRequest TSR = getBasicTunnelSetupRequest(TEST_APN_NAME, ApnSetting.PROTOCOL_IP);
         doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(TEST_APN_NAME));
@@ -806,8 +813,10 @@ public class EpdgTunnelManagerTest {
                 mMockIwlanTunnelCallback,
                 mMockIwlanTunnelMetrics,
                 mMockIpSecTunnelInterface,
-                null,
-                0);
+                null /* srcIpv6Addr */,
+                0 /* srcIPv6AddrPrefixLen */,
+                false /* isEmergency */,
+                mEpdgTunnelManager.mEpdgMonitor.getEpdgAddressForNormalSession());
 
         mEpdgTunnelManager.closeTunnel(
                 testApnName,
@@ -831,8 +840,10 @@ public class EpdgTunnelManagerTest {
                 mMockIwlanTunnelCallback,
                 mMockIwlanTunnelMetrics,
                 mMockIpSecTunnelInterface,
-                null,
-                0);
+                null /* srcIpv6Addr */,
+                0 /* srcIPv6AddrPrefixLen */,
+                false /* isEmergency */,
+                mEpdgTunnelManager.mEpdgMonitor.getEpdgAddressForNormalSession());
 
         mEpdgTunnelManager.closeTunnel(
                 testApnName,
@@ -1185,7 +1196,7 @@ public class EpdgTunnelManagerTest {
         InetAddress src = InetAddress.getByName("2600:381:4872:5d1e:0:10:3582:a501");
         EpdgTunnelManager.TunnelConfig tf =
                 mEpdgTunnelManager
-                .new TunnelConfig(null, null, null, mMockIpSecTunnelInterface, src, 64);
+                .new TunnelConfig(null, null, null, mMockIpSecTunnelInterface, src, 64, false, a1);
         assertTrue(tf.isPrefixSameAsSrcIP(l1));
 
         // different prefix length
@@ -1304,16 +1315,14 @@ public class EpdgTunnelManagerTest {
 
     private TunnelSetupRequest getBasicTunnelSetupRequest(
             String apnName, int apnIpProtocol, int pduSessionId) {
-        TunnelSetupRequest ret =
-                TunnelSetupRequest.builder()
-                        .setApnName(apnName)
-                        .setIsRoaming(false /*isRoaming*/)
-                        .setIsEmergency(false /*IsEmergency*/)
-                        .setRequestPcscf(false /*requestPcscf*/)
-                        .setApnIpProtocol(apnIpProtocol)
-                        .setPduSessionId(pduSessionId)
-                        .build();
-        return ret;
+        return TunnelSetupRequest.builder()
+                .setApnName(apnName)
+                .setIsRoaming(false /*isRoaming*/)
+                .setIsEmergency(false /*IsEmergency*/)
+                .setRequestPcscf(false /*requestPcscf*/)
+                .setApnIpProtocol(apnIpProtocol)
+                .setPduSessionId(pduSessionId)
+                .build();
     }
 
     private TunnelSetupRequest getHandoverTunnelSetupRequest(String apnName, int apnIpProtocol) {
@@ -1360,12 +1369,15 @@ public class EpdgTunnelManagerTest {
                 mMockIwlanTunnelCallback,
                 mMockIwlanTunnelMetrics,
                 mMockIpSecTunnelInterface,
-                null,
-                0);
+                null /* srcIpv6Addr */,
+                0 /* srcIPv6AddrPrefixLen */,
+                false /* isEmergency */,
+                InetAddresses.parseNumericAddress(EPDG_ADDRESS));
         int token = mEpdgTunnelManager.incrementAndGetCurrentTokenForApn(testApnName);
 
         mEpdgTunnelManager.onConnectedToEpdg(true);
-        mEpdgTunnelManager.setEpdgAddress(InetAddresses.parseNumericAddress(EPDG_ADDRESS));
+        mEpdgTunnelManager.mEpdgMonitor.onApnConnectToEpdg(
+                testApnName, InetAddresses.parseNumericAddress(EPDG_ADDRESS));
 
         mEpdgTunnelManager.getTmIkeSessionCallback(testApnName, token).onClosed();
         mTestLooper.dispatchAll();
@@ -1405,15 +1417,19 @@ public class EpdgTunnelManagerTest {
     }
 
     private void setOneTunnelOpened(String apnName) throws Exception {
+        InetAddress epdgAddress =
+                mEpdgTunnelManager.validateAndSetEpdgAddress(EXPECTED_EPDG_ADDRESSES);
         mEpdgTunnelManager.putApnNameToTunnelConfig(
                 apnName,
                 mMockIkeSession,
                 mMockIwlanTunnelCallback,
                 mMockIwlanTunnelMetrics,
                 mMockIpSecTunnelInterface,
-                null,
-                0);
-        mEpdgTunnelManager.validateAndSetEpdgAddress(EXPECTED_EPDG_ADDRESSES);
+                null /* srcIpv6Addr */,
+                0 /* srcIPv6AddrPrefixLen */,
+                false /* isEmergency */,
+                epdgAddress);
+        mEpdgTunnelManager.mEpdgMonitor.onApnConnectToEpdg(apnName, epdgAddress);
         mEpdgTunnelManager.onConnectedToEpdg(true);
     }
 
@@ -1578,12 +1594,15 @@ public class EpdgTunnelManagerTest {
                 mMockIwlanTunnelCallback,
                 mMockIwlanTunnelMetrics,
                 mMockIpSecTunnelInterface,
-                null,
-                0);
+                null /* srcIpv6Addr */,
+                0 /* srcIPv6AddrPrefixLen */,
+                false /* isEmergency */,
+                InetAddresses.parseNumericAddress(EPDG_ADDRESS));
         int token = mEpdgTunnelManager.incrementAndGetCurrentTokenForApn(testApnName);
 
         mEpdgTunnelManager.onConnectedToEpdg(true);
-        mEpdgTunnelManager.setEpdgAddress(InetAddresses.parseNumericAddress(EPDG_ADDRESS));
+        mEpdgTunnelManager.mEpdgMonitor.onApnConnectToEpdg(
+                testApnName, InetAddresses.parseNumericAddress(EPDG_ADDRESS));
 
         mEpdgTunnelManager
                 .getTmIkeSessionCallback(testApnName, token)
@@ -1614,6 +1633,7 @@ public class EpdgTunnelManagerTest {
                 EXPECTED_EPDG_ADDRESSES, new IwlanError(IwlanError.NO_ERROR), 1);
         mTestLooper.dispatchAll();
 
+        mEpdgTunnelManager.mEpdgMonitor.onApnDisconnectFromEpdg(TEST_APN_NAME);
         mEpdgTunnelManager.onConnectedToEpdg(false);
 
         mEpdgTunnelManager
@@ -1637,8 +1657,10 @@ public class EpdgTunnelManagerTest {
                 mMockIwlanTunnelCallback,
                 mMockIwlanTunnelMetrics,
                 mMockIpSecTunnelInterface,
-                null,
-                0);
+                null /* srcIpv6Addr */,
+                0 /* srcIPv6AddrPrefixLen */,
+                false /* isEmergency */,
+                mEpdgTunnelManager.mEpdgMonitor.getEpdgAddressForNormalSession());
         int token = mEpdgTunnelManager.incrementAndGetCurrentTokenForApn(testApnName);
 
         when(mMockIkeSessionConfiguration.getPcscfServers()).thenReturn(EXPECTED_EPDG_ADDRESSES);
@@ -1870,12 +1892,15 @@ public class EpdgTunnelManagerTest {
                 mMockIwlanTunnelCallback,
                 mMockIwlanTunnelMetrics,
                 mMockIpSecTunnelInterface,
-                null,
-                0);
+                null /* srcIpv6Addr */,
+                0 /* srcIPv6AddrPrefixLen */,
+                false /* isEmergency */,
+                InetAddresses.parseNumericAddress(EPDG_ADDRESS));
         int token = mEpdgTunnelManager.incrementAndGetCurrentTokenForApn(testApnName);
 
         mEpdgTunnelManager.onConnectedToEpdg(true);
-        mEpdgTunnelManager.setEpdgAddress(InetAddresses.parseNumericAddress(EPDG_ADDRESS));
+        mEpdgTunnelManager.mEpdgMonitor.onApnConnectToEpdg(
+                testApnName, InetAddresses.parseNumericAddress(EPDG_ADDRESS));
 
         mEpdgTunnelManager
                 .getTmIkeSessionCallback(testApnName, token)
@@ -1905,6 +1930,7 @@ public class EpdgTunnelManagerTest {
         mEpdgTunnelManager.sendSelectionRequestComplete(null, error, 1);
         mTestLooper.dispatchAll();
 
+        mEpdgTunnelManager.mEpdgMonitor.onApnDisconnectFromEpdg(TEST_APN_NAME);
         mEpdgTunnelManager.onConnectedToEpdg(false);
 
         verify(mEpdgTunnelManager, times(1)).reportIwlanError(eq(testApnName), eq(error));
@@ -2573,6 +2599,8 @@ public class EpdgTunnelManagerTest {
                 mMockedIpSecTransformIn, IpSecManager.DIRECTION_IN);
         mTestLooper.dispatchAll();
 
+        mEpdgTunnelManager.mEpdgMonitor.onApnConnectToEpdg(
+                apnName, InetAddresses.parseNumericAddress(EPDG_ADDRESS));
         mEpdgTunnelManager.onConnectedToEpdg(true);
         Network newNetwork = mock(Network.class);
         mEpdgTunnelManager.updateNetwork(newNetwork, mMockLinkProperties);
@@ -2656,6 +2684,8 @@ public class EpdgTunnelManagerTest {
                 mMockedIpSecTransformIn, IpSecManager.DIRECTION_IN);
         mTestLooper.dispatchAll();
 
+        mEpdgTunnelManager.mEpdgMonitor.onApnConnectToEpdg(
+                apnName, InetAddresses.parseNumericAddress(EPDG_ADDRESS));
         mEpdgTunnelManager.onConnectedToEpdg(true);
         Network newNetwork = mock(Network.class);
         LinkProperties mockUnreachableLinkProperties = mock(LinkProperties.class);
@@ -2679,7 +2709,9 @@ public class EpdgTunnelManagerTest {
                 mMockIwlanTunnelMetrics,
                 mMockIpSecTunnelInterface,
                 null /* srcIpv6Addr */,
-                0 /* srcIPv6AddrPrefixLen */);
+                0 /* srcIPv6AddrPrefixLen */,
+                false /* isEmergency */,
+                mEpdgTunnelManager.mEpdgMonitor.getEpdgAddressForNormalSession());
         int token = mEpdgTunnelManager.incrementAndGetCurrentTokenForApn(testApnName);
 
         mEpdgTunnelManager.requestNetworkValidationForApn(testApnName);
@@ -2728,7 +2760,9 @@ public class EpdgTunnelManagerTest {
                 mMockIwlanTunnelMetrics,
                 mMockIpSecTunnelInterface,
                 null /* srcIpv6Addr */,
-                0 /* srcIPv6AddrPrefixLen */);
+                0 /* srcIPv6AddrPrefixLen */,
+                false /* isEmergency */,
+                mEpdgTunnelManager.mEpdgMonitor.getEpdgAddressForNormalSession());
 
         mEpdgTunnelManager.requestNetworkValidationForApn(testApnName);
         mTestLooper.dispatchAll();
@@ -2777,7 +2811,9 @@ public class EpdgTunnelManagerTest {
                 mMockIwlanTunnelMetrics,
                 mMockIpSecTunnelInterface,
                 null /* srcIpv6Addr */,
-                0 /* srcIPv6AddrPrefixLen */);
+                0 /* srcIPv6AddrPrefixLen */,
+                false /* isEmergency */,
+                mEpdgTunnelManager.mEpdgMonitor.getEpdgAddressForNormalSession());
         int token = mEpdgTunnelManager.incrementAndGetCurrentTokenForApn(testApnName);
 
         int[][] orderedUpdateEvents = {
@@ -2822,7 +2858,9 @@ public class EpdgTunnelManagerTest {
                 mMockIwlanTunnelMetrics,
                 mMockIpSecTunnelInterface,
                 null /* srcIpv6Addr */,
-                0 /* srcIPv6AddrPrefixLen */);
+                0 /* srcIPv6AddrPrefixLen */,
+                false /* isEmergency */,
+                mEpdgTunnelManager.mEpdgMonitor.getEpdgAddressForNormalSession());
         int token = mEpdgTunnelManager.incrementAndGetCurrentTokenForApn(testApnName);
         int unknown_liveness_status = 9999;
 
@@ -2841,5 +2879,245 @@ public class EpdgTunnelManagerTest {
         mEpdgTunnelManager.requestNetworkValidationForApn(testApnName);
         mTestLooper.dispatchAll();
         verify(mMockIkeSession, never()).requestLivenessCheck();
+    }
+
+    private TunnelSetupRequest getBasicEmergencyTunnelSetupRequest(String apnName) {
+        return TunnelSetupRequest.builder()
+                .setApnName(apnName)
+                .setIsRoaming(false)
+                .setIsEmergency(true)
+                .setRequestPcscf(true)
+                .setApnIpProtocol(ApnSetting.PROTOCOL_IP)
+                .setPduSessionId(1)
+                .build();
+    }
+
+    private void setOneEmeregencyTunnelOpened(String apnName, InetAddress epdgAddress)
+            throws Exception {
+        mEpdgTunnelManager.putApnNameToTunnelConfig(
+                apnName,
+                mMockIkeSession,
+                mMockIwlanTunnelCallback,
+                mMockIwlanTunnelMetrics,
+                mMockIpSecTunnelInterface,
+                null /* srcIPv6Addr */,
+                0 /* srcIPv6AddrPrefixLen */,
+                true /* isEmergency */,
+                epdgAddress);
+        mEpdgTunnelManager.mEpdgMonitor.onApnConnectToEpdg(apnName, epdgAddress);
+        mEpdgTunnelManager.onConnectedToEpdg(true);
+    }
+
+    @Test
+    public void testEmergencyPdnEstablishWithImsPdn_Success() throws Exception {
+        when(mFakeFeatureFlags.distinctEpdgSelectionForEmergencySessions()).thenReturn(true);
+        IwlanCarrierConfig.putTestConfigBoolean(
+                IwlanCarrierConfig.KEY_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL, true);
+        String testImsApnName = "testIms";
+        String testEmergencyApnName = "testSos";
+        setOneTunnelOpened(testImsApnName);
+        mEpdgTunnelManager.updateNetwork(mMockDefaultNetwork, mMockLinkProperties);
+        mTestLooper.dispatchAll();
+        // Verify IMS PDN established
+        assertTrue(mEpdgTunnelManager.mEpdgMonitor.hasEpdgConnectedForNormalSession());
+        assertFalse(mEpdgTunnelManager.mEpdgMonitor.hasSeparateEpdgConnectedForEmergencySession());
+
+        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testEmergencyApnName));
+        boolean ret =
+                mEpdgTunnelManager.bringUpTunnel(
+                        getBasicEmergencyTunnelSetupRequest(testEmergencyApnName),
+                        mMockIwlanTunnelCallback,
+                        mMockIwlanTunnelMetrics);
+        assertTrue(ret);
+        mTestLooper.dispatchAll();
+
+        ArgumentCaptor<IkeSessionParams> ikeSessionParamsCaptor =
+                ArgumentCaptor.forClass(IkeSessionParams.class);
+        verify(mMockIkeSessionCreator)
+                .createIkeSession(
+                        eq(mMockContext),
+                        ikeSessionParamsCaptor.capture(),
+                        any(ChildSessionParams.class),
+                        any(Executor.class),
+                        any(IkeSessionCallback.class),
+                        any(ChildSessionCallback.class));
+        IkeSessionParams ikeSessionParams = ikeSessionParamsCaptor.getValue();
+        assertEquals(EPDG_ADDRESS, ikeSessionParams.getServerHostname());
+    }
+
+    @Test
+    public void testEmergencyPdnFailedEstablishWithImsPdn_establishWithSeparateEpdg()
+            throws Exception {
+        when(mFakeFeatureFlags.distinctEpdgSelectionForEmergencySessions()).thenReturn(true);
+        when(mFakeFeatureFlags.epdgSelectionExcludeFailedIpAddress()).thenReturn(true);
+        IwlanCarrierConfig.putTestConfigBoolean(
+                IwlanCarrierConfig.KEY_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL, true);
+        assertTrue(
+                IwlanCarrierConfig.getConfigBoolean(
+                        mMockContext,
+                        DEFAULT_SLOT_INDEX,
+                        IwlanCarrierConfig.KEY_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL));
+        String testImsApnName = "testIms";
+        String testEmergencyApnName = "testSos";
+
+        setOneTunnelOpened(testImsApnName);
+        mEpdgTunnelManager.updateNetwork(mMockDefaultNetwork, mMockLinkProperties);
+        mTestLooper.dispatchAll();
+        // Verify IMS PDN established
+        assertTrue(mEpdgTunnelManager.mEpdgMonitor.hasEpdgConnectedForNormalSession());
+        assertFalse(mEpdgTunnelManager.mEpdgMonitor.hasSeparateEpdgConnectedForEmergencySession());
+
+        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testEmergencyApnName));
+        IwlanError error =
+                new IwlanError(IwlanError.IKE_SESSION_CLOSED_BEFORE_CHILD_SESSION_OPENED);
+        doReturn(0L).when(mEpdgTunnelManager).reportIwlanError(eq(testEmergencyApnName), eq(error));
+
+        boolean ret =
+                mEpdgTunnelManager.bringUpTunnel(
+                        getBasicEmergencyTunnelSetupRequest(testEmergencyApnName),
+                        mMockIwlanTunnelCallback,
+                        mMockIwlanTunnelMetrics);
+        assertTrue(ret);
+        mTestLooper.dispatchAll();
+
+        ArgumentCaptor<IkeSessionParams> ikeSessionParamsCaptor =
+                ArgumentCaptor.forClass(IkeSessionParams.class);
+        verify(mMockIkeSessionCreator)
+                .createIkeSession(
+                        eq(mMockContext),
+                        ikeSessionParamsCaptor.capture(),
+                        any(ChildSessionParams.class),
+                        any(Executor.class),
+                        any(IkeSessionCallback.class),
+                        any(ChildSessionCallback.class));
+        IkeSessionParams ikeSessionParams = ikeSessionParamsCaptor.getValue();
+        assertEquals(EPDG_ADDRESS, ikeSessionParams.getServerHostname());
+        assertFalse(ikeSessionParams.hasIkeOption(IkeSessionParams.IKE_OPTION_INITIAL_CONTACT));
+
+        mEpdgTunnelManager.getTmIkeSessionCallback(testEmergencyApnName, DEFAULT_TOKEN).onClosed();
+        mTestLooper.dispatchAll();
+
+        ret =
+                mEpdgTunnelManager.bringUpTunnel(
+                        getBasicEmergencyTunnelSetupRequest(testEmergencyApnName),
+                        mMockIwlanTunnelCallback,
+                        mMockIwlanTunnelMetrics);
+        assertTrue(ret);
+        mTestLooper.dispatchAll();
+
+        mEpdgTunnelManager.sendSelectionRequestComplete(
+                EXPECTE_EPDG_ADDRESSES_FOR_EMERGENCY_SESSION,
+                new IwlanError(IwlanError.NO_ERROR),
+                1);
+        mTestLooper.dispatchAll();
+
+        verify(mMockIkeSessionCreator, times(2))
+                .createIkeSession(
+                        eq(mMockContext),
+                        ikeSessionParamsCaptor.capture(),
+                        any(ChildSessionParams.class),
+                        any(Executor.class),
+                        any(IkeSessionCallback.class),
+                        any(ChildSessionCallback.class));
+        ikeSessionParams = ikeSessionParamsCaptor.getValue();
+        assertEquals(SEPARATE_EPDG_ADDRESS_FOR_EMERGENCY, ikeSessionParams.getServerHostname());
+        assertTrue(ikeSessionParams.hasIkeOption(IkeSessionParams.IKE_OPTION_INITIAL_CONTACT));
+    }
+
+    private void bringUpImsPdnAndEmergencyPdnWithDifferentEpdgs() throws Exception {
+        when(mFakeFeatureFlags.distinctEpdgSelectionForEmergencySessions()).thenReturn(true);
+        String testImsApnName = "testIms";
+        String testEmergencyApnName = "testSos";
+        setOneTunnelOpened(testImsApnName);
+        mEpdgTunnelManager.updateNetwork(mMockDefaultNetwork, mMockLinkProperties);
+        mTestLooper.dispatchAll();
+        setOneEmeregencyTunnelOpened(
+                testEmergencyApnName,
+                InetAddresses.parseNumericAddress(SEPARATE_EPDG_ADDRESS_FOR_EMERGENCY));
+        mTestLooper.dispatchAll();
+
+        // Verify IMS PDN established on ePDG A, emergency PDN established on ePDG B
+        assertTrue(mEpdgTunnelManager.mEpdgMonitor.hasEpdgConnectedForNormalSession());
+        assertEquals(
+                InetAddresses.parseNumericAddress(EPDG_ADDRESS),
+                mEpdgTunnelManager.mEpdgMonitor.getEpdgAddressForNormalSession());
+        assertTrue(mEpdgTunnelManager.mEpdgMonitor.hasSeparateEpdgConnectedForEmergencySession());
+        assertEquals(
+                InetAddresses.parseNumericAddress(SEPARATE_EPDG_ADDRESS_FOR_EMERGENCY),
+                mEpdgTunnelManager.mEpdgMonitor.getEpdgAddressForEmergencySession());
+    }
+
+    @Test
+    public void testMmsPdnEstablishWithEmergencySessionEpdgNotNormalSessionEpdg_Success()
+            throws Exception {
+        when(mFakeFeatureFlags.distinctEpdgSelectionForEmergencySessions()).thenReturn(true);
+        IwlanCarrierConfig.putTestConfigBoolean(
+                IwlanCarrierConfig.KEY_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL, true);
+        String testMmsApnName = "testMms";
+        bringUpImsPdnAndEmergencyPdnWithDifferentEpdgs();
+
+        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testMmsApnName));
+        boolean ret =
+                mEpdgTunnelManager.bringUpTunnel(
+                        getBasicTunnelSetupRequest(testMmsApnName, ApnSetting.PROTOCOL_IP),
+                        mMockIwlanTunnelCallback,
+                        mMockIwlanTunnelMetrics);
+        assertTrue(ret);
+        mTestLooper.dispatchAll();
+
+        ArgumentCaptor<IkeSessionParams> ikeSessionParamsCaptor =
+                ArgumentCaptor.forClass(IkeSessionParams.class);
+        verify(mMockIkeSessionCreator)
+                .createIkeSession(
+                        eq(mMockContext),
+                        ikeSessionParamsCaptor.capture(),
+                        any(ChildSessionParams.class),
+                        any(Executor.class),
+                        any(IkeSessionCallback.class),
+                        any(ChildSessionCallback.class));
+        IkeSessionParams ikeSessionParams = ikeSessionParamsCaptor.getValue();
+        assertEquals(SEPARATE_EPDG_ADDRESS_FOR_EMERGENCY, ikeSessionParams.getServerHostname());
+    }
+
+    @Test
+    public void testImsPdnReestablishWithEpdgForEmergencySession() throws Exception {
+        when(mFakeFeatureFlags.distinctEpdgSelectionForEmergencySessions()).thenReturn(true);
+        IwlanCarrierConfig.putTestConfigBoolean(
+                IwlanCarrierConfig.KEY_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL, true);
+        String testImsApnName = "testIms";
+        bringUpImsPdnAndEmergencyPdnWithDifferentEpdgs();
+
+        mEpdgTunnelManager.getTmIkeSessionCallback(testImsApnName, DEFAULT_TOKEN).onClosed();
+        mEpdgTunnelManager.removeApnNameInTunnelConfig(testImsApnName);
+        mEpdgTunnelManager.mEpdgMonitor.onApnDisconnectFromEpdg(testImsApnName);
+        mTestLooper.dispatchAll();
+
+        assertTrue(mEpdgTunnelManager.mEpdgMonitor.hasEpdgConnectedForNormalSession());
+        assertFalse(mEpdgTunnelManager.mEpdgMonitor.hasSeparateEpdgConnectedForEmergencySession());
+        assertEquals(
+                InetAddresses.parseNumericAddress(SEPARATE_EPDG_ADDRESS_FOR_EMERGENCY),
+                mEpdgTunnelManager.mEpdgMonitor.getEpdgAddressForNormalSession());
+
+        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testImsApnName));
+        boolean ret =
+                mEpdgTunnelManager.bringUpTunnel(
+                        getBasicTunnelSetupRequest(testImsApnName, ApnSetting.PROTOCOL_IP),
+                        mMockIwlanTunnelCallback,
+                        mMockIwlanTunnelMetrics);
+        assertTrue(ret);
+        mTestLooper.dispatchAll();
+
+        ArgumentCaptor<IkeSessionParams> ikeSessionParamsCaptor =
+                ArgumentCaptor.forClass(IkeSessionParams.class);
+        verify(mMockIkeSessionCreator)
+                .createIkeSession(
+                        eq(mMockContext),
+                        ikeSessionParamsCaptor.capture(),
+                        any(ChildSessionParams.class),
+                        any(Executor.class),
+                        any(IkeSessionCallback.class),
+                        any(ChildSessionCallback.class));
+        IkeSessionParams ikeSessionParams = ikeSessionParamsCaptor.getValue();
+        assertEquals(SEPARATE_EPDG_ADDRESS_FOR_EMERGENCY, ikeSessionParams.getServerHostname());
     }
 }
