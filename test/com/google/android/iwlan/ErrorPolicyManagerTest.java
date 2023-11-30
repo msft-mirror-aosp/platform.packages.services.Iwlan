@@ -1268,6 +1268,80 @@ public class ErrorPolicyManagerTest {
         assertEquals(resultServerApn2, serverSelectionCountApn2);
     }
 
+    @Test
+    public void testGetLastRetryIndex() {
+        String apn = "ims";
+
+        setupMockForCarrierConfig(null);
+        mErrorPolicyManager
+                .mHandler
+                .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
+                .sendToTarget();
+        mTestLooper.dispatchAll();
+
+        // error count should be 0 when no error yet
+        assertEquals(0, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        // same error reported, should accumulate
+        IwlanError iwlanAuthError = buildIwlanIkeAuthFailedError();
+        mErrorPolicyManager.reportIwlanError(apn, iwlanAuthError);
+        assertEquals(1, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+        mErrorPolicyManager.reportIwlanError(apn, iwlanAuthError);
+        assertEquals(2, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+        mErrorPolicyManager.reportIwlanError(apn, iwlanAuthError);
+        assertEquals(3, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        // different error reported, should start with 1 then accumulate
+        IwlanError iwlanOtherProtocolError = buildIwlanIkeProtocolError(9002);
+        mErrorPolicyManager.reportIwlanError(apn, iwlanOtherProtocolError);
+        assertEquals(1, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+        mErrorPolicyManager.reportIwlanError(apn, iwlanOtherProtocolError);
+        assertEquals(2, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        // different error with specific backoff time reported, should start with 1 then accumulate
+        IwlanError iwlanInternalAddressFailure = buildIwlanIkeInternalAddressFailure();
+        mErrorPolicyManager.reportIwlanError(apn, iwlanInternalAddressFailure, 5);
+        assertEquals(1, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+        mErrorPolicyManager.reportIwlanError(apn, iwlanInternalAddressFailure, 5);
+        assertEquals(2, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        // same error with specific backoff time, should continue from last error count (2)
+        mErrorPolicyManager.reportIwlanError(apn, iwlanOtherProtocolError, 5);
+        assertEquals(3, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+        // error without backoff time again, should continue from last error count (3)
+        mErrorPolicyManager.reportIwlanError(apn, iwlanOtherProtocolError);
+        assertEquals(4, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        // the retry index from iwlan auth error should be reserved
+        mErrorPolicyManager.reportIwlanError(apn, iwlanAuthError);
+        assertEquals(4, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        // Unthrottle event should reset the error count
+        mErrorPolicyManager
+                .mHandler
+                .obtainMessage(IwlanEventListener.APM_ENABLE_EVENT)
+                .sendToTarget();
+        mTestLooper.dispatchAll();
+
+        assertEquals(0, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        mErrorPolicyManager.reportIwlanError(apn, iwlanAuthError);
+        assertEquals(1, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        mErrorPolicyManager.reportIwlanError(apn, iwlanOtherProtocolError, 5);
+        assertEquals(1, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        mErrorPolicyManager.reportIwlanError(apn, new IwlanError(IwlanError.NO_ERROR));
+        // NO_ERROR should reset the error count
+        assertEquals(0, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        mErrorPolicyManager.reportIwlanError(apn, iwlanAuthError);
+        assertEquals(1, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        mErrorPolicyManager.reportIwlanError(apn, iwlanOtherProtocolError, 5);
+        assertEquals(1, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+    }
+
     private void advanceClockByTimeMs(long time) {
         mMockedClockTime += time;
         mTestLooper.dispatchAll();
