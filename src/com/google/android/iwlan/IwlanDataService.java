@@ -868,7 +868,7 @@ public class IwlanDataService extends DataService {
             int delayTimeSeconds = 0;
             if (isRequestForHandoverToWWAN) {
                 delayTimeSeconds =
-                        IwlanCarrierConfig.getConfig(
+                        IwlanCarrierConfig.getConfigInt(
                                 mContext,
                                 getSlotIndex(),
                                 IwlanCarrierConfig.KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT);

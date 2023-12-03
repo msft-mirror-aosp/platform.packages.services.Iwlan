@@ -202,7 +202,7 @@ public class IwlanDataServiceTest {
                         .mockStatic(ErrorPolicyManager.class)
                         .mockStatic(IwlanBroadcastReceiver.class)
                         .mockStatic(SubscriptionManager.class)
-                        .spyStatic(IwlanCarrierConfig.class)
+                        .mockStatic(IwlanCarrierConfig.class)
                         .strictness(Strictness.LENIENT)
                         .startMocking();
 
@@ -877,7 +877,7 @@ public class IwlanDataServiceTest {
     public void testDeactivateDataCall_DelayedReleaseAfterHandover() {
         DataProfile dp = buildImsDataProfile();
 
-        when(IwlanCarrierConfig.getConfig(
+        when(IwlanCarrierConfig.getConfigInt(
                         mMockContext,
                         DEFAULT_SLOT_INDEX,
                         IwlanCarrierConfig.KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT))
@@ -930,7 +930,7 @@ public class IwlanDataServiceTest {
     public void testDeactivateDataCall_DelayedReleaseAfterHandover_NetworkReleaseBeforeDelay() {
         DataProfile dp = buildImsDataProfile();
 
-        when(IwlanCarrierConfig.getConfig(
+        when(IwlanCarrierConfig.getConfigInt(
                         mMockContext,
                         DEFAULT_SLOT_INDEX,
                         IwlanCarrierConfig.KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT))
