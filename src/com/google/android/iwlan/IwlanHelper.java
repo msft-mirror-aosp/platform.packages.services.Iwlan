@@ -185,6 +185,10 @@ public class IwlanHelper {
         throw new IllegalStateException("Local address should not be null.");
     }
 
+    /**
+     * @deprecated This method is deprecated. Use {@link IwlanCarrierConfig#getConfig()} instead.
+     */
+    @Deprecated
     public static <T> T getConfig(String key, Context context, int slotId) {
         CarrierConfigManager carrierConfigManager =
                 context.getSystemService(CarrierConfigManager.class);
@@ -202,6 +206,11 @@ public class IwlanHelper {
         }
     }
 
+    /**
+     * @deprecated This method is deprecated. Use {@link IwlanCarrierConfig#getDefaultConfig()}
+     *     instead.
+     */
+    @Deprecated
     public static <T> T getDefaultConfig(String key) {
         PersistableBundle bundle = CarrierConfigManager.getDefaultConfig();
         if (bundle == null) {
