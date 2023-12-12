@@ -98,6 +98,11 @@ public class IwlanBroadcastReceiver extends BroadcastReceiver {
                 int pcoId = intent.getIntExtra(TelephonyManager.EXTRA_PCO_ID, 0);
                 byte[] pcoData = intent.getByteArrayExtra(TelephonyManager.EXTRA_PCO_VALUE);
 
+                if (pcoData == null) {
+                    Log.e(TAG, "Pco data unavailable");
+                    return;
+                }
+
                 Log.d(
                         TAG,
                         "PcoID:"
