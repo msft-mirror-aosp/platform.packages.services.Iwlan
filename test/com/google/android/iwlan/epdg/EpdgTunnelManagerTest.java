@@ -26,6 +26,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doReturn;
@@ -599,6 +600,151 @@ public class EpdgTunnelManagerTest {
     }
 
     @Test
+    public void testMultipleSaProposals() throws Exception {
+        when(mFakeFeatureFlags.multipleSaProposals()).thenReturn(true);
+        final String apnName = "ims";
+        PersistableBundle bundle = new PersistableBundle();
+
+        int[] aeadAlgos = {
+            SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12,
+        };
+        int[] aeadAlgosKeyLens = {
+            SaProposal.KEY_LEN_AES_192, SaProposal.KEY_LEN_AES_256,
+        };
+
+        bundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_SUPPORTED_IKE_SESSION_AEAD_ALGORITHMS_INT_ARRAY,
+                aeadAlgos);
+        bundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_IKE_SESSION_AES_GCM_KEY_SIZE_INT_ARRAY,
+                aeadAlgosKeyLens);
+        bundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_SUPPORTED_CHILD_SESSION_AEAD_ALGORITHMS_INT_ARRAY,
+                aeadAlgos);
+        bundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_CHILD_SESSION_AES_GCM_KEY_SIZE_INT_ARRAY,
+                aeadAlgosKeyLens);
+
+        bundle.putBoolean(
+                CarrierConfigManager.Iwlan.KEY_SUPPORTS_IKE_SESSION_MULTIPLE_SA_PROPOSALS_BOOL,
+                true);
+        bundle.putBoolean(
+                CarrierConfigManager.Iwlan.KEY_SUPPORTS_CHILD_SESSION_MULTIPLE_SA_PROPOSALS_BOOL,
+                true);
+
+        setupMockForGetConfig(bundle);
+
+        IkeSessionArgumentCaptors tunnelArgumentCaptors =
+                verifyBringUpTunnelWithDnsQuery(apnName, mMockDefaultNetwork);
+
+        IkeSessionParams ikeTunnelParams = tunnelArgumentCaptors.mIkeSessionParamsCaptor.getValue();
+
+        assertTrue(ikeTunnelParams.getIkeSaProposals().size() > 1);
+
+        List<Pair<Integer, Integer>> ikeAeadAlgos =
+                ikeTunnelParams.getIkeSaProposals().get(0).getEncryptionAlgorithms();
+        assertEquals(
+                "Reorder higher AEAD in  IKE SA mismatch",
+                (long) SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12,
+                (long) ikeAeadAlgos.get(0).first);
+
+        ChildSessionParams childTunnelParams =
+                tunnelArgumentCaptors.mChildSessionParamsCaptor.getValue();
+
+        assertTrue(childTunnelParams.getChildSaProposals().size() > 1);
+
+        List<Pair<Integer, Integer>> childAeadAlgos =
+                childTunnelParams.getChildSaProposals().get(0).getEncryptionAlgorithms();
+        assertEquals(
+                "Reorder higher AEAD in  Child SA mismatch",
+                (long) SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12,
+                (long) childAeadAlgos.get(0).first);
+    }
+
+    @Test
+    public void testSaProposalsReorder() throws Exception {
+        when(mFakeFeatureFlags.aeadAlgosEnabled()).thenReturn(true);
+        when(mFakeFeatureFlags.multipleSaProposals()).thenReturn(true);
+        when(mFakeFeatureFlags.highSecureTransformsPrioritized()).thenReturn(true);
+
+        final String apnName = "ims";
+        int[] aeadAlgos = {
+            SaProposal.ENCRYPTION_ALGORITHM_AES_CBC,
+        };
+        int[] aeadAlgosKeyLens = {
+            SaProposal.KEY_LEN_AES_128, SaProposal.KEY_LEN_AES_192, SaProposal.KEY_LEN_AES_256,
+        };
+
+        PersistableBundle bundle = new PersistableBundle();
+
+        bundle.putIntArray(
+                CarrierConfigManager.Iwlan
+                        .KEY_SUPPORTED_IKE_SESSION_ENCRYPTION_ALGORITHMS_INT_ARRAY,
+                aeadAlgos);
+        bundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_IKE_SESSION_AES_CBC_KEY_SIZE_INT_ARRAY,
+                aeadAlgosKeyLens);
+        bundle.putIntArray(
+                CarrierConfigManager.Iwlan
+                        .KEY_SUPPORTED_CHILD_SESSION_ENCRYPTION_ALGORITHMS_INT_ARRAY,
+                aeadAlgos);
+        bundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_CHILD_SESSION_AES_CBC_KEY_SIZE_INT_ARRAY,
+                aeadAlgosKeyLens);
+
+        bundle.putBoolean(
+                CarrierConfigManager.Iwlan.KEY_SUPPORTS_IKE_SESSION_MULTIPLE_SA_PROPOSALS_BOOL,
+                true);
+        bundle.putBoolean(
+                CarrierConfigManager.Iwlan.KEY_SUPPORTS_CHILD_SESSION_MULTIPLE_SA_PROPOSALS_BOOL,
+                true);
+
+        setupMockForGetConfig(bundle);
+
+        IkeSessionArgumentCaptors tunnelArgumentCaptors =
+                verifyBringUpTunnelWithDnsQuery(apnName, mMockDefaultNetwork);
+
+        IkeSessionParams ikeTunnelParams = tunnelArgumentCaptors.mIkeSessionParamsCaptor.getValue();
+
+        assertTrue(ikeTunnelParams.getIkeSaProposals().size() > 1);
+
+        List<Pair<Integer, Integer>> ikeEncrAlgos =
+                ikeTunnelParams.getIkeSaProposals().get(0).getEncryptionAlgorithms();
+
+        assertEquals(
+                "Reorder bigger key length in IKE SA mismatch",
+                (long) SaProposal.KEY_LEN_AES_256,
+                (long) ikeEncrAlgos.get(0).second);
+
+        List<Pair<Integer, Integer>> ikeAeadAlgos =
+                ikeTunnelParams.getIkeSaProposals().get(1).getEncryptionAlgorithms();
+        assertEquals(
+                "Reorder higher AEAD in  IKE SA mismatch",
+                (long) SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16,
+                (long) ikeAeadAlgos.get(0).first);
+
+        ChildSessionParams childTunnelParams =
+                tunnelArgumentCaptors.mChildSessionParamsCaptor.getValue();
+
+        assertTrue(childTunnelParams.getChildSaProposals().size() > 1);
+
+        List<Pair<Integer, Integer>> childEncrAlgos =
+                childTunnelParams.getChildSaProposals().get(0).getEncryptionAlgorithms();
+
+        assertEquals(
+                "Reorder bigger key length in Child SA mismatch",
+                (long) SaProposal.KEY_LEN_AES_256,
+                (long) childEncrAlgos.get(0).second);
+
+        List<Pair<Integer, Integer>> childAeadAlgos =
+                childTunnelParams.getChildSaProposals().get(1).getEncryptionAlgorithms();
+        assertEquals(
+                "Reorder higher AEAD in  Child SA mismatch",
+                (long) SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16,
+                (long) childAeadAlgos.get(0).first);
+    }
+
+    @Test
     public void testCloseTunnelWithNoTunnelForApn() throws Exception {
         String testApnName = "www.xyz.com";
         doReturn(0L)
@@ -1156,6 +1302,7 @@ public class EpdgTunnelManagerTest {
         when(mMockTelephonyManager.createForSubscriptionId(DEFAULT_SUBID))
                 .thenReturn(mMockTelephonyManager);
         when(mMockCarrierConfigManager.getConfigForSubId(DEFAULT_SLOT_INDEX)).thenReturn(bundle);
+        when(mMockCarrierConfigManager.getConfigForSubId(anyInt(), anyString())).thenReturn(bundle);
     }
 
     private void setVariable(Object target, String variableName, Object value) throws Exception {
