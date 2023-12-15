@@ -6,3 +6,9 @@ flag {
     description: "Update number of epdg selection threads to prevent thread pool exhausted."
     bug: "278788983"
 }
+flag {
+    name: "epdg_selection_exclude_failed_ip_address"
+    namespace: "iwlan_telephony"
+    description: "Exclude the failed ip address in epdg selection until tunnel establish successfully or all ip address candidates are failed"
+    bug: "300026897"
+}
