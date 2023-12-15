@@ -1753,6 +1753,7 @@ public class EpdgTunnelManager {
                     tunnelConfig.getTunnelCallback().onOpened(apnName, linkProperties);
 
                     reportIwlanError(apnName, new IwlanError(IwlanError.NO_ERROR));
+                    getEpdgSelector().onEpdgConnectedSuccessfully();
 
                     mIkeTunnelEstablishmentDuration =
                             System.currentTimeMillis() - mIkeTunnelEstablishmentStartTime;
@@ -1822,6 +1823,8 @@ public class EpdgTunnelManager {
                         } else {
                             reportIwlanError(apnName, iwlanError);
                         }
+
+                        getEpdgSelector().onEpdgConnectionFailed(mEpdgAddress);
                     }
 
                     Log.d(TAG, "Tunnel Closed: " + iwlanError);
@@ -2181,6 +2184,17 @@ public class EpdgTunnelManager {
 
     @VisibleForTesting
     void validateAndSetEpdgAddress(List<InetAddress> selectorResultList) {
+        if (mFeatureFlags.epdgSelectionExcludeFailedIpAddress()) {
+            Log.d(
+                    TAG,
+                    "Selected first ePDG address "
+                            + selectorResultList.get(0)
+                            + " from available ePDG address list: "
+                            + Arrays.toString(selectorResultList.toArray()));
+            mValidEpdgInfo.setAddrList(selectorResultList);
+            mEpdgAddress = selectorResultList.get(0);
+            return;
+        }
         List<InetAddress> addrList = mValidEpdgInfo.getAddrList();
         if (addrList == null || !addrList.equals(selectorResultList)) {
             Log.d(TAG, "Update ePDG address list.");

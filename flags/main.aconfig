@@ -24,3 +24,9 @@ flag {
     description: "Reorder IKE and Child SA security transforms with high secured as prioritized"
     bug: "306323917"
 }
+flag {
+    name: "epdg_selection_exclude_failed_ip_address"
+    namespace: "iwlan_telephony"
+    description: "Exclude the failed ip address in epdg selection until tunnel establish successfully or all ip address candidates are failed"
+    bug: "300026897"
+}
