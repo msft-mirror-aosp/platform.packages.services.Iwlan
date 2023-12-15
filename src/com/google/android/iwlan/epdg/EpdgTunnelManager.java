@@ -81,6 +81,8 @@ import com.google.android.iwlan.TunnelMetricsInterface;
 import com.google.android.iwlan.TunnelMetricsInterface.OnClosedMetrics;
 import com.google.android.iwlan.TunnelMetricsInterface.OnOpenedMetrics;
 import com.google.android.iwlan.exceptions.IwlanSimNotReadyException;
+import com.google.android.iwlan.flags.FeatureFlags;
+import com.google.android.iwlan.flags.FeatureFlagsImpl;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -102,6 +104,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class EpdgTunnelManager {
+    private final FeatureFlags mFeatureFlags;
     private final Context mContext;
     private final int mSlotId;
     private Handler mHandler;
@@ -604,9 +607,11 @@ public class EpdgTunnelManager {
         }
     }
 
-    private EpdgTunnelManager(Context context, int slotId) {
+    @VisibleForTesting
+    EpdgTunnelManager(Context context, int slotId, FeatureFlags featureFlags) {
         mContext = context;
         mSlotId = slotId;
+        mFeatureFlags = featureFlags;
         mIkeSessionCreator = new IkeSessionCreator();
         mIpSecManager = mContext.getSystemService(IpSecManager.class);
         TAG = EpdgTunnelManager.class.getSimpleName() + "[" + mSlotId + "]";
@@ -634,7 +639,7 @@ public class EpdgTunnelManager {
      */
     public static EpdgTunnelManager getInstance(@NonNull Context context, int subId) {
         return mTunnelManagerInstances.computeIfAbsent(
-                subId, k -> new EpdgTunnelManager(context, subId));
+                subId, k -> new EpdgTunnelManager(context, subId, new FeatureFlagsImpl()));
     }
 
     @VisibleForTesting
@@ -1463,6 +1468,7 @@ public class EpdgTunnelManager {
                     tunnelConfig.getTunnelCallback().onOpened(apnName, linkProperties);
 
                     reportIwlanError(apnName, new IwlanError(IwlanError.NO_ERROR));
+                    getEpdgSelector().onEpdgConnectedSuccessfully();
 
                     mIkeTunnelEstablishmentDuration =
                             System.currentTimeMillis() - mIkeTunnelEstablishmentStartTime;
@@ -1532,6 +1538,8 @@ public class EpdgTunnelManager {
                         } else {
                             reportIwlanError(apnName, iwlanError);
                         }
+
+                        getEpdgSelector().onEpdgConnectionFailed(mEpdgAddress);
                     }
 
                     Log.d(TAG, "Tunnel Closed: " + iwlanError);
@@ -1891,6 +1899,17 @@ public class EpdgTunnelManager {
 
     @VisibleForTesting
     void validateAndSetEpdgAddress(List<InetAddress> selectorResultList) {
+        if (mFeatureFlags.epdgSelectionExcludeFailedIpAddress()) {
+            Log.d(
+                    TAG,
+                    "Selected first ePDG address "
+                            + selectorResultList.get(0)
+                            + " from available ePDG address list: "
+                            + Arrays.toString(selectorResultList.toArray()));
+            mValidEpdgInfo.setAddrList(selectorResultList);
+            mEpdgAddress = selectorResultList.get(0);
+            return;
+        }
         List<InetAddress> addrList = mValidEpdgInfo.getAddrList();
         if (addrList == null || !addrList.equals(selectorResultList)) {
             Log.d(TAG, "Update ePDG address list.");
