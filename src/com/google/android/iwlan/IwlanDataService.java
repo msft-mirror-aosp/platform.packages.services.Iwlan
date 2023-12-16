@@ -18,6 +18,7 @@ package com.google.android.iwlan;
 
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
+import static android.net.ipsec.ike.ike3gpp.Ike3gppParams.PDU_SESSION_ID_UNSET;
 
 import android.content.Context;
 import android.content.Intent;
@@ -66,6 +67,8 @@ import com.google.android.iwlan.epdg.EpdgSelector;
 import com.google.android.iwlan.epdg.EpdgTunnelManager;
 import com.google.android.iwlan.epdg.TunnelLinkProperties;
 import com.google.android.iwlan.epdg.TunnelSetupRequest;
+import com.google.android.iwlan.flags.FeatureFlags;
+import com.google.android.iwlan.flags.FeatureFlagsImpl;
 import com.google.android.iwlan.proto.MetricsAtom;
 
 import java.io.FileDescriptor;
@@ -75,6 +78,7 @@ import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
@@ -86,6 +90,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class IwlanDataService extends DataService {
 
+    private final FeatureFlags mFeatureFlags;
     private static final String TAG = IwlanDataService.class.getSimpleName();
 
     private static final String CONTEXT_ATTRIBUTION_TAG = "IWLAN";
@@ -115,6 +120,7 @@ public class IwlanDataService extends DataService {
     private static final int EVENT_REMOVE_DATA_SERVICE_PROVIDER = EVENT_BASE + 7;
     private static final int EVENT_TUNNEL_OPENED_METRICS = EVENT_BASE + 8;
     private static final int EVENT_TUNNEL_CLOSED_METRICS = EVENT_BASE + 9;
+    private static final int EVENT_DEACTIVATE_DATA_CALL_WITH_DELAY = EVENT_BASE + 10;
 
     @VisibleForTesting
     enum Transport {
@@ -124,6 +130,17 @@ public class IwlanDataService extends DataService {
     }
 
     private static Transport sDefaultDataTransport = Transport.UNSPECIFIED_NETWORK;
+
+    private boolean mIs5GEnabledOnUi;
+
+    public IwlanDataService() {
+        mFeatureFlags = new FeatureFlagsImpl();
+    }
+
+    @VisibleForTesting
+    IwlanDataService(FeatureFlags featureFlags) {
+        mFeatureFlags = featureFlags;
+    }
 
     // TODO: see if network monitor callback impl can be shared between dataservice and
     // networkservice
@@ -210,10 +227,10 @@ public class IwlanDataService extends DataService {
 
     @VisibleForTesting
     class IwlanDataServiceProvider extends DataService.DataServiceProvider {
-
         private static final int CALLBACK_TYPE_SETUP_DATACALL_COMPLETE = 1;
         private static final int CALLBACK_TYPE_DEACTIVATE_DATACALL_COMPLETE = 2;
         private static final int CALLBACK_TYPE_GET_DATACALL_LIST_COMPLETE = 3;
+
         private final String SUB_TAG;
         private final IwlanDataService mIwlanDataService;
         private final IwlanTunnelCallback mIwlanTunnelCallback;
@@ -254,6 +271,16 @@ public class IwlanDataService extends DataService {
             private Date mBringUpStateTime = null;
             private Date mUpStateTime = null;
             private boolean mIsImsOrEmergency;
+            private DeactivateDataCallData mPendingDeactivateDataCallData;
+            private boolean mIsDataCallWithN1;
+
+            public boolean getIsDataCallWithN1() {
+                return mIsDataCallWithN1;
+            }
+
+            public void setIsDataCallWithN1(boolean mIsDataCallWithN1) {
+                this.mIsDataCallWithN1 = mIsDataCallWithN1;
+            }
 
             public int getPduSessionId() {
                 return mPduSessionId;
@@ -306,6 +333,14 @@ public class IwlanDataService extends DataService {
                 return mState;
             }
 
+            public DeactivateDataCallData getPendingDeactivateDataCallData() {
+                return mPendingDeactivateDataCallData;
+            }
+
+            public boolean hasPendingDeactivateDataCallData() {
+                return mPendingDeactivateDataCallData != null;
+            }
+
             /**
              * @param state (TunnelState.TUNNEL_DOWN|TUNNEL_UP|TUNNEL_DOWN)
              */
@@ -345,6 +380,11 @@ public class IwlanDataService extends DataService {
 
             public void setIsImsOrEmergency(boolean isImsOrEmergency) {
                 mIsImsOrEmergency = isImsOrEmergency;
+            }
+
+            public void setPendingDeactivateDataCallData(
+                    DeactivateDataCallData deactivateDataCallData) {
+                mPendingDeactivateDataCallData = deactivateDataCallData;
             }
 
             @Override
@@ -598,6 +638,7 @@ public class IwlanDataService extends DataService {
             events.add(IwlanEventListener.CROSS_SIM_CALLING_ENABLE_EVENT);
             events.add(IwlanEventListener.CELLINFO_CHANGED_EVENT);
             events.add(IwlanEventListener.CALL_STATE_CHANGED_EVENT);
+            events.add(IwlanEventListener.PREFERRED_NETWORK_TYPE_CHANGED_EVENT);
             IwlanEventListener.getInstance(mContext, slotIndex)
                     .addEventListener(events, getIwlanDataServiceHandler());
         }
@@ -796,11 +837,12 @@ public class IwlanDataService extends DataService {
             }
 
             if (dataProfile != null) {
+                ApnSetting apnSetting = dataProfile.getApnSetting();
                 this.setMetricsAtom(
                         // ApnName
-                        dataProfile.getApnSetting().getApnName(),
+                        apnSetting != null ? apnSetting.getApnName() : "",
                         // ApnType
-                        dataProfile.getApnSetting().getApnTypeBitmask(),
+                        apnSetting != null ? apnSetting.getApnTypeBitmask() : ApnSetting.TYPE_NONE,
                         // IsHandover
                         (reason == DataService.REQUEST_REASON_HANDOVER),
                         // Source Rat
@@ -824,6 +866,11 @@ public class IwlanDataService extends DataService {
          * support data connection tear down. When completed or error, the service must invoke the
          * provided callback to notify the platform.
          *
+         * <p>Note: For handovers, in compliance with 3GPP specs (TS 23.402 clause 8.6.1, TS 23.502
+         * clause 4.11.4.1), a {@link KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT} delay is
+         * implemented to allow the network to release the IKE tunnel. If the network fails to
+         * release it within this timeframe, the UE will take over the release process.
+         *
          * @param cid Call id returned in the callback of {@link
          *     DataServiceProvider#setupDataCall(int, DataProfile, boolean, boolean, int,
          *     LinkProperties, DataServiceCallback)}.
@@ -843,14 +890,28 @@ public class IwlanDataService extends DataService {
                             + ", callback: "
                             + callback);
 
+            boolean isRequestForHandoverToWWAN = (reason == REQUEST_REASON_HANDOVER);
+
+            int delayTimeSeconds = 0;
+            if (isRequestForHandoverToWWAN) {
+                delayTimeSeconds =
+                        IwlanCarrierConfig.getConfigInt(
+                                mContext,
+                                getSlotIndex(),
+                                IwlanCarrierConfig.KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT);
+            }
+
+            int event =
+                    (delayTimeSeconds > 0)
+                            ? EVENT_DEACTIVATE_DATA_CALL_WITH_DELAY
+                            : EVENT_DEACTIVATE_DATA_CALL;
+
             DeactivateDataCallData deactivateDataCallData =
-                    new DeactivateDataCallData(cid, reason, callback, this);
+                    new DeactivateDataCallData(cid, reason, callback, this, delayTimeSeconds);
 
             getIwlanDataServiceHandler()
-                    .sendMessage(
-                            getIwlanDataServiceHandler()
-                                    .obtainMessage(
-                                            EVENT_DEACTIVATE_DATA_CALL, deactivateDataCallData));
+                    .obtainMessage(event, deactivateDataCallData)
+                    .sendToTarget();
         }
 
         public void forceCloseTunnelsInDeactivatingState() {
@@ -867,14 +928,21 @@ public class IwlanDataService extends DataService {
             }
         }
 
-        void forceCloseTunnels() {
+        /**
+         * Closes all tunnels forcefully for a specified reason.
+         *
+         * @param reason The reason for closing the tunnel. Must be {@link
+         *     EpdgTunnelManager.TunnelBringDownReason}.
+         */
+        void forceCloseTunnels(@EpdgTunnelManager.TunnelBringDownReason int reason) {
             for (Map.Entry<String, TunnelState> entry : mTunnelStateForApn.entrySet()) {
                 getTunnelManager()
                         .closeTunnel(
                                 entry.getKey(),
                                 true /* forceClose */,
                                 getIwlanTunnelCallback(),
-                                getIwlanTunnelMetrics());
+                                getIwlanTunnelMetrics(),
+                                reason);
             }
         }
 
@@ -910,6 +978,26 @@ public class IwlanDataService extends DataService {
             tunnelState.setIsHandover(isHandover);
             tunnelState.setPduSessionId(pduSessionId);
             tunnelState.setIsImsOrEmergency(isImsOrEmergency);
+            mTunnelStateForApn.put(dataProfile.getApnSetting().getApnName(), tunnelState);
+        }
+
+        private void setTunnelState(
+                DataProfile dataProfile,
+                DataServiceCallback callback,
+                int tunnelStatus,
+                TunnelLinkProperties linkProperties,
+                boolean isHandover,
+                int pduSessionId,
+                boolean isImsOrEmergency,
+                boolean isDataCallSetupWithN1) {
+            TunnelState tunnelState = new TunnelState(callback);
+            tunnelState.setState(tunnelStatus);
+            tunnelState.setProtocolType(dataProfile.getApnSetting().getProtocol());
+            tunnelState.setTunnelLinkProperties(linkProperties);
+            tunnelState.setIsHandover(isHandover);
+            tunnelState.setPduSessionId(pduSessionId);
+            tunnelState.setIsImsOrEmergency(isImsOrEmergency);
+            tunnelState.setIsDataCallWithN1(isDataCallSetupWithN1);
             mTunnelStateForApn.put(dataProfile.getApnSetting().getApnName(), tunnelState);
         }
 
@@ -1134,6 +1222,60 @@ public class IwlanDataService extends DataService {
         public void setCalendar(Calendar c) {
             mCalendar = c;
         }
+
+        private boolean isPdnReestablishNeededOnIdleN1Update() {
+            return isN1ModeSupported() && (needIncludeN1ModeCapability() != mIs5GEnabledOnUi);
+        }
+
+        private void disconnectPdnForN1ModeUpdate() {
+            if (hasActiveOrInitiatingDataCall()) {
+                forceCloseTunnels(
+                        mIs5GEnabledOnUi
+                                ? EpdgTunnelManager.BRINGDOWN_REASON_ENABLE_N1_MODE
+                                : EpdgTunnelManager.BRINGDOWN_REASON_DISABLE_N1_MODE);
+            }
+        }
+
+        private boolean hasActiveOrInitiatingDataCall() {
+            return mTunnelStateForApn.values().stream()
+                    .anyMatch(
+                            tunnelState ->
+                                    tunnelState.getState() == TunnelState.TUNNEL_UP
+                                            || tunnelState.getState()
+                                                    == TunnelState.TUNNEL_IN_BRINGUP);
+        }
+
+        // TODO(b/309867756): Include N1_MODE_CAPABILITY inclusion status in metrics.
+        private boolean needIncludeN1ModeCapability() {
+            if (!mFeatureFlags.updateN1ModeOnUiChange()) {
+                return isN1ModeSupported();
+            }
+            if (!isN1ModeSupported()) {
+                return false;
+            }
+            // Maintain uniform N1_MODE_CAPABILITY Notify inclusion for all PDNs.
+            // Initiate PDN with current N1 inclusion in tunnel_up or tunnel_in_bringup states;
+            // otherwise, use UI settings.
+            return hasActiveOrInitiatingDataCall() ? isDataCallSetupWithN1() : mIs5GEnabledOnUi;
+        }
+
+        private boolean isDataCallSetupWithN1() {
+            return mTunnelStateForApn.values().stream().anyMatch(TunnelState::getIsDataCallWithN1);
+        }
+
+        protected boolean isN1ModeSupported() {
+            int[] nrAvailabilities =
+                    IwlanHelper.getConfig(
+                            CarrierConfigManager.KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY,
+                            mContext,
+                            getSlotIndex());
+            Log.d(
+                    TAG,
+                    "KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY : "
+                            + Arrays.toString(nrAvailabilities));
+            return Arrays.stream(nrAvailabilities)
+                    .anyMatch(k -> k == CarrierConfigManager.CARRIER_NR_AVAILABILITY_SA);
+        }
     }
 
     private final class IwlanDataServiceHandler extends Handler {
@@ -1198,6 +1340,15 @@ public class IwlanDataService extends DataService {
                                             + iwlanError);
                         }
                         break;
+                    }
+
+                    if (tunnelState.hasPendingDeactivateDataCallData()) {
+                        // Iwlan delays handling EVENT_DEACTIVATE_DATA_CALL to give the network time
+                        // to release the PDN.  This allows for immediate response to Telephony if
+                        // the network releases the PDN before timeout. Otherwise, Telephony's PDN
+                        // state waits for Iwlan, blocking further actions on this PDN.
+                        resumePendingDeactivationIfExists(
+                                tunnelState.getPendingDeactivateDataCallData());
                     }
 
                     iwlanDataServiceProvider.mTunnelStats.reportTunnelDown(apnName, tunnelState);
@@ -1265,6 +1416,11 @@ public class IwlanDataService extends DataService {
                         metricsAtom.setTunnelState(tunnelState.getState());
                         metricsAtom.setMessageId(
                                 IwlanStatsLog.IWLAN_SETUP_DATA_CALL_RESULT_REPORTED);
+
+                        metricsAtom.setErrorCountOfSameCause(
+                                ErrorPolicyManager.getInstance(
+                                                mContext, iwlanDataServiceProvider.getSlotIndex())
+                                        .getLastErrorCountOfSameCause(apnName));
 
                         iwlanDataServiceProvider.deliverCallback(
                                 IwlanDataServiceProvider.CALLBACK_TYPE_SETUP_DATACALL_COMPLETE,
@@ -1388,7 +1544,29 @@ public class IwlanDataService extends DataService {
                     iwlanDataServiceProvider =
                             (IwlanDataServiceProvider) getDataServiceProvider(msg.arg1);
 
-                    iwlanDataServiceProvider.mCallState = msg.arg2;
+                    int previousCallState = iwlanDataServiceProvider.mCallState;
+                    int currentCallState = iwlanDataServiceProvider.mCallState = msg.arg2;
+
+                    if (!mFeatureFlags.updateN1ModeOnUiChange()) {
+                        break;
+                    }
+
+                    // Disconnect PDN if call ends and re-establishment needed.
+                    if (previousCallState != currentCallState
+                            && currentCallState == TelephonyManager.CALL_STATE_IDLE
+                            && iwlanDataServiceProvider.isPdnReestablishNeededOnIdleN1Update()) {
+                        iwlanDataServiceProvider.disconnectPdnForN1ModeUpdate();
+                    }
+                    break;
+
+                case IwlanEventListener.PREFERRED_NETWORK_TYPE_CHANGED_EVENT:
+                    if (!mFeatureFlags.updateN1ModeOnUiChange()) {
+                        break;
+                    }
+                    iwlanDataServiceProvider =
+                            (IwlanDataServiceProvider) getDataServiceProvider(msg.arg1);
+                    long allowedNetworkType = (long) msg.obj;
+                    onPreferredNetworkTypeChanged(iwlanDataServiceProvider, allowedNetworkType);
                     break;
 
                 case EVENT_SETUP_DATA_CALL:
@@ -1452,8 +1630,7 @@ public class IwlanDataService extends DataService {
                                     dataProfile.getApnSetting().getApnName());
 
                     // Return the existing PDN if the pduSessionId is the same and the tunnel
-                    // state is
-                    // TUNNEL_UP.
+                    // state is TUNNEL_UP.
                     if (tunnelState != null) {
                         if (tunnelState.getPduSessionId() == pduSessionId
                                 && tunnelState.getState()
@@ -1493,11 +1670,16 @@ public class IwlanDataService extends DataService {
                         return;
                     }
 
+                    boolean isDataCallSetupWithN1 =
+                            iwlanDataServiceProvider.needIncludeN1ModeCapability();
+
                     TunnelSetupRequest.Builder tunnelReqBuilder =
                             TunnelSetupRequest.builder()
                                     .setApnName(dataProfile.getApnSetting().getApnName())
                                     .setIsRoaming(isRoaming)
-                                    .setPduSessionId(pduSessionId)
+                                    .setPduSessionId(
+                                            isDataCallSetupWithN1
+                                                    ? pduSessionId : PDU_SESSION_ID_UNSET)
                                     .setApnIpProtocol(
                                             isRoaming
                                                     ? dataProfile
@@ -1532,7 +1714,8 @@ public class IwlanDataService extends DataService {
                             null,
                             (reason == DataService.REQUEST_REASON_HANDOVER),
                             pduSessionId,
-                            isIMS || isEmergency);
+                            isIMS || isEmergency,
+                            isDataCallSetupWithN1);
 
                     boolean result =
                             iwlanDataServiceProvider
@@ -1553,55 +1736,11 @@ public class IwlanDataService extends DataService {
                     break;
 
                 case EVENT_DEACTIVATE_DATA_CALL:
-                    DeactivateDataCallData deactivateDataCallData =
-                            (DeactivateDataCallData) msg.obj;
-                    iwlanDataServiceProvider = deactivateDataCallData.mIwlanDataServiceProvider;
-                    callback = deactivateDataCallData.mCallback;
-                    reason = deactivateDataCallData.mReason;
+                    handleDeactivateDataCall((DeactivateDataCallData) msg.obj);
+                    break;
 
-                    int cid = deactivateDataCallData.mCid;
-                    slotId = iwlanDataServiceProvider.getSlotIndex();
-                    boolean isNetworkLost =
-                            !isNetworkConnected(
-                                    isActiveDataOnOtherSub(slotId),
-                                    IwlanHelper.isCrossSimCallingEnabled(mContext, slotId));
-                    boolean isHandOutSuccessful = (reason == REQUEST_REASON_HANDOVER);
-
-                    for (String apn : iwlanDataServiceProvider.mTunnelStateForApn.keySet()) {
-                        if (apn.hashCode() == cid) {
-                            // No need to check state since dataconnection in framework serializes
-                            // setup and deactivate calls using callId/cid.
-                            iwlanDataServiceProvider
-                                    .mTunnelStateForApn
-                                    .get(apn)
-                                    .setState(
-                                            IwlanDataServiceProvider.TunnelState
-                                                    .TUNNEL_IN_BRINGDOWN);
-                            iwlanDataServiceProvider
-                                    .mTunnelStateForApn
-                                    .get(apn)
-                                    .setDataServiceCallback(callback);
-
-                            // According to the handover procedure in 3GPP specifications (TS 23.402
-                            // clause 8.6.1 for S1; TS 23.502 clause 4.11.4.1 for N1), if the PDN is
-                            // handed out to another RAT, the IKE tunnel over ePDG SHOULD be
-                            // released by the network.  Thus, UE just released the tunnel locally.
-                            iwlanDataServiceProvider
-                                    .getTunnelManager()
-                                    .closeTunnel(
-                                            apn,
-                                            isNetworkLost || isHandOutSuccessful /* forceClose */,
-                                            iwlanDataServiceProvider.getIwlanTunnelCallback(),
-                                            iwlanDataServiceProvider.getIwlanTunnelMetrics());
-                            return;
-                        }
-                    }
-
-                    iwlanDataServiceProvider.deliverCallback(
-                            IwlanDataServiceProvider.CALLBACK_TYPE_DEACTIVATE_DATACALL_COMPLETE,
-                            DataServiceCallback.RESULT_ERROR_INVALID_ARG,
-                            callback,
-                            null);
+                case EVENT_DEACTIVATE_DATA_CALL_WITH_DELAY:
+                    handleDeactivateDataCallWithDelay((DeactivateDataCallData) msg.obj);
                     break;
 
                 case EVENT_DATA_CALL_LIST_REQUEST:
@@ -1618,7 +1757,7 @@ public class IwlanDataService extends DataService {
 
                 case EVENT_FORCE_CLOSE_TUNNEL:
                     for (IwlanDataServiceProvider dp : sIwlanDataServiceProviders.values()) {
-                        dp.forceCloseTunnels();
+                        dp.forceCloseTunnels(EpdgTunnelManager.BRINGDOWN_REASON_UNKNOWN);
                     }
                     break;
 
@@ -1699,6 +1838,97 @@ public class IwlanDataService extends DataService {
 
                 default:
                     throw new IllegalStateException("Unexpected value: " + msg.what);
+            }
+        }
+
+        public void handleDeactivateDataCall(DeactivateDataCallData data) {
+            handleDeactivateDataCall(data, false);
+        }
+
+        public void handleDeactivateDataCallWithDelay(DeactivateDataCallData data) {
+            handleDeactivateDataCall(data, true);
+        }
+
+        public void handleDeactivateDataCall(DeactivateDataCallData data, boolean isWithDelay) {
+            IwlanDataServiceProvider serviceProvider = data.mIwlanDataServiceProvider;
+            String matchingApn = findMatchingApn(serviceProvider, data.mCid);
+
+            if (matchingApn == null) {
+                deliverDeactivationError(serviceProvider, data.mCallback);
+                return;
+            }
+
+            if (isWithDelay) {
+                Log.d(TAG, "Delaying deactivation for APN: " + matchingApn);
+                scheduleDelayedDeactivateDataCall(serviceProvider, data, matchingApn);
+                return;
+            }
+            Log.d(TAG, "Processing deactivation for APN: " + matchingApn);
+            processDeactivateDataCall(serviceProvider, data, matchingApn);
+        }
+
+        private String findMatchingApn(IwlanDataServiceProvider serviceProvider, int cid) {
+            return serviceProvider.mTunnelStateForApn.keySet().stream()
+                    .filter(apn -> apn.hashCode() == cid)
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        private void deliverDeactivationError(
+                IwlanDataServiceProvider serviceProvider, DataServiceCallback callback) {
+            serviceProvider.deliverCallback(
+                    IwlanDataServiceProvider.CALLBACK_TYPE_DEACTIVATE_DATACALL_COMPLETE,
+                    DataServiceCallback.RESULT_ERROR_INVALID_ARG,
+                    callback,
+                    null);
+        }
+
+        private void scheduleDelayedDeactivateDataCall(
+                IwlanDataServiceProvider serviceProvider,
+                DeactivateDataCallData data,
+                String matchingApn) {
+            IwlanDataServiceProvider.TunnelState tunnelState =
+                    serviceProvider.mTunnelStateForApn.get(matchingApn);
+            tunnelState.setPendingDeactivateDataCallData(data);
+            Handler handler = getIwlanDataServiceHandler();
+            handler.sendMessageDelayed(
+                    handler.obtainMessage(EVENT_DEACTIVATE_DATA_CALL, data),
+                    data.mDelayTimeSeconds * 1000L);
+        }
+
+        private void processDeactivateDataCall(
+                IwlanDataServiceProvider serviceProvider,
+                DeactivateDataCallData data,
+                String matchingApn) {
+            int slotId = serviceProvider.getSlotIndex();
+            boolean isNetworkLost =
+                    !isNetworkConnected(
+                            isActiveDataOnOtherSub(slotId),
+                            IwlanHelper.isCrossSimCallingEnabled(mContext, slotId));
+            boolean isHandoverSuccessful = (data.mReason == REQUEST_REASON_HANDOVER);
+
+            IwlanDataServiceProvider.TunnelState tunnelState =
+                    serviceProvider.mTunnelStateForApn.get(matchingApn);
+            tunnelState.setState(IwlanDataServiceProvider.TunnelState.TUNNEL_IN_BRINGDOWN);
+            tunnelState.setDataServiceCallback(data.mCallback);
+
+            serviceProvider
+                    .getTunnelManager()
+                    .closeTunnel(
+                            matchingApn,
+                            isNetworkLost || isHandoverSuccessful, /* forceClose */
+                            serviceProvider.getIwlanTunnelCallback(),
+                            serviceProvider.getIwlanTunnelMetrics());
+        }
+
+        private void resumePendingDeactivationIfExists(
+                DeactivateDataCallData deactivateDataCallData) {
+            Handler handler = getIwlanDataServiceHandler();
+            if (handler.hasMessages(EVENT_DEACTIVATE_DATA_CALL, deactivateDataCallData)) {
+                // Remove any existing deactivation messages and request a new one in the front
+                handler.removeMessages(EVENT_DEACTIVATE_DATA_CALL, deactivateDataCallData);
+                handler.sendMessageAtFrontOfQueue(
+                        handler.obtainMessage(EVENT_DEACTIVATE_DATA_CALL, deactivateDataCallData));
             }
         }
 
@@ -1785,13 +2015,19 @@ public class IwlanDataService extends DataService {
         final int mReason;
         final DataServiceCallback mCallback;
         final IwlanDataServiceProvider mIwlanDataServiceProvider;
+        final int mDelayTimeSeconds;
 
         private DeactivateDataCallData(
-                int cid, int reason, DataServiceCallback callback, IwlanDataServiceProvider dsp) {
+                int cid,
+                int reason,
+                DataServiceCallback callback,
+                IwlanDataServiceProvider dsp,
+                int delayTimeSeconds) {
             mCid = cid;
             mReason = reason;
             mCallback = callback;
             mIwlanDataServiceProvider = dsp;
+            mDelayTimeSeconds = delayTimeSeconds;
         }
     }
 
@@ -2059,10 +2295,38 @@ public class IwlanDataService extends DataService {
                 return "EVENT_TUNNEL_OPENED_METRICS";
             case EVENT_TUNNEL_CLOSED_METRICS:
                 return "EVENT_TUNNEL_CLOSED_METRICS";
+            case EVENT_DEACTIVATE_DATA_CALL_WITH_DELAY:
+                return "EVENT_DEACTIVATE_DATA_CALL_WITH_DELAY";
             case IwlanEventListener.CALL_STATE_CHANGED_EVENT:
                 return "CALL_STATE_CHANGED_EVENT";
+            case IwlanEventListener.PREFERRED_NETWORK_TYPE_CHANGED_EVENT:
+                return "PREFERRED_NETWORK_TYPE_CHANGED_EVENT";
             default:
                 return "Unknown(" + event + ")";
+        }
+    }
+
+    private void initAllowedNetworkType() {
+        TelephonyManager mTelephonyManager = mContext.getSystemService(TelephonyManager.class);
+        mIs5GEnabledOnUi =
+                ((mTelephonyManager.getAllowedNetworkTypesBitmask()
+                                & TelephonyManager.NETWORK_TYPE_BITMASK_NR)
+                        != 0);
+    }
+
+    private void onPreferredNetworkTypeChanged(
+            IwlanDataServiceProvider iwlanDataServiceProvider, long allowedNetworkType) {
+        boolean isCurrentUiEnable5G =
+                (allowedNetworkType & TelephonyManager.NETWORK_TYPE_BITMASK_NR) != 0;
+        boolean isPreviousUiEnable5G = mIs5GEnabledOnUi;
+        mIs5GEnabledOnUi = isCurrentUiEnable5G;
+        if (!iwlanDataServiceProvider.isN1ModeSupported()) {
+            return;
+        }
+        if (isPreviousUiEnable5G != isCurrentUiEnable5G) {
+            if (!iwlanDataServiceProvider.isOnCall()) {
+                iwlanDataServiceProvider.disconnectPdnForN1ModeUpdate();
+            }
         }
     }
 
@@ -2073,6 +2337,7 @@ public class IwlanDataService extends DataService {
         IwlanBroadcastReceiver.startListening(mContext);
         IwlanCarrierConfigChangeListener.startListening(mContext);
         IwlanHelper.startCountryDetector(mContext);
+        initAllowedNetworkType();
     }
 
     @Override
