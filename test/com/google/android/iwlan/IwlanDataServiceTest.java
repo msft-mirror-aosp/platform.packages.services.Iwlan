@@ -447,7 +447,8 @@ public class IwlanDataServiceTest {
                 null, /* linkProperties */
                 false /* isHandover */,
                 1 /* pduSessionId */,
-                true /* isImsOrEmergency */);
+                true /* isImsOrEmergency */,
+                true /* isDataCallSetupWithN1 */);
 
         LinkProperties newLinkProperties = new LinkProperties(mLinkProperties);
         newLinkProperties.setInterfaceName("wlan0");
@@ -613,7 +614,8 @@ public class IwlanDataServiceTest {
                 mLinkProperties,
                 false, /* isHandover */
                 1, /* pduSessionId */
-                true /* isImsOrEmergency */);
+                true /* isImsOrEmergency */,
+                true /* isDataCallSetupWithN1 */);
         mSpyIwlanDataServiceProvider.requestDataCallList(new DataServiceCallback(callback));
         mTestLooper.dispatchAll();
 
@@ -823,7 +825,8 @@ public class IwlanDataServiceTest {
                 null, /* linkProperties */
                 false, /* isHandover */
                 1, /* pduSessionId */
-                true /* isImsOrEmergency */);
+                true /* isImsOrEmergency */,
+                true /* isDataCallSetupWithN1 */);
 
         mSpyIwlanDataServiceProvider.deactivateDataCall(
                 TEST_APN_NAME.hashCode() /* cid: hashcode() of "ims" */,
@@ -860,7 +863,8 @@ public class IwlanDataServiceTest {
                 null, /* linkProperties */
                 false, /* isHandover */
                 1, /* pduSessionId */
-                true /* isImsOrEmergency */);
+                true /* isImsOrEmergency */,
+                true /* isDataCallSetupWithN1 */);
 
         mSpyIwlanDataServiceProvider.deactivateDataCall(
                 TEST_APN_NAME.hashCode() /* cid: hashcode() of "ims" */,
@@ -904,7 +908,8 @@ public class IwlanDataServiceTest {
                 null, /* linkProperties */
                 false, /* isHandover */
                 1, /* pduSessionId */
-                true /* isImsOrEmergency */);
+                true /* isImsOrEmergency */,
+                true /* isDataCallSetupWithN1 */);
 
         mSpyIwlanDataServiceProvider.deactivateDataCall(
                 TEST_APN_NAME.hashCode() /* cid: hashcode() of "ims" */,
@@ -962,7 +967,8 @@ public class IwlanDataServiceTest {
                 null, /* linkProperties */
                 false, /* isHandover */
                 1, /* pduSessionId */
-                true /* isImsOrEmergency */);
+                true /* isImsOrEmergency */,
+                true /* isDataCallSetupWithN1 */);
 
         mSpyIwlanDataServiceProvider.setMetricsAtom(
                 TEST_APN_NAME,
@@ -1027,7 +1033,8 @@ public class IwlanDataServiceTest {
                 null, /* linkProperties */
                 (setupDataReason == DataService.REQUEST_REASON_HANDOVER),
                 1 /* pduSessionId */,
-                true /* isImsOrEmergency */);
+                true /* isImsOrEmergency */,
+                true /* isDataCallSetupWithN1 */);
 
         mSpyIwlanDataServiceProvider.setMetricsAtom(
                 TEST_APN_NAME,
@@ -1079,7 +1086,8 @@ public class IwlanDataServiceTest {
                 null, /* linkProperties */
                 (setupDataReason == DataService.REQUEST_REASON_HANDOVER),
                 1 /* pduSessionId */,
-                true /* isImsOrEmergency */);
+                true /* isImsOrEmergency */,
+                true /* isDataCallSetupWithN1 */);
 
         mSpyIwlanDataServiceProvider.setMetricsAtom(
                 TEST_APN_NAME,
@@ -1140,7 +1148,8 @@ public class IwlanDataServiceTest {
                 null, /* linkProperties */
                 (setupDataReason == DataService.REQUEST_REASON_HANDOVER),
                 1 /* pduSessionId */,
-                true /* isImsOrEmergency */);
+                true /* isImsOrEmergency */,
+                true /* isDataCallSetupWithN1 */);
 
         mSpyIwlanDataServiceProvider.setMetricsAtom(
                 TEST_APN_NAME,
@@ -1198,7 +1207,8 @@ public class IwlanDataServiceTest {
                 null, /* linkProperties */
                 (setupDataReason == DataService.REQUEST_REASON_HANDOVER),
                 1 /* pduSessionId */,
-                true /* isImsOrEmergency */);
+                true /* isImsOrEmergency */,
+                true /* isDataCallSetupWithN1 */);
 
         mSpyIwlanDataServiceProvider.setMetricsAtom(
                 TEST_APN_NAME,
@@ -1256,7 +1266,8 @@ public class IwlanDataServiceTest {
                 null /* linkProperties */,
                 (setupDataReason == DataService.REQUEST_REASON_HANDOVER),
                 1 /* pduSessionId */,
-                true /* isImsOrEmergency */);
+                true /* isImsOrEmergency */,
+                true /* isDataCallSetupWithN1 */);
 
         mSpyIwlanDataServiceProvider.setMetricsAtom(
                 TEST_APN_NAME,
@@ -1314,7 +1325,8 @@ public class IwlanDataServiceTest {
                 null /* linkProperties */,
                 (setupDataReason == DataService.REQUEST_REASON_HANDOVER),
                 1 /* pduSessionId */,
-                true /* isImsOrEmergency */);
+                true /* isImsOrEmergency */,
+                true /* isDataCallSetupWithN1 */);
 
         mSpyIwlanDataServiceProvider.setMetricsAtom(
                 TEST_APN_NAME,
@@ -1666,7 +1678,8 @@ public class IwlanDataServiceTest {
                 null /* linkProperties */,
                 false /* isHandover */,
                 1 /* pduSessionId */,
-                true /* isImsOrEmergency */);
+                true /* isImsOrEmergency */,
+                true /* isDataCallSetupWithN1 */);
 
         mSpyIwlanDataServiceProvider.setMetricsAtom(
                 TEST_APN_NAME,
@@ -1721,7 +1734,8 @@ public class IwlanDataServiceTest {
                 null, /* linkProperties */
                 false /* isHandover */,
                 1 /* pduSessionId */,
-                true /* isImsOrEmergency */);
+                true /* isImsOrEmergency */,
+                true /* isDataCallSetupWithN1 */);
 
         mSpyIwlanDataServiceProvider.setMetricsAtom(
                 TEST_APN_NAME,
@@ -1788,7 +1802,8 @@ public class IwlanDataServiceTest {
                 null, /* linkProperties */
                 false /* isHandover */,
                 1 /* pduSessionId */,
-                true /* isImsOrEmergency */);
+                true /* isImsOrEmergency */,
+                true /* isDataCallSetupWithN1 */);
 
         mSpyIwlanDataServiceProvider.setMetricsAtom(
                 TEST_APN_NAME,
@@ -1831,7 +1846,8 @@ public class IwlanDataServiceTest {
                 null, /* linkProperties */
                 false /* isHandover */,
                 1 /* pduSessionId */,
-                true /* isImsOrEmergency */);
+                true /* isImsOrEmergency */,
+                true /* isDataCallSetupWithN1 */);
 
         mSpyIwlanDataServiceProvider.setMetricsAtom(
                 TEST_APN_NAME,

@@ -963,25 +963,7 @@ public class IwlanDataService extends DataService {
         }
 
         @VisibleForTesting
-        void setTunnelState(
-                DataProfile dataProfile,
-                DataServiceCallback callback,
-                int tunnelStatus,
-                TunnelLinkProperties linkProperties,
-                boolean isHandover,
-                int pduSessionId,
-                boolean isImsOrEmergency) {
-            TunnelState tunnelState = new TunnelState(callback);
-            tunnelState.setState(tunnelStatus);
-            tunnelState.setProtocolType(dataProfile.getApnSetting().getProtocol());
-            tunnelState.setTunnelLinkProperties(linkProperties);
-            tunnelState.setIsHandover(isHandover);
-            tunnelState.setPduSessionId(pduSessionId);
-            tunnelState.setIsImsOrEmergency(isImsOrEmergency);
-            mTunnelStateForApn.put(dataProfile.getApnSetting().getApnName(), tunnelState);
-        }
-
-        private void setTunnelState(
+        protected void setTunnelState(
                 DataProfile dataProfile,
                 DataServiceCallback callback,
                 int tunnelStatus,
