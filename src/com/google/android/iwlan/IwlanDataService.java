@@ -811,11 +811,12 @@ public class IwlanDataService extends DataService {
             }
 
             if (dataProfile != null) {
+                ApnSetting apnSetting = dataProfile.getApnSetting();
                 this.setMetricsAtom(
                         // ApnName
-                        dataProfile.getApnSetting().getApnName(),
+                        apnSetting != null ? apnSetting.getApnName() : "",
                         // ApnType
-                        dataProfile.getApnSetting().getApnTypeBitmask(),
+                        apnSetting != null ? apnSetting.getApnTypeBitmask() : ApnSetting.TYPE_NONE,
                         // IsHandover
                         (reason == DataService.REQUEST_REASON_HANDOVER),
                         // Source Rat
