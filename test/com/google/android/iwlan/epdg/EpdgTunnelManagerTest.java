@@ -660,6 +660,7 @@ public class EpdgTunnelManagerTest {
                 "Reorder higher AEAD in  Child SA mismatch",
                 (long) SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12,
                 (long) childAeadAlgos.get(0).first);
+        assertTrue(childTunnelParams.getChildSaProposals().get(0).getDhGroups().size() == 0);
     }
 
     @Test
@@ -743,6 +744,30 @@ public class EpdgTunnelManagerTest {
                 "Reorder higher AEAD in  Child SA mismatch",
                 (long) SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16,
                 (long) childAeadAlgos.get(0).first);
+    }
+
+    @Test
+    public void testAddDHGroupForKePayloadInChildSaParamsForRekey() throws Exception {
+        when(mFakeFeatureFlags.multipleSaProposals()).thenReturn(true);
+        final String apnName = "ims";
+        PersistableBundle bundle = new PersistableBundle();
+
+        bundle.putBoolean(
+                CarrierConfigManager.Iwlan.KEY_SUPPORTS_CHILD_SESSION_MULTIPLE_SA_PROPOSALS_BOOL,
+                true);
+        bundle.putBoolean(CarrierConfigManager.Iwlan.KEY_ADD_KE_TO_CHILD_SESSION_REKEY_BOOL, true);
+
+        setupMockForGetConfig(bundle);
+
+        IkeSessionArgumentCaptors tunnelArgumentCaptors =
+                verifyBringUpTunnelWithDnsQuery(apnName, mMockDefaultNetwork);
+
+        ChildSessionParams childTunnelParams =
+                tunnelArgumentCaptors.mChildSessionParamsCaptor.getValue();
+
+        assertTrue(childTunnelParams.getChildSaProposals().size() > 0);
+
+        assertTrue(childTunnelParams.getChildSaProposals().get(0).getDhGroups().size() != 0);
     }
 
     @Test
