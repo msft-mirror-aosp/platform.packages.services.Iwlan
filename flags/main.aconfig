@@ -1,4 +1,5 @@
 package: "com.google.android.iwlan.flags"
+container: "system"
 
 flag {
     name: "prevent_epdg_selection_threads_exhausted"
