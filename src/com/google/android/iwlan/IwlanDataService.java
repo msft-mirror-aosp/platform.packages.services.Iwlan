@@ -1565,6 +1565,7 @@ public class IwlanDataService extends DataService {
 
                     if ((accessNetworkType != AccessNetworkType.IWLAN)
                             || (dataProfile == null)
+                            || (dataProfile.getApnSetting() == null)
                             || (linkProperties == null
                                     && reason == DataService.REQUEST_REASON_HANDOVER)) {
 
