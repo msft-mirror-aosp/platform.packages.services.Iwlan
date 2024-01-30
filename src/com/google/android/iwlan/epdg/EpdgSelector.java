@@ -153,6 +153,9 @@ public class EpdgSelector {
         mV4PcoData = new ArrayList<>();
         mV6PcoData = new ArrayList<>();
 
+        mV4PcoData = new ArrayList<>();
+        mV6PcoData = new ArrayList<>();
+
         mErrorPolicyManager = ErrorPolicyManager.getInstance(mContext, mSlotId);
 
         mTemporaryExcludedAddresses = new HashSet<>();
