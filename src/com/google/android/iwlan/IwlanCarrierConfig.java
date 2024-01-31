@@ -23,6 +23,7 @@ import android.telephony.CarrierConfigManager;
 
 /** Class for handling IWLAN carrier configuration. */
 public class IwlanCarrierConfig {
+    static final String PREFIX = "iwlan.";
 
     /**
      * Key for setting the delay in seconds to release the IWLAN connection after a handover to
@@ -30,13 +31,27 @@ public class IwlanCarrierConfig {
      * value.
      */
     public static final String KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT =
-            "iwlan.handover_to_wwan_release_delay_second_int";
+            PREFIX + "handover_to_wwan_release_delay_second_int";
+
+    /**
+     * Key to exclude IKE N1_MODE_CAPABILITY Notify payload during emergency session setup without
+     * affecting normal sessions. See {@link #DEFAULT_N1_MODE_EXCLUSION_FOR_EMERGENCY_SESSION_BOOL}
+     * for the default value.
+     */
+    public static final String KEY_N1_MODE_EXCLUSION_FOR_EMERGENCY_SESSION_BOOL =
+            PREFIX + "n1_mode_exclusion_for_emergency_session";
 
     /**
      * Default delay in seconds for releasing the IWLAN connection after a WWAN handover. This is
      * the default value for {@link #KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT}.
      */
     public static final int DEFAULT_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT = 0;
+
+    /**
+     * The default value for determining whether the IKE N1_MODE_CAPABILITY Notify payload is
+     * excluded during emergency session setup.
+     */
+    public static final boolean DEFAULT_N1_MODE_EXCLUSION_FOR_EMERGENCY_SESSION_BOOL = false;
 
     private static PersistableBundle mHiddenBundle = new PersistableBundle();
 
@@ -54,6 +69,9 @@ public class IwlanCarrierConfig {
         bundle.putInt(
                 KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT,
                 DEFAULT_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT);
+        bundle.putBoolean(
+                KEY_N1_MODE_EXCLUSION_FOR_EMERGENCY_SESSION_BOOL,
+                DEFAULT_N1_MODE_EXCLUSION_FOR_EMERGENCY_SESSION_BOOL);
         return bundle;
     }
 

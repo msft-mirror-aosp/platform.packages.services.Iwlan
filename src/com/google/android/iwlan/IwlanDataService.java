@@ -1653,8 +1653,23 @@ public class IwlanDataService extends DataService {
                         return;
                     }
 
+                    int apnTypeBitmask = dataProfile.getApnSetting().getApnTypeBitmask();
+                    boolean isIms = hasApnTypes(apnTypeBitmask, ApnSetting.TYPE_IMS);
+                    boolean isEmergency = hasApnTypes(apnTypeBitmask, ApnSetting.TYPE_EMERGENCY);
+
                     boolean isDataCallSetupWithN1 =
                             iwlanDataServiceProvider.needIncludeN1ModeCapability();
+
+                    // Override N1_MODE_CAPABILITY exclusion only for Emergency PDN due to carrier
+                    // network limitations
+                    if (IwlanCarrierConfig.getConfigBoolean(
+                                    mContext,
+                                    slotId,
+                                    IwlanCarrierConfig
+                                            .KEY_N1_MODE_EXCLUSION_FOR_EMERGENCY_SESSION_BOOL)
+                            && isEmergency) {
+                        isDataCallSetupWithN1 = false;
+                    }
 
                     TunnelSetupRequest.Builder tunnelReqBuilder =
                             TunnelSetupRequest.builder()
@@ -1662,13 +1677,16 @@ public class IwlanDataService extends DataService {
                                     .setIsRoaming(isRoaming)
                                     .setPduSessionId(
                                             isDataCallSetupWithN1
-                                                    ? pduSessionId : PDU_SESSION_ID_UNSET)
+                                                    ? pduSessionId
+                                                    : PDU_SESSION_ID_UNSET)
                                     .setApnIpProtocol(
                                             isRoaming
                                                     ? dataProfile
                                                             .getApnSetting()
                                                             .getRoamingProtocol()
-                                                    : dataProfile.getApnSetting().getProtocol());
+                                                    : dataProfile.getApnSetting().getProtocol())
+                                    .setRequestPcscf(isIms || isEmergency)
+                                    .setIsEmergency(isEmergency);
 
                     if (reason == DataService.REQUEST_REASON_HANDOVER) {
                         // for now assume that, at max,  only one address of eachtype (v4/v6).
@@ -1684,12 +1702,6 @@ public class IwlanDataService extends DataService {
                         }
                     }
 
-                    int apnTypeBitmask = dataProfile.getApnSetting().getApnTypeBitmask();
-                    boolean isIMS = hasApnTypes(apnTypeBitmask, ApnSetting.TYPE_IMS);
-                    boolean isEmergency = hasApnTypes(apnTypeBitmask, ApnSetting.TYPE_EMERGENCY);
-                    tunnelReqBuilder.setRequestPcscf(isIMS || isEmergency);
-                    tunnelReqBuilder.setIsEmergency(isEmergency);
-
                     iwlanDataServiceProvider.setTunnelState(
                             dataProfile,
                             callback,
@@ -1697,7 +1709,7 @@ public class IwlanDataService extends DataService {
                             null,
                             (reason == DataService.REQUEST_REASON_HANDOVER),
                             pduSessionId,
-                            isIMS || isEmergency,
+                            isIms || isEmergency,
                             isDataCallSetupWithN1);
 
                     boolean result =
