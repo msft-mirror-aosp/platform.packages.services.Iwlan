@@ -76,6 +76,7 @@ import android.telephony.data.DataService;
 import android.telephony.data.DataServiceCallback;
 import android.telephony.data.IDataServiceCallback;
 import android.telephony.data.NetworkSliceInfo;
+import android.telephony.data.TrafficDescriptor;
 import android.telephony.ims.ImsManager;
 import android.telephony.ims.ImsMmTelManager;
 
@@ -766,6 +767,33 @@ public class IwlanDataServiceTest {
     }
 
     @Test
+    public void testIwlanSetupDataCallWithBringUpTunnelAndNullApnSetting() {
+        DataProfile dp = buildImsDataProfileWithEmptyApnSetting();
+
+        /* Wifi is connected */
+        onSystemDefaultNetworkConnected(
+                mMockNetwork, mLinkProperties, TRANSPORT_WIFI, INVALID_SUB_INDEX);
+
+        mSpyIwlanDataServiceProvider.setupDataCall(
+                AccessNetworkType.IWLAN, /* AccessNetworkType */
+                dp, /* dataProfile */
+                false, /* isRoaming */
+                true, /* allowRoaming */
+                DataService.REQUEST_REASON_NORMAL, /* DataService.REQUEST_REASON_NORMAL */
+                null, /* LinkProperties */
+                1, /* pduSessionId */
+                null, /* sliceInfo */
+                null, /* trafficDescriptor */
+                true, /* matchAllRuleAllowed */
+                mMockDataServiceCallback);
+        mTestLooper.dispatchAll();
+
+        verify(mMockDataServiceCallback, times(1))
+                .onSetupDataCallComplete(
+                        eq(DataServiceCallback.RESULT_ERROR_INVALID_ARG), isNull());
+    }
+
+    @Test
     public void testSliceInfoInclusionInDataCallResponse() throws Exception {
         DataProfile dp = buildImsDataProfile();
 
@@ -1417,6 +1445,16 @@ public class IwlanDataServiceTest {
             calendar.setTimeInMillis(mMockedCalendarTime);
         }
         mTestLooper.dispatchAll();
+    }
+
+    private DataProfile buildImsDataProfileWithEmptyApnSetting() {
+        return new DataProfile.Builder()
+                .setTrafficDescriptor(
+                        new TrafficDescriptor.Builder().setDataNetworkName("").build())
+                .setType(1)
+                .enable(true)
+                .setPreferred(true)
+                .build();
     }
 
     private DataProfile buildImsDataProfile() {
