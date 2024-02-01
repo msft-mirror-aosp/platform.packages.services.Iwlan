@@ -2294,6 +2294,11 @@ public class IwlanDataServiceTest {
 
     private void mockSetupDataCallWithPduSessionId(int pduSessionId) {
         DataProfile dp = buildImsDataProfile();
+
+        verifySetupDataCallRequestHandled(pduSessionId, dp);
+    }
+
+    private void verifySetupDataCallRequestHandled(int pduSessionId, DataProfile dp) {
         onSystemDefaultNetworkConnected(
                 mMockNetwork, mLinkProperties, TRANSPORT_WIFI, INVALID_SUB_INDEX);
         mSpyIwlanDataServiceProvider.setupDataCall(
@@ -2315,5 +2320,37 @@ public class IwlanDataServiceTest {
                         any(TunnelSetupRequest.class),
                         any(IwlanTunnelCallback.class),
                         any(IwlanTunnelMetricsImpl.class));
+    }
+
+    @Test
+    public void testN1ModeForEmergencySession() {
+        int pduSessionId = 5;
+        DataProfile dp = buildDataProfile(ApnSetting.TYPE_EMERGENCY);
+        verifySetupDataCallRequestHandled(pduSessionId, dp);
+
+        ArgumentCaptor<TunnelSetupRequest> tunnelSetupRequestCaptor =
+                ArgumentCaptor.forClass(TunnelSetupRequest.class);
+        verify(mMockEpdgTunnelManager, times(1))
+                .bringUpTunnel(tunnelSetupRequestCaptor.capture(), any(), any());
+        TunnelSetupRequest tunnelSetupRequest = tunnelSetupRequestCaptor.getValue();
+        assertEquals(pduSessionId, tunnelSetupRequest.getPduSessionId());
+    }
+
+    @Test
+    public void testN1ModeExclusionForEmergencySession() {
+        when(IwlanCarrierConfig.getConfigBoolean(
+                        mMockContext,
+                        DEFAULT_SLOT_INDEX,
+                        IwlanCarrierConfig.KEY_N1_MODE_EXCLUSION_FOR_EMERGENCY_SESSION_BOOL))
+                .thenReturn(true);
+        DataProfile dp = buildDataProfile(ApnSetting.TYPE_EMERGENCY);
+        verifySetupDataCallRequestHandled(5 /* pduSessionId */, dp);
+
+        ArgumentCaptor<TunnelSetupRequest> tunnelSetupRequestCaptor =
+                ArgumentCaptor.forClass(TunnelSetupRequest.class);
+        verify(mMockEpdgTunnelManager, times(1))
+                .bringUpTunnel(tunnelSetupRequestCaptor.capture(), any(), any());
+        TunnelSetupRequest tunnelSetupRequest = tunnelSetupRequestCaptor.getValue();
+        assertEquals(PDU_SESSION_ID_UNSET, tunnelSetupRequest.getPduSessionId());
     }
 }
