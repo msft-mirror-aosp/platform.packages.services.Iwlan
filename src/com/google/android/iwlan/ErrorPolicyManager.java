@@ -420,6 +420,17 @@ public class ErrorPolicyManager {
     }
 
     /**
+     * Gets the last error count of the APN
+     *
+     * @param apn the APN
+     * @return the error count for the last error cause of the APN, 0 if no error or unthrottled
+     */
+    public synchronized int getLastErrorCountOfSameCause(String apn) {
+        RetryAction retryAction = getLastRetryAction(apn);
+        return retryAction != null ? retryAction.errorCountOfSameCause() : 0;
+    }
+
+    /**
      * Returns the index of the FQDN to use for ePDG server selection, based on how many FQDNs are
      * available, the position of the RetryArray index, and configuration of 'NumAttemptsPerFqdn'.
      * This method assumes backoff time is not configured.
@@ -1068,6 +1079,9 @@ public class ErrorPolicyManager {
         /** The total time should be waited between lastErrorTime and next retry. */
         long totalRetryTimeMs();
 
+        /** The number of same cause error observed since last success / unthrottle event. */
+        int errorCountOfSameCause();
+
         boolean shouldRetryWithInitialAttach();
 
         int getCurrentFqdnIndex(int numFqdns);
@@ -1102,9 +1116,16 @@ public class ErrorPolicyManager {
 
         /** Create a new PolicyDerivedRetryAction */
         static PolicyDerivedRetryAction create(
-                IwlanError error, ErrorPolicy errorPolicy, int currentRetryIndex) {
+                IwlanError error,
+                ErrorPolicy errorPolicy,
+                int errorCountOfSameCause,
+                int currentRetryIndex) {
             return new AutoValue_ErrorPolicyManager_PolicyDerivedRetryAction(
-                    error, errorPolicy, IwlanHelper.elapsedRealtime(), currentRetryIndex);
+                    error,
+                    errorPolicy,
+                    IwlanHelper.elapsedRealtime(),
+                    errorCountOfSameCause,
+                    currentRetryIndex);
         }
     }
 
@@ -1133,9 +1154,16 @@ public class ErrorPolicyManager {
         }
 
         static IkeBackoffNotifyRetryAction create(
-                IwlanError error, ErrorPolicy errorPolicy, long backoffTime) {
+                IwlanError error,
+                ErrorPolicy errorPolicy,
+                int errorCountOfSameCause,
+                long backoffTime) {
             return new AutoValue_ErrorPolicyManager_IkeBackoffNotifyRetryAction(
-                    error, errorPolicy, IwlanHelper.elapsedRealtime(), backoffTime);
+                    error,
+                    errorPolicy,
+                    IwlanHelper.elapsedRealtime(),
+                    errorCountOfSameCause,
+                    backoffTime);
         }
     }
 
@@ -1224,18 +1252,19 @@ public class ErrorPolicyManager {
             ErrorCause errorCause = ErrorCause.fromIwlanError(iwlanError);
 
             @Nullable RetryAction prevRetryAction = mLastRetryActionByCause.get(errorCause);
+            int newErrorCount =
+                    prevRetryAction != null ? prevRetryAction.errorCountOfSameCause() + 1 : 1;
             boolean shouldAccumulateRetryIndex =
                     shouldAccumulateRetryIndex(prevRetryAction, iwlanError);
+            int newRetryIndex =
+                    shouldAccumulateRetryIndex
+                            ? ((PolicyDerivedRetryAction) prevRetryAction).currentRetryIndex() + 1
+                            : 0;
 
             ErrorPolicy policy = findErrorPolicy(mApn, iwlanError);
             PolicyDerivedRetryAction newRetryAction =
-                    shouldAccumulateRetryIndex
-                            ? PolicyDerivedRetryAction.create(
-                                    iwlanError,
-                                    policy,
-                                    ((PolicyDerivedRetryAction) prevRetryAction).currentRetryIndex()
-                                            + 1)
-                            : PolicyDerivedRetryAction.create(iwlanError, policy, 0);
+                    PolicyDerivedRetryAction.create(
+                            iwlanError, policy, newErrorCount, newRetryIndex);
             mLastRetryActionByCause.put(errorCause, newRetryAction);
             mLastRetryAction = newRetryAction;
 
@@ -1245,11 +1274,15 @@ public class ErrorPolicyManager {
         private IkeBackoffNotifyRetryAction generateRetryAction(
                 IwlanError iwlanError, long backoffTime) {
             ErrorCause errorCause = ErrorCause.fromIwlanError(iwlanError);
+            @Nullable RetryAction prevRetryAction = mLastRetryActionByCause.get(errorCause);
+            int newErrorCount =
+                    prevRetryAction != null ? prevRetryAction.errorCountOfSameCause() + 1 : 1;
             ErrorPolicy policy = findErrorPolicy(mApn, iwlanError);
             // For configured back off time case, simply create new RetryAction, nothing need to
             // keep
             IkeBackoffNotifyRetryAction newRetryAction =
-                    IkeBackoffNotifyRetryAction.create(iwlanError, policy, backoffTime);
+                    IkeBackoffNotifyRetryAction.create(
+                            iwlanError, policy, newErrorCount, backoffTime);
             mLastRetryActionByCause.put(errorCause, newRetryAction);
             mLastRetryAction = newRetryAction;
 
@@ -1339,6 +1372,7 @@ public class ErrorPolicyManager {
                 case IwlanEventListener.APM_DISABLE_EVENT:
                 case IwlanEventListener.WIFI_DISABLE_EVENT:
                 case IwlanEventListener.WIFI_CALLING_DISABLE_EVENT:
+                case IwlanEventListener.WIFI_AP_CHANGED_EVENT:
                     unthrottleLastErrorOnEvent(msg.what);
                     break;
                 default:

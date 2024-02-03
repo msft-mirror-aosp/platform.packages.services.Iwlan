@@ -895,6 +895,65 @@ public class ErrorPolicyManagerTest {
     }
 
     @Test
+    public void testWifiApChangedUnthrottle() throws Exception {
+        String apn = "ims";
+        String config =
+                "[{"
+                        + "\"ApnName\": \""
+                        + apn
+                        + "\","
+                        + "\"ErrorTypes\": [{"
+                        + ErrorPolicyString.builder()
+                                .setErrorType("IKE_PROTOCOL_ERROR_TYPE")
+                                .setErrorDetails(List.of("24", "34"))
+                                .setRetryArray(List.of("6", "12", "24"))
+                                .setUnthrottlingEvents(
+                                        List.of(
+                                                "WIFI_CALLING_DISABLE_EVENT",
+                                                "WIFI_DISABLE_EVENT",
+                                                "WIFI_AP_CHANGED_EVENT"))
+                                .build()
+                                .getErrorPolicyInString()
+                        + "}, {"
+                        + ErrorPolicyString.builder()
+                                .setErrorType("GENERIC_ERROR_TYPE")
+                                .setErrorDetails(List.of("SERVER_SELECTION_FAILED"))
+                                .setRetryArray(List.of("0"))
+                                .setUnthrottlingEvents(List.of("APM_ENABLE_EVENT"))
+                                .build()
+                                .getErrorPolicyInString()
+                        + "}]"
+                        + "}]";
+        PersistableBundle bundle = new PersistableBundle();
+        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, config);
+        setupMockForCarrierConfig(bundle);
+        mErrorPolicyManager
+                .mHandler
+                .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
+                .sendToTarget();
+        mTestLooper.dispatchAll();
+
+        // IKE_PROTOCOL_ERROR_TYPE(24) and retryArray = 6, 12, 24
+        IwlanError iwlanError = buildIwlanIkeAuthFailedError();
+        long time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
+        assertEquals(6, time);
+
+        mErrorPolicyManager
+                .mHandler
+                .obtainMessage(IwlanEventListener.WIFI_AP_CHANGED_EVENT)
+                .sendToTarget();
+        advanceClockByTimeMs(500);
+        verify(mMockDataServiceProvider, times(1)).notifyApnUnthrottled(eq(apn));
+
+        boolean bringUpTunnel = mErrorPolicyManager.canBringUpTunnel(apn);
+        assertTrue(bringUpTunnel);
+
+        iwlanError = buildIwlanIkeAuthFailedError();
+        time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
+        assertEquals(6, time);
+    }
+
+    @Test
     public void testGetDataFailCauseRetryTime() throws Exception {
         String apn1 = "ims";
         String apn2 = "mms";
@@ -1266,6 +1325,80 @@ public class ErrorPolicyManagerTest {
         assertEquals(resultAuthApn2, ikeAuthCountApn2);
         assertEquals(resultServerApn1, serverSelectionCountApn1);
         assertEquals(resultServerApn2, serverSelectionCountApn2);
+    }
+
+    @Test
+    public void testGetLastRetryIndex() {
+        String apn = "ims";
+
+        setupMockForCarrierConfig(null);
+        mErrorPolicyManager
+                .mHandler
+                .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
+                .sendToTarget();
+        mTestLooper.dispatchAll();
+
+        // error count should be 0 when no error yet
+        assertEquals(0, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        // same error reported, should accumulate
+        IwlanError iwlanAuthError = buildIwlanIkeAuthFailedError();
+        mErrorPolicyManager.reportIwlanError(apn, iwlanAuthError);
+        assertEquals(1, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+        mErrorPolicyManager.reportIwlanError(apn, iwlanAuthError);
+        assertEquals(2, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+        mErrorPolicyManager.reportIwlanError(apn, iwlanAuthError);
+        assertEquals(3, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        // different error reported, should start with 1 then accumulate
+        IwlanError iwlanOtherProtocolError = buildIwlanIkeProtocolError(9002);
+        mErrorPolicyManager.reportIwlanError(apn, iwlanOtherProtocolError);
+        assertEquals(1, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+        mErrorPolicyManager.reportIwlanError(apn, iwlanOtherProtocolError);
+        assertEquals(2, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        // different error with specific backoff time reported, should start with 1 then accumulate
+        IwlanError iwlanInternalAddressFailure = buildIwlanIkeInternalAddressFailure();
+        mErrorPolicyManager.reportIwlanError(apn, iwlanInternalAddressFailure, 5);
+        assertEquals(1, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+        mErrorPolicyManager.reportIwlanError(apn, iwlanInternalAddressFailure, 5);
+        assertEquals(2, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        // same error with specific backoff time, should continue from last error count (2)
+        mErrorPolicyManager.reportIwlanError(apn, iwlanOtherProtocolError, 5);
+        assertEquals(3, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+        // error without backoff time again, should continue from last error count (3)
+        mErrorPolicyManager.reportIwlanError(apn, iwlanOtherProtocolError);
+        assertEquals(4, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        // the retry index from iwlan auth error should be reserved
+        mErrorPolicyManager.reportIwlanError(apn, iwlanAuthError);
+        assertEquals(4, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        // Unthrottle event should reset the error count
+        mErrorPolicyManager
+                .mHandler
+                .obtainMessage(IwlanEventListener.APM_ENABLE_EVENT)
+                .sendToTarget();
+        mTestLooper.dispatchAll();
+
+        assertEquals(0, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        mErrorPolicyManager.reportIwlanError(apn, iwlanAuthError);
+        assertEquals(1, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        mErrorPolicyManager.reportIwlanError(apn, iwlanOtherProtocolError, 5);
+        assertEquals(1, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        mErrorPolicyManager.reportIwlanError(apn, new IwlanError(IwlanError.NO_ERROR));
+        // NO_ERROR should reset the error count
+        assertEquals(0, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        mErrorPolicyManager.reportIwlanError(apn, iwlanAuthError);
+        assertEquals(1, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
+
+        mErrorPolicyManager.reportIwlanError(apn, iwlanOtherProtocolError, 5);
+        assertEquals(1, mErrorPolicyManager.getLastErrorCountOfSameCause(apn));
     }
 
     private void advanceClockByTimeMs(long time) {
