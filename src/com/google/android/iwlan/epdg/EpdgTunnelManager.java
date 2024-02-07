@@ -245,11 +245,19 @@ public class EpdgTunnelManager {
     public static final int BRINGDOWN_REASON_UNKNOWN = 0;
     public static final int BRINGDOWN_REASON_DISABLE_N1_MODE = 1;
     public static final int BRINGDOWN_REASON_ENABLE_N1_MODE = 2;
+    public static final int BRINGDOWN_REASON_SERVICE_OUT_OF_SYNC = 3;
+    public static final int BRINGDOWN_REASON_IN_DEACTIVATING_STATE = 4;
+    public static final int BRINGDOWN_REASON_NETWORK_UPDATE_WHEN_TUNNEL_IN_BRINGUP = 5;
+    public static final int BRINGDOWN_REASON_DEACTIVATE_DATA_CALL = 6;
 
     @IntDef({
         BRINGDOWN_REASON_UNKNOWN,
         BRINGDOWN_REASON_DISABLE_N1_MODE,
         BRINGDOWN_REASON_ENABLE_N1_MODE,
+        BRINGDOWN_REASON_SERVICE_OUT_OF_SYNC,
+        BRINGDOWN_REASON_IN_DEACTIVATING_STATE,
+        BRINGDOWN_REASON_NETWORK_UPDATE_WHEN_TUNNEL_IN_BRINGUP,
+        BRINGDOWN_REASON_DEACTIVATE_DATA_CALL,
     })
     public @interface TunnelBringDownReason {}
 
@@ -261,6 +269,14 @@ public class EpdgTunnelManager {
                 return "BRINGDOWN_REASON_DISABLE_N1_MODE";
             case BRINGDOWN_REASON_ENABLE_N1_MODE:
                 return "BRINGDOWN_REASON_ENABLE_N1_MODE";
+            case BRINGDOWN_REASON_SERVICE_OUT_OF_SYNC:
+                return "BRINGDOWN_REASON_SERVICE_OUT_OF_SYNC";
+            case BRINGDOWN_REASON_IN_DEACTIVATING_STATE:
+                return "BRINGDOWN_REASON_IN_DEACTIVATING_STATE";
+            case BRINGDOWN_REASON_NETWORK_UPDATE_WHEN_TUNNEL_IN_BRINGUP:
+                return "BRINGDOWN_REASON_NETWORK_UPDATE_WHEN_TUNNEL_IN_BRINGUP";
+            case BRINGDOWN_REASON_DEACTIVATE_DATA_CALL:
+                return "BRINGDOWN_REASON_DEACTIVATE_DATA_CALL";
             default:
                 return "Unknown(" + reason + ")";
         }
@@ -700,24 +716,6 @@ public class EpdgTunnelManager {
      * Close tunnel for an apn. Confirmation of closing will be delivered in TunnelCallback that was
      * provided in {@link #bringUpTunnel}. If no tunnel was available, callback will be delivered
      * using client-provided provided tunnelCallback and iwlanTunnelMetrics
-     *
-     * @param apnName apn name
-     * @param forceClose if true, results in local cleanup of tunnel
-     * @param tunnelCallback Used if no current or pending IWLAN tunnel exists
-     * @param iwlanTunnelMetrics Used to report metrics if no current or pending IWLAN tunnel exists
-     */
-    // TODO(b/309866889): Clarify tunnel bring down reason for tunnel closure.
-    public void closeTunnel(
-            @NonNull String apnName,
-            boolean forceClose,
-            @NonNull TunnelCallback tunnelCallback,
-            @NonNull IwlanTunnelMetricsImpl iwlanTunnelMetrics) {
-        closeTunnel(
-                apnName, forceClose, tunnelCallback, iwlanTunnelMetrics, BRINGDOWN_REASON_UNKNOWN);
-    }
-
-    /**
-     * Closes tunnel for an apn with reason.
      *
      * @param apnName APN name
      * @param forceClose if {@code true}, triggers a local cleanup of the tunnel; if {@code false},
