@@ -187,10 +187,6 @@ public class IwlanEventListener {
         public void onAllowedNetworkTypesChanged(
                 @TelephonyManager.AllowedNetworkTypesReason int reason,
                 @TelephonyManager.NetworkTypeBitMask long allowedNetworkType) {
-            if (!mFeatureFlags.updateN1ModeOnUiChange()) {
-                return;
-            }
-
             if (reason != TelephonyManager.ALLOWED_NETWORK_TYPES_REASON_USER) {
                 return;
             }
