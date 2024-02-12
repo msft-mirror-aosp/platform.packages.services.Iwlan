@@ -368,8 +368,6 @@ public class IwlanEventListenerTest {
     @SuppressLint("MissingPermission")
     @Test
     public void testDisable5gViaUi() throws Exception {
-        when(mFakeFeatureFlags.updateN1ModeOnUiChange()).thenReturn(true);
-
         when(mMockHandler.obtainMessage(
                         eq(IwlanEventListener.PREFERRED_NETWORK_TYPE_CHANGED_EVENT),
                         eq(DEFAULT_SLOT_INDEX),
@@ -393,8 +391,6 @@ public class IwlanEventListenerTest {
     @SuppressLint("MissingPermission")
     @Test
     public void testEnable5gViaUi() throws Exception {
-        when(mFakeFeatureFlags.updateN1ModeOnUiChange()).thenReturn(true);
-
         when(mMockHandler.obtainMessage(
                         eq(IwlanEventListener.PREFERRED_NETWORK_TYPE_CHANGED_EVENT),
                         eq(DEFAULT_SLOT_INDEX),
