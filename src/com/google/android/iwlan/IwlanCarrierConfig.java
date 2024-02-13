@@ -42,6 +42,13 @@ public class IwlanCarrierConfig {
             PREFIX + "n1_mode_exclusion_for_emergency_session";
 
     /**
+     * Key to decide whether N1 mode shall be enabled or disabled depending on 5G enabling status
+     * via the UI/UX. See {@link #DEFAULT_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL} for the default value.
+     */
+    public static final String KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL =
+            PREFIX + "update_n1_mode_on_ui_change_bool";
+
+    /**
      * Default delay in seconds for releasing the IWLAN connection after a WWAN handover. This is
      * the default value for {@link #KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT}.
      */
@@ -52,6 +59,12 @@ public class IwlanCarrierConfig {
      * excluded during emergency session setup.
      */
     public static final boolean DEFAULT_N1_MODE_EXCLUSION_FOR_EMERGENCY_SESSION_BOOL = false;
+
+    /**
+     * The default value for determining whether N1 mode shall be enabled or disabled depending on
+     * 5G enabling status via the UI/UX.
+     */
+    public static final boolean DEFAULT_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL = true;
 
     private static PersistableBundle mHiddenBundle = new PersistableBundle();
 
@@ -72,6 +85,8 @@ public class IwlanCarrierConfig {
         bundle.putBoolean(
                 KEY_N1_MODE_EXCLUSION_FOR_EMERGENCY_SESSION_BOOL,
                 DEFAULT_N1_MODE_EXCLUSION_FOR_EMERGENCY_SESSION_BOOL);
+        bundle.putBoolean(
+                KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL, DEFAULT_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL);
         return bundle;
     }
 
