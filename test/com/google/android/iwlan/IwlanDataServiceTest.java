@@ -69,6 +69,7 @@ import android.os.test.TestLooper;
 import android.telephony.AccessNetworkConstants.AccessNetworkType;
 import android.telephony.CarrierConfigManager;
 import android.telephony.DataFailCause;
+import android.telephony.PreciseDataConnectionState;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
@@ -2403,5 +2404,133 @@ public class IwlanDataServiceTest {
                 .bringUpTunnel(tunnelSetupRequestCaptor.capture(), any(), any());
         TunnelSetupRequest tunnelSetupRequest = tunnelSetupRequestCaptor.getValue();
         assertEquals(PDU_SESSION_ID_UNSET, tunnelSetupRequest.getPduSessionId());
+    }
+
+    @Test
+    public void testRequestNetworkValidationForUnregisteredApn() {
+        int index = 0;
+        String apnName = "mms";
+        ArrayList<Integer> resultCodeCallback = new ArrayList<>();
+        mSpyIwlanDataServiceProvider.requestNetworkValidation(
+                apnName.hashCode(), Runnable::run, resultCodeCallback::add);
+        mTestLooper.dispatchAll();
+
+        assertEquals(1, resultCodeCallback.size());
+        assertEquals(
+                DataServiceCallback.RESULT_ERROR_UNSUPPORTED,
+                resultCodeCallback.get(index).intValue());
+        verify(mMockEpdgTunnelManager, never()).requestNetworkValidationForApn(eq(apnName));
+    }
+
+    private void verifySetupDataCallSuccess(DataProfile dp) {
+        verifySetupDataCallRequestHandled(5 /* pduSessionId */, dp);
+
+        mSpyIwlanDataServiceProvider
+                .getIwlanTunnelCallback()
+                .onOpened(dp.getApn(), mMockTunnelLinkProperties);
+        mTestLooper.dispatchAll();
+    }
+
+    private List<DataCallResponse> verifyDataCallListChangeAndCaptureUpdatedList() {
+        ArgumentCaptor<List<DataCallResponse>> dataCallListCaptor =
+                ArgumentCaptor.forClass((Class) List.class);
+        verify(mSpyIwlanDataServiceProvider, atLeastOnce())
+                .notifyDataCallListChanged(dataCallListCaptor.capture());
+        return dataCallListCaptor.getValue();
+    }
+
+    private void assertDataCallResponsePresentByCidAndStatus(
+            int cid, int status, List<DataCallResponse> dataCallList) {
+        boolean isMatchFound = false;
+
+        for (DataCallResponse response : dataCallList) {
+            if (response.getId() == cid && response.getNetworkValidationStatus() == status) {
+                isMatchFound = true;
+                break;
+            }
+        }
+
+        assertTrue(
+                "Expected CID and Network Validation Status not found in DataCallResponse list",
+                isMatchFound);
+    }
+
+    @Test
+    public void testOnNetworkValidationStatusChangedForRegisteredApn() {
+        List<DataCallResponse> dataCallList;
+
+        ArrayList<Integer> resultCodeCallback = new ArrayList<>();
+        DataProfile dp = buildImsDataProfile();
+        String apnName = dp.getApn();
+        int cid = apnName.hashCode();
+
+        verifySetupDataCallSuccess(dp);
+        dataCallList = verifyDataCallListChangeAndCaptureUpdatedList();
+        assertEquals(1, dataCallList.size());
+        // TODO: b/324874097 - Fix IwlanDataServiceTest to correctly spy on
+        // IwlanDataServiceProvider. Address flakiness caused by Mockito spy instrumentation issues
+        // on Android. Investigate solutions.
+        //
+        // assertDataCallResponsePresentByCidAndStatus(
+        //        cid, PreciseDataConnectionState.NETWORK_VALIDATION_SUCCESS, dataCallList);
+
+        // Requests network validation
+        mSpyIwlanDataServiceProvider.requestNetworkValidation(
+                cid, Runnable::run, resultCodeCallback::add);
+        mTestLooper.dispatchAll();
+
+        dataCallList = verifyDataCallListChangeAndCaptureUpdatedList();
+        assertEquals(1, dataCallList.size());
+        // TODO: b/324874097 - Fix IwlanDataServiceTest to correctly spy on
+        // IwlanDataServiceProvider. Address flakiness caused by Mockito spy instrumentation issues
+        // on Android. Investigate solutions.
+        //
+        // assertDataCallResponsePresentByCidAndStatus(
+        //        cid, PreciseDataConnectionState.NETWORK_VALIDATION_IN_PROGRESS, dataCallList);
+
+        // Validation success
+        mSpyIwlanDataServiceProvider
+                .getIwlanTunnelCallback()
+                .onNetworkValidationStatusChanged(
+                        dp.getApn(), PreciseDataConnectionState.NETWORK_VALIDATION_SUCCESS);
+        mTestLooper.dispatchAll();
+
+        dataCallList = verifyDataCallListChangeAndCaptureUpdatedList();
+        assertEquals(1, dataCallList.size());
+        // TODO: b/324874097 - Fix IwlanDataServiceTest to correctly spy on
+        // IwlanDataServiceProvider. Address flakiness caused by Mockito spy instrumentation issues
+        // on Android. Investigate solutions.
+        //
+        // assertDataCallResponsePresentByCidAndStatus(
+        //        cid, PreciseDataConnectionState.NETWORK_VALIDATION_SUCCESS, dataCallList);
+    }
+
+    @Test
+    public void testGetCallListWithRequestNetworkValidationInProgress() {
+        ArgumentCaptor<List<DataCallResponse>> dataCallListCaptor =
+                ArgumentCaptor.forClass((Class) List.class);
+        DataProfile dp = buildImsDataProfile();
+        String apnName = dp.getApn();
+        int cid = apnName.hashCode();
+        verifySetupDataCallSuccess(dp);
+
+        // Requests network validation, network validation status in progress
+        ArrayList<Integer> resultCodeCallback = new ArrayList<>();
+        mSpyIwlanDataServiceProvider.requestNetworkValidation(
+                cid, Runnable::run, resultCodeCallback::add);
+        mTestLooper.dispatchAll();
+
+        // Requests data call list
+        mSpyIwlanDataServiceProvider.requestDataCallList(mMockDataServiceCallback);
+        mTestLooper.dispatchAll();
+
+        verify(mMockDataServiceCallback, times(1))
+                .onRequestDataCallListComplete(
+                        eq(DataServiceCallback.RESULT_SUCCESS), dataCallListCaptor.capture());
+
+        List<DataCallResponse> dataCallList = dataCallListCaptor.getValue();
+        assertEquals(1, dataCallList.size());
+        assertDataCallResponsePresentByCidAndStatus(
+                cid, PreciseDataConnectionState.NETWORK_VALIDATION_IN_PROGRESS, dataCallList);
     }
 }
