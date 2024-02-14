@@ -71,6 +71,7 @@ import android.net.ipsec.ike.ike3gpp.Ike3gppExtension;
 import android.os.PersistableBundle;
 import android.os.test.TestLooper;
 import android.telephony.CarrierConfigManager;
+import android.telephony.PreciseDataConnectionState;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
@@ -134,6 +135,8 @@ public class EpdgTunnelManagerTest {
         public void onOpened(String apnName, TunnelLinkProperties linkProperties) {}
 
         public void onClosed(String apnName, IwlanError error) {}
+
+        public void onNetworkValidationStatusChanged(String apnName, int status) {}
     }
 
     @Rule public final MockitoRule mockito = MockitoJUnit.rule();
@@ -2753,5 +2756,179 @@ public class EpdgTunnelManagerTest {
         mEpdgTunnelManager.updateNetwork(newNetwork, mMockLinkProperties);
         mTestLooper.dispatchAll();
         verify(mMockIkeSession, times(1)).setNetwork(eq(newNetwork));
+    }
+
+    @Test
+    public void testNetworkValidationSuccess() throws Exception {
+        String testApnName = "ims";
+        mEpdgTunnelManager.putApnNameToTunnelConfig(
+                testApnName,
+                mMockIkeSession,
+                mMockIwlanTunnelCallback,
+                mMockIwlanTunnelMetrics,
+                mMockIpSecTunnelInterface,
+                null /* srcIpv6Addr */,
+                0 /* srcIPv6AddrPrefixLen */);
+        int token = mEpdgTunnelManager.incrementAndGetCurrentTokenForApn(testApnName);
+
+        mEpdgTunnelManager.requestNetworkValidationForApn(testApnName);
+        mTestLooper.dispatchAll();
+        verify(mMockIkeSession, times(1)).requestLivenessCheck();
+
+        int[][] orderedUpdateEvents = {
+            {
+                IkeSessionCallback.LIVENESS_STATUS_ON_DEMAND_STARTED,
+                PreciseDataConnectionState.NETWORK_VALIDATION_IN_PROGRESS,
+                1
+            },
+            {
+                IkeSessionCallback.LIVENESS_STATUS_ON_DEMAND_ONGOING,
+                PreciseDataConnectionState.NETWORK_VALIDATION_IN_PROGRESS,
+                2
+            },
+            {
+                IkeSessionCallback.LIVENESS_STATUS_SUCCESS,
+                PreciseDataConnectionState.NETWORK_VALIDATION_SUCCESS,
+                1
+            },
+        };
+
+        for (int[] event : orderedUpdateEvents) {
+            int testedLivenessStatus = event[0];
+            int expectedNetworkVadlidationState = event[1];
+            int numOfSameStatus = event[2];
+            mEpdgTunnelManager
+                    .getTmIkeSessionCallback(testApnName, token)
+                    .onLivenessStatusChanged(testedLivenessStatus);
+            mTestLooper.dispatchAll();
+            verify(mMockIwlanTunnelCallback, times(numOfSameStatus))
+                    .onNetworkValidationStatusChanged(
+                            eq(testApnName), eq(expectedNetworkVadlidationState));
+        }
+    }
+
+    @Test
+    public void testNetworkValidationFailed() throws Exception {
+        String testApnName = "ims";
+        mEpdgTunnelManager.putApnNameToTunnelConfig(
+                testApnName,
+                mMockIkeSession,
+                mMockIwlanTunnelCallback,
+                mMockIwlanTunnelMetrics,
+                mMockIpSecTunnelInterface,
+                null /* srcIpv6Addr */,
+                0 /* srcIPv6AddrPrefixLen */);
+
+        mEpdgTunnelManager.requestNetworkValidationForApn(testApnName);
+        mTestLooper.dispatchAll();
+        verify(mMockIkeSession, times(1)).requestLivenessCheck();
+
+        int[][] orderedUpdateEvents = {
+            {
+                IkeSessionCallback.LIVENESS_STATUS_ON_DEMAND_STARTED,
+                PreciseDataConnectionState.NETWORK_VALIDATION_IN_PROGRESS,
+                1
+            },
+            {
+                IkeSessionCallback.LIVENESS_STATUS_ON_DEMAND_ONGOING,
+                PreciseDataConnectionState.NETWORK_VALIDATION_IN_PROGRESS,
+                2
+            },
+            {
+                IkeSessionCallback.LIVENESS_STATUS_FAILURE,
+                PreciseDataConnectionState.NETWORK_VALIDATION_FAILURE,
+                1
+            }
+        };
+        int token = mEpdgTunnelManager.incrementAndGetCurrentTokenForApn(testApnName);
+
+        for (int[] event : orderedUpdateEvents) {
+            int testedLivenessStatus = event[0];
+            int expectedNetworkVadlidationState = event[1];
+            int numOfSameStatus = event[2];
+            mEpdgTunnelManager
+                    .getTmIkeSessionCallback(testApnName, token)
+                    .onLivenessStatusChanged(testedLivenessStatus);
+            mTestLooper.dispatchAll();
+            verify(mMockIwlanTunnelCallback, times(numOfSameStatus))
+                    .onNetworkValidationStatusChanged(
+                            eq(testApnName), eq(expectedNetworkVadlidationState));
+        }
+    }
+
+    @Test
+    public void testOnBackgroundLivenessCheckUpdate() throws Exception {
+        String testApnName = "ims";
+        mEpdgTunnelManager.putApnNameToTunnelConfig(
+                testApnName,
+                mMockIkeSession,
+                mMockIwlanTunnelCallback,
+                mMockIwlanTunnelMetrics,
+                mMockIpSecTunnelInterface,
+                null /* srcIpv6Addr */,
+                0 /* srcIPv6AddrPrefixLen */);
+        int token = mEpdgTunnelManager.incrementAndGetCurrentTokenForApn(testApnName);
+
+        int[][] orderedUpdateEvents = {
+            {
+                IkeSessionCallback.LIVENESS_STATUS_BACKGROUND_STARTED,
+                PreciseDataConnectionState.NETWORK_VALIDATION_IN_PROGRESS,
+                1
+            },
+            {
+                IkeSessionCallback.LIVENESS_STATUS_BACKGROUND_ONGOING,
+                PreciseDataConnectionState.NETWORK_VALIDATION_IN_PROGRESS,
+                2
+            },
+            {
+                IkeSessionCallback.LIVENESS_STATUS_SUCCESS,
+                PreciseDataConnectionState.NETWORK_VALIDATION_SUCCESS,
+                1
+            }
+        };
+
+        for (int[] event : orderedUpdateEvents) {
+            int testedLivenessStatus = event[0];
+            int expectedNetworkVadlidationState = event[1];
+            int numOfSameStatus = event[2];
+            mEpdgTunnelManager
+                    .getTmIkeSessionCallback(testApnName, token)
+                    .onLivenessStatusChanged(testedLivenessStatus);
+            mTestLooper.dispatchAll();
+            verify(mMockIwlanTunnelCallback, times(numOfSameStatus))
+                    .onNetworkValidationStatusChanged(
+                            eq(testApnName), eq(expectedNetworkVadlidationState));
+        }
+    }
+
+    @Test
+    public void testLivenessCheckUpdateWithUnknownStatus() throws Exception {
+        String testApnName = "ims";
+        mEpdgTunnelManager.putApnNameToTunnelConfig(
+                testApnName,
+                mMockIkeSession,
+                mMockIwlanTunnelCallback,
+                mMockIwlanTunnelMetrics,
+                mMockIpSecTunnelInterface,
+                null /* srcIpv6Addr */,
+                0 /* srcIPv6AddrPrefixLen */);
+        int token = mEpdgTunnelManager.incrementAndGetCurrentTokenForApn(testApnName);
+        int unknown_liveness_status = 9999;
+
+        mEpdgTunnelManager
+                .getTmIkeSessionCallback(testApnName, token)
+                .onLivenessStatusChanged(unknown_liveness_status);
+        mTestLooper.dispatchAll();
+        verify(mMockIwlanTunnelCallback, times(1))
+                .onNetworkValidationStatusChanged(
+                        eq(testApnName), eq(PreciseDataConnectionState.NETWORK_VALIDATION_SUCCESS));
+    }
+
+    @Test
+    public void testRequestNetworkValidationWithNoActiveApn() {
+        String testApnName = "ims";
+        mEpdgTunnelManager.requestNetworkValidationForApn(testApnName);
+        mTestLooper.dispatchAll();
+        verify(mMockIkeSession, never()).requestLivenessCheck();
     }
 }

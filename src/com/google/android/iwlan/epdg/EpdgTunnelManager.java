@@ -21,6 +21,7 @@ import static android.net.ipsec.ike.ike3gpp.Ike3gppData.DATA_TYPE_NOTIFY_N1_MODE
 import static android.net.ipsec.ike.ike3gpp.Ike3gppParams.PDU_SESSION_ID_UNSET;
 import static android.system.OsConstants.AF_INET;
 import static android.system.OsConstants.AF_INET6;
+import static android.telephony.PreciseDataConnectionState.NetworkValidationStatus;
 
 import android.content.Context;
 import android.net.ConnectivityManager;
@@ -67,6 +68,7 @@ import android.support.annotation.IntDef;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.telephony.CarrierConfigManager;
+import android.telephony.PreciseDataConnectionState;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.telephony.data.ApnSetting;
@@ -124,6 +126,8 @@ public class EpdgTunnelManager {
     private static final int EVENT_IKE_SESSION_OPENED = 10;
     private static final int EVENT_IKE_SESSION_CONNECTION_INFO_CHANGED = 11;
     private static final int EVENT_IKE_3GPP_DATA_RECEIVED = 12;
+    private static final int EVENT_IKE_LIVENESS_STATUS_CHANGED = 13;
+    private static final int EVENT_REQUEST_NETWORK_VALIDATION_CHECK = 14;
     private static final int IKE_HARD_LIFETIME_SEC_MINIMUM = 300;
     private static final int IKE_HARD_LIFETIME_SEC_MAXIMUM = 86400;
     private static final int IKE_SOFT_LIFETIME_SEC_MINIMUM = 120;
@@ -540,6 +544,35 @@ public class EpdgTunnelManager {
                             new IkeSessionConnectionInfoData(
                                     mApnName, mToken, ikeSessionConnectionInfo)));
         }
+
+        @Override
+        public void onLivenessStatusChanged(int status) {
+            Log.d(
+                    TAG,
+                    "Ike liveness status changed for apn: " + mApnName + " with status: " + status);
+            @NetworkValidationStatus int validationStatus;
+            switch (status) {
+                case IkeSessionCallback.LIVENESS_STATUS_ON_DEMAND_STARTED:
+                case IkeSessionCallback.LIVENESS_STATUS_BACKGROUND_STARTED:
+                case IkeSessionCallback.LIVENESS_STATUS_ON_DEMAND_ONGOING:
+                case IkeSessionCallback.LIVENESS_STATUS_BACKGROUND_ONGOING:
+                    validationStatus = PreciseDataConnectionState.NETWORK_VALIDATION_IN_PROGRESS;
+                    break;
+                case IkeSessionCallback.LIVENESS_STATUS_SUCCESS:
+                    validationStatus = PreciseDataConnectionState.NETWORK_VALIDATION_SUCCESS;
+                    break;
+                case IkeSessionCallback.LIVENESS_STATUS_FAILURE:
+                    validationStatus = PreciseDataConnectionState.NETWORK_VALIDATION_FAILURE;
+                    break;
+                default:
+                    validationStatus = PreciseDataConnectionState.NETWORK_VALIDATION_SUCCESS;
+            }
+
+            mHandler.obtainMessage(
+                            EVENT_IKE_LIVENESS_STATUS_CHANGED,
+                            new IkeSessionValidationStatusData(mApnName, mToken, validationStatus))
+                    .sendToTarget();
+        }
     }
 
     @VisibleForTesting
@@ -703,6 +736,7 @@ public class EpdgTunnelManager {
          * @param linkProperties link properties of the tunnel
          */
         void onOpened(@NonNull String apnName, @NonNull TunnelLinkProperties linkProperties);
+
         /**
          * Called when the tunnel is closed OR if bringup fails
          *
@@ -710,6 +744,15 @@ public class EpdgTunnelManager {
          * @param error IwlanError carrying details of the error
          */
         void onClosed(@NonNull String apnName, @NonNull IwlanError error);
+
+        /**
+         * Called when updates upon network validation status change.
+         *
+         * @param apnName APN affected.
+         * @param status The updated validation status of the network.
+         */
+        void onNetworkValidationStatusChanged(
+                @NonNull String apnName, @NetworkValidationStatus int status);
     }
 
     /**
@@ -749,6 +792,7 @@ public class EpdgTunnelManager {
                 new UpdateNetworkWrapper(network, linkProperties);
         mHandler.sendMessage(mHandler.obtainMessage(EVENT_UPDATE_NETWORK, updateNetworkWrapper));
     }
+
     /**
      * Bring up epdg tunnel. Only one bring up request per apn is expected. All active tunnel
      * requests and tunnels are expected to be on the same network.
@@ -1677,6 +1721,7 @@ public class EpdgTunnelManager {
                 case EVENT_IKE_SESSION_OPENED:
                 case EVENT_IKE_SESSION_CONNECTION_INFO_CHANGED:
                 case EVENT_IKE_3GPP_DATA_RECEIVED:
+                case EVENT_IKE_LIVENESS_STATUS_CHANGED:
                     IkeEventData ikeEventData = (IkeEventData) msg.obj;
                     if (isObsoleteToken(ikeEventData.mApnName, ikeEventData.mToken)) {
                         Log.d(
@@ -2136,6 +2181,31 @@ public class EpdgTunnelManager {
                     }
                     break;
 
+                case EVENT_IKE_LIVENESS_STATUS_CHANGED:
+                    IkeSessionValidationStatusData ikeLivenessData =
+                            (IkeSessionValidationStatusData) msg.obj;
+                    @NetworkValidationStatus int validationStatus = ikeLivenessData.mStatus;
+                    apnName = ikeLivenessData.mApnName;
+                    tunnelConfig = mApnNameToTunnelConfig.get(apnName);
+                    if (tunnelConfig == null) {
+                        Log.e(TAG, "No tunnel config found for apn: " + apnName);
+                        return;
+                    }
+                    tunnelConfig
+                            .getTunnelCallback()
+                            .onNetworkValidationStatusChanged(apnName, validationStatus);
+                    break;
+
+                case EVENT_REQUEST_NETWORK_VALIDATION_CHECK:
+                    apnName = (String) msg.obj;
+                    tunnelConfig = mApnNameToTunnelConfig.get(apnName);
+                    if (tunnelConfig == null) {
+                        Log.e(TAG, "No tunnel config found for apn: " + apnName);
+                        return;
+                    }
+                    tunnelConfig.getIkeSession().requestLivenessCheck();
+                    break;
+
                 default:
                     throw new IllegalStateException("Unexpected value: " + msg.what);
             }
@@ -2461,6 +2531,15 @@ public class EpdgTunnelManager {
         }
     }
 
+    private static final class IkeSessionValidationStatusData extends IkeEventData {
+        @NetworkValidationStatus final int mStatus;
+
+        private IkeSessionValidationStatusData(String apnName, int token, int status) {
+            super(apnName, token);
+            mStatus = status;
+        }
+    }
+
     private static final class IpsecTransformData extends IkeEventData {
         private final IpSecTransform mTransform;
         private final int mDirection;
@@ -2712,6 +2791,10 @@ public class EpdgTunnelManager {
                 return "EVENT_IKE_SESSION_CONNECTION_INFO_CHANGED";
             case EVENT_IKE_3GPP_DATA_RECEIVED:
                 return "EVENT_IKE_3GPP_DATA_RECEIVED";
+            case EVENT_IKE_LIVENESS_STATUS_CHANGED:
+                return "EVENT_IKE_LIVENESS_STATUS_CHANGED";
+            case EVENT_REQUEST_NETWORK_VALIDATION_CHECK:
+                return "EVENT_REQUEST_NETWORK_VALIDATION_CHECK";
             default:
                 return "Unknown(" + event + ")";
         }
@@ -2804,6 +2887,15 @@ public class EpdgTunnelManager {
             return new IpPreferenceConflict(true, IwlanError.EPDG_ADDRESS_ONLY_IPV4_ALLOWED);
         }
         return new IpPreferenceConflict();
+    }
+
+    /**
+     * Performs network validation check
+     *
+     * @param apnName APN for which to perform validation check
+     */
+    public void requestNetworkValidationForApn(String apnName) {
+        mHandler.obtainMessage(EVENT_REQUEST_NETWORK_VALIDATION_CHECK, apnName).sendToTarget();
     }
 
     public void dump(PrintWriter pw) {
