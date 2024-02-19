@@ -58,6 +58,13 @@ public class IwlanCarrierConfig {
             PREFIX + "distinct_epdg_for_emergency_allowed_bool";
 
     /**
+     * Key to control whether the UE includes the IKE DEVICE_IDENTITY Notify payload when receiving
+     * a request. See {@link #DEFAULT_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL} for the default value.
+     */
+    public static final String KEY_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL =
+            PREFIX + "ike_device_identity_supported_bool";
+
+    /**
      * Default delay in seconds for releasing the IWLAN connection after a WWAN handover. This is
      * the default value for {@link #KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT}.
      */
@@ -77,6 +84,12 @@ public class IwlanCarrierConfig {
 
     /** This is the default value for {@link #KEY_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL}. */
     public static final boolean DEFAULT_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL = false;
+    /**
+     * Default value indicating whether the UE includes the IKE DEVICE_IDENTITY Notify payload upon
+     * receiving a request. This is the default setting for {@link
+     * #KEY_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL}.
+     */
+    public static final boolean DEFAULT_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL = false;
 
     private static PersistableBundle sTestBundle = new PersistableBundle();
 
@@ -104,6 +117,8 @@ public class IwlanCarrierConfig {
         bundle.putBoolean(
                 KEY_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL,
                 DEFAULT_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL);
+        bundle.putBoolean(
+                KEY_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL, DEFAULT_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL);
         return bundle;
     }
 
