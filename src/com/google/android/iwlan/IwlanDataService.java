@@ -1229,7 +1229,10 @@ public class IwlanDataService extends DataService {
 
         // TODO(b/309867756): Include N1_MODE_CAPABILITY inclusion status in metrics.
         private boolean needIncludeN1ModeCapability() {
-            if (!mFeatureFlags.updateN1ModeOnUiChange()) {
+            if (!IwlanCarrierConfig.getConfigBoolean(
+                    mContext,
+                    getSlotIndex(),
+                    IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL)) {
                 return isN1ModeSupported();
             }
             if (!isN1ModeSupported()) {
@@ -1529,7 +1532,10 @@ public class IwlanDataService extends DataService {
                     int previousCallState = iwlanDataServiceProvider.mCallState;
                     int currentCallState = iwlanDataServiceProvider.mCallState = msg.arg2;
 
-                    if (!mFeatureFlags.updateN1ModeOnUiChange()) {
+                    if (!IwlanCarrierConfig.getConfigBoolean(
+                            mContext,
+                            iwlanDataServiceProvider.getSlotIndex(),
+                            IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL)) {
                         break;
                     }
 
@@ -1542,11 +1548,14 @@ public class IwlanDataService extends DataService {
                     break;
 
                 case IwlanEventListener.PREFERRED_NETWORK_TYPE_CHANGED_EVENT:
-                    if (!mFeatureFlags.updateN1ModeOnUiChange()) {
-                        break;
-                    }
                     iwlanDataServiceProvider =
                             (IwlanDataServiceProvider) getDataServiceProvider(msg.arg1);
+                    if (!IwlanCarrierConfig.getConfigBoolean(
+                            mContext,
+                            iwlanDataServiceProvider.getSlotIndex(),
+                            IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL)) {
+                        break;
+                    }
                     long allowedNetworkType = (long) msg.obj;
                     onPreferredNetworkTypeChanged(iwlanDataServiceProvider, allowedNetworkType);
                     break;
