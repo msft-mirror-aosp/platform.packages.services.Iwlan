@@ -21,6 +21,8 @@ import android.os.PersistableBundle;
 import android.support.annotation.NonNull;
 import android.telephony.CarrierConfigManager;
 
+import androidx.annotation.VisibleForTesting;
+
 /** Class for handling IWLAN carrier configuration. */
 public class IwlanCarrierConfig {
     static final String PREFIX = "iwlan.";
@@ -66,10 +68,12 @@ public class IwlanCarrierConfig {
      */
     public static final boolean DEFAULT_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL = true;
 
-    private static PersistableBundle mHiddenBundle = new PersistableBundle();
+    private static PersistableBundle sTestBundle = new PersistableBundle();
+
+    private static PersistableBundle sHiddenBundle = new PersistableBundle();
 
     static {
-        mHiddenBundle = createHiddenDefaultConfig();
+        sHiddenBundle = createHiddenDefaultConfig();
     }
 
     /**
@@ -103,13 +107,17 @@ public class IwlanCarrierConfig {
     }
 
     private static PersistableBundle getDefaultConfig(String key) {
+        if (sTestBundle.containsKey(key)) {
+            return sTestBundle;
+        }
+
         PersistableBundle bundle = CarrierConfigManager.getDefaultConfig();
         if (bundle.containsKey(key)) {
             return bundle;
         }
 
-        if (mHiddenBundle.containsKey(key)) {
-            return mHiddenBundle;
+        if (sHiddenBundle.containsKey(key)) {
+            return sHiddenBundle;
         }
 
         throw new IllegalArgumentException("Default config not found for key: " + key);
@@ -289,6 +297,7 @@ public class IwlanCarrierConfig {
     public static boolean getDefaultConfigBoolean(String key) {
         return getDefaultConfig(key).getBoolean(key);
     }
+
     /**
      * Gets the default configuration int[] value for a given key.
      *
@@ -310,6 +319,7 @@ public class IwlanCarrierConfig {
     public static long[] getDefaultConfigLongArray(String key) {
         return getDefaultConfig(key).getLongArray(key);
     }
+
     /**
      * Gets the default configuration double[] value for a given key.
      *
@@ -341,5 +351,65 @@ public class IwlanCarrierConfig {
      */
     public static boolean[] getDefaultConfigBooleanArray(String key) {
         return getDefaultConfig(key).getBooleanArray(key);
+    }
+
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    static void putTestConfigBundle(PersistableBundle bundle) {
+        sTestBundle.putAll(bundle);
+    }
+
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    static void putTestConfigInt(@NonNull String key, int value) {
+        sTestBundle.putInt(key, value);
+    }
+
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    static void putTestConfigLong(@NonNull String key, long value) {
+        sTestBundle.putLong(key, value);
+    }
+
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    static void putTestConfigDouble(@NonNull String key, double value) {
+        sTestBundle.putDouble(key, value);
+    }
+
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    static void putTestConfigBoolean(@NonNull String key, boolean value) {
+        sTestBundle.putBoolean(key, value);
+    }
+
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    static void putTestConfigString(@NonNull String key, String value) {
+        sTestBundle.putString(key, value);
+    }
+
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    static void putTestConfigIntArray(@NonNull String key, @NonNull int[] value) {
+        sTestBundle.putIntArray(key, value);
+    }
+
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    static void putTestConfigLongArray(@NonNull String key, @NonNull long[] value) {
+        sTestBundle.putLongArray(key, value);
+    }
+
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    static void putTestConfigDoubleArray(@NonNull String key, @NonNull double[] value) {
+        sTestBundle.putDoubleArray(key, value);
+    }
+
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    static void putTestConfigBooleanArray(@NonNull String key, @NonNull boolean[] value) {
+        sTestBundle.putBooleanArray(key, value);
+    }
+
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    static void putTestConfigStringArray(@NonNull String key, @NonNull String[] value) {
+        sTestBundle.putStringArray(key, value);
+    }
+
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    static void resetTestConfig() {
+        sTestBundle.clear();
     }
 }
