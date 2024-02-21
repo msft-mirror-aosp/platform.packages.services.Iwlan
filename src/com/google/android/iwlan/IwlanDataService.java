@@ -1333,10 +1333,10 @@ public class IwlanDataService extends DataService {
 
         protected boolean isN1ModeSupported() {
             int[] nrAvailabilities =
-                    IwlanHelper.getConfig(
-                            CarrierConfigManager.KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY,
+                    IwlanCarrierConfig.getConfigIntArray(
                             mContext,
-                            getSlotIndex());
+                            getSlotIndex(),
+                            CarrierConfigManager.KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY);
             Log.d(
                     TAG,
                     "KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY : "
@@ -1594,11 +1594,11 @@ public class IwlanDataService extends DataService {
                     if (cellInfolist != null
                             && iwlanDataServiceProvider.isRegisteredCellInfoChanged(cellInfolist)) {
                         int[] addrResolutionMethods =
-                                IwlanHelper.getConfig(
-                                        CarrierConfigManager.Iwlan
-                                                .KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
+                                IwlanCarrierConfig.getConfigIntArray(
                                         mContext,
-                                        iwlanDataServiceProvider.getSlotIndex());
+                                        iwlanDataServiceProvider.getSlotIndex(),
+                                        CarrierConfigManager.Iwlan
+                                                .KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY);
                         for (int addrResolutionMethod : addrResolutionMethods) {
                             if (addrResolutionMethod
                                     == CarrierConfigManager.Iwlan.EPDG_ADDRESS_CELLULAR_LOC) {
