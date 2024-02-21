@@ -942,9 +942,15 @@ public class EpdgTunnelManager {
     private ChildSessionParams buildChildSessionParams(TunnelSetupRequest setupRequest) {
         int proto = setupRequest.apnIpProtocol();
         int hardTimeSeconds =
-                getConfig(CarrierConfigManager.Iwlan.KEY_CHILD_SA_REKEY_HARD_TIMER_SEC_INT);
+                IwlanCarrierConfig.getConfigInt(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_CHILD_SA_REKEY_HARD_TIMER_SEC_INT);
         int softTimeSeconds =
-                getConfig(CarrierConfigManager.Iwlan.KEY_CHILD_SA_REKEY_SOFT_TIMER_SEC_INT);
+                IwlanCarrierConfig.getConfigInt(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_CHILD_SA_REKEY_SOFT_TIMER_SEC_INT);
         if (!isValidChildSessionLifetime(hardTimeSeconds, softTimeSeconds)) {
             if (hardTimeSeconds > CHILD_HARD_LIFETIME_SEC_MAXIMUM
                     && softTimeSeconds > CHILD_SOFT_LIFETIME_SEC_MINIMUM) {
@@ -1100,9 +1106,15 @@ public class EpdgTunnelManager {
             TunnelSetupRequest setupRequest, String apnName, int token)
             throws IwlanSimNotReadyException {
         int hardTimeSeconds =
-                getConfig(CarrierConfigManager.Iwlan.KEY_IKE_REKEY_HARD_TIMER_SEC_INT);
+                IwlanCarrierConfig.getConfigInt(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_IKE_REKEY_HARD_TIMER_SEC_INT);
         int softTimeSeconds =
-                getConfig(CarrierConfigManager.Iwlan.KEY_IKE_REKEY_SOFT_TIMER_SEC_INT);
+                IwlanCarrierConfig.getConfigInt(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_IKE_REKEY_SOFT_TIMER_SEC_INT);
         if (!isValidIkeSessionLifetime(hardTimeSeconds, softTimeSeconds)) {
             if (hardTimeSeconds > IKE_HARD_LIFETIME_SEC_MAXIMUM
                     && softTimeSeconds > IKE_SOFT_LIFETIME_SEC_MINIMUM) {
@@ -1173,7 +1185,10 @@ public class EpdgTunnelManager {
             Log.d(TAG, "IKE_OPTION_INITIAL_CONTACT");
         }
 
-        if ((int) getConfig(CarrierConfigManager.Iwlan.KEY_EPDG_AUTHENTICATION_METHOD_INT)
+        if (IwlanCarrierConfig.getConfigInt(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_EPDG_AUTHENTICATION_METHOD_INT)
                 == CarrierConfigManager.Iwlan.AUTHENTICATION_METHOD_EAP_ONLY) {
             builder.addIkeOption(IkeSessionParams.IKE_OPTION_EAP_ONLY_AUTH);
         }
@@ -1197,7 +1212,10 @@ public class EpdgTunnelManager {
         builder.setIke3gppExtension(buildIke3gppExtension(setupRequest, apnName, token));
 
         int nattKeepAliveTimer =
-                getConfig(CarrierConfigManager.Iwlan.KEY_NATT_KEEP_ALIVE_TIMER_SEC_INT);
+                IwlanCarrierConfig.getConfigInt(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_NATT_KEEP_ALIVE_TIMER_SEC_INT);
         if (nattKeepAliveTimer < NATT_KEEPALIVE_DELAY_SEC_MIN
                 || nattKeepAliveTimer > NATT_KEEPALIVE_DELAY_SEC_MAX) {
             Log.d(TAG, "Falling back to default natt keep alive timer");
@@ -1234,7 +1252,9 @@ public class EpdgTunnelManager {
 
     private boolean isChildSessionAeadAlgosAvailable() {
         int[] encryptionAlgos =
-                getConfig(
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
                         CarrierConfigManager.Iwlan
                                 .KEY_SUPPORTED_CHILD_SESSION_AEAD_ALGORITHMS_INT_ARRAY);
         for (int encryptionAlgo : encryptionAlgos) {
@@ -1247,7 +1267,9 @@ public class EpdgTunnelManager {
 
     private boolean isIkeSessionAeadAlgosAvailable() {
         int[] encryptionAlgos =
-                getConfig(
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
                         CarrierConfigManager.Iwlan
                                 .KEY_SUPPORTED_IKE_SESSION_AEAD_ALGORITHMS_INT_ARRAY);
         for (int encryptionAlgo : encryptionAlgos) {
@@ -1272,9 +1294,6 @@ public class EpdgTunnelManager {
                 && hardLifetimeSeconds - softLifetimeSeconds >= LIFETIME_MARGIN_SEC_MINIMUM;
     }
 
-    private <T> T getConfig(String configKey) {
-        return IwlanHelper.getConfig(configKey, mContext, mSlotId);
-    }
 
     private void createEpdgSaProposal(EpdgSaProposal epdgSaProposal, boolean isChildProposal) {
         epdgSaProposal.addProposedDhGroups(
@@ -1397,7 +1416,11 @@ public class EpdgTunnelManager {
     private IkeSaProposal buildIkeSaProposal() {
         IkeSaProposal.Builder saProposalBuilder = new IkeSaProposal.Builder();
 
-        int[] dhGroups = getConfig(CarrierConfigManager.Iwlan.KEY_DIFFIE_HELLMAN_GROUPS_INT_ARRAY);
+        int[] dhGroups =
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_DIFFIE_HELLMAN_GROUPS_INT_ARRAY);
         for (int dhGroup : dhGroups) {
             if (validateConfig(dhGroup, VALID_DH_GROUPS, CONFIG_TYPE_DH_GROUP)) {
                 saProposalBuilder.addDhGroup(dhGroup);
@@ -1405,7 +1428,9 @@ public class EpdgTunnelManager {
         }
 
         int[] encryptionAlgos =
-                getConfig(
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
                         CarrierConfigManager.Iwlan
                                 .KEY_SUPPORTED_IKE_SESSION_ENCRYPTION_ALGORITHMS_INT_ARRAY);
         for (int encryptionAlgo : encryptionAlgos) {
@@ -1413,7 +1438,9 @@ public class EpdgTunnelManager {
 
             if (encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_CBC) {
                 int[] aesCbcKeyLens =
-                        getConfig(
+                        IwlanCarrierConfig.getConfigIntArray(
+                                mContext,
+                                mSlotId,
                                 CarrierConfigManager.Iwlan
                                         .KEY_IKE_SESSION_AES_CBC_KEY_SIZE_INT_ARRAY);
                 for (int aesCbcKeyLen : aesCbcKeyLens) {
@@ -1425,7 +1452,9 @@ public class EpdgTunnelManager {
 
             if (encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_CTR) {
                 int[] aesCtrKeyLens =
-                        getConfig(
+                        IwlanCarrierConfig.getConfigIntArray(
+                                mContext,
+                                mSlotId,
                                 CarrierConfigManager.Iwlan
                                         .KEY_IKE_SESSION_AES_CTR_KEY_SIZE_INT_ARRAY);
                 for (int aesCtrKeyLen : aesCtrKeyLens) {
@@ -1437,7 +1466,10 @@ public class EpdgTunnelManager {
         }
 
         int[] integrityAlgos =
-                getConfig(CarrierConfigManager.Iwlan.KEY_SUPPORTED_INTEGRITY_ALGORITHMS_INT_ARRAY);
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_SUPPORTED_INTEGRITY_ALGORITHMS_INT_ARRAY);
         for (int integrityAlgo : integrityAlgos) {
             if (validateConfig(integrityAlgo, VALID_INTEGRITY_ALGOS, CONFIG_TYPE_INTEGRITY_ALGO)) {
                 saProposalBuilder.addIntegrityAlgorithm(integrityAlgo);
@@ -1445,7 +1477,10 @@ public class EpdgTunnelManager {
         }
 
         int[] prfAlgos =
-                getConfig(CarrierConfigManager.Iwlan.KEY_SUPPORTED_PRF_ALGORITHMS_INT_ARRAY);
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_SUPPORTED_PRF_ALGORITHMS_INT_ARRAY);
         for (int prfAlgo : prfAlgos) {
             if (validateConfig(prfAlgo, VALID_PRF_ALGOS, CONFIG_TYPE_PRF_ALGO)) {
                 saProposalBuilder.addPseudorandomFunction(prfAlgo);
@@ -1458,7 +1493,11 @@ public class EpdgTunnelManager {
     private IkeSaProposal buildIkeSaAeadProposal() {
         IkeSaProposal.Builder saProposalBuilder = new IkeSaProposal.Builder();
 
-        int[] dhGroups = getConfig(CarrierConfigManager.Iwlan.KEY_DIFFIE_HELLMAN_GROUPS_INT_ARRAY);
+        int[] dhGroups =
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_DIFFIE_HELLMAN_GROUPS_INT_ARRAY);
         for (int dhGroup : dhGroups) {
             if (validateConfig(dhGroup, VALID_DH_GROUPS, CONFIG_TYPE_DH_GROUP)) {
                 saProposalBuilder.addDhGroup(dhGroup);
@@ -1466,7 +1505,9 @@ public class EpdgTunnelManager {
         }
 
         int[] encryptionAlgos =
-                getConfig(
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
                         CarrierConfigManager.Iwlan
                                 .KEY_SUPPORTED_IKE_SESSION_AEAD_ALGORITHMS_INT_ARRAY);
         for (int encryptionAlgo : encryptionAlgos) {
@@ -1477,7 +1518,9 @@ public class EpdgTunnelManager {
                     || (encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12)
                     || (encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16)) {
                 int[] aesGcmKeyLens =
-                        getConfig(
+                        IwlanCarrierConfig.getConfigIntArray(
+                                mContext,
+                                mSlotId,
                                 CarrierConfigManager.Iwlan
                                         .KEY_IKE_SESSION_AES_GCM_KEY_SIZE_INT_ARRAY);
                 for (int aesGcmKeyLen : aesGcmKeyLens) {
@@ -1489,7 +1532,10 @@ public class EpdgTunnelManager {
         }
 
         int[] prfAlgos =
-                getConfig(CarrierConfigManager.Iwlan.KEY_SUPPORTED_PRF_ALGORITHMS_INT_ARRAY);
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_SUPPORTED_PRF_ALGORITHMS_INT_ARRAY);
         for (int prfAlgo : prfAlgos) {
             if (validateConfig(prfAlgo, VALID_PRF_ALGOS, CONFIG_TYPE_PRF_ALGO)) {
                 saProposalBuilder.addPseudorandomFunction(prfAlgo);
@@ -1513,9 +1559,15 @@ public class EpdgTunnelManager {
 
         // IKE library doesn't add KE payload if dh groups are not set in child session params.
         // Use the same groups as that of IKE session.
-        if (getConfig(CarrierConfigManager.Iwlan.KEY_ADD_KE_TO_CHILD_SESSION_REKEY_BOOL)) {
+        if (IwlanCarrierConfig.getConfigBoolean(
+                mContext,
+                mSlotId,
+                CarrierConfigManager.Iwlan.KEY_ADD_KE_TO_CHILD_SESSION_REKEY_BOOL)) {
             int[] dhGroups =
-                    getConfig(CarrierConfigManager.Iwlan.KEY_DIFFIE_HELLMAN_GROUPS_INT_ARRAY);
+                    IwlanCarrierConfig.getConfigIntArray(
+                            mContext,
+                            mSlotId,
+                            CarrierConfigManager.Iwlan.KEY_DIFFIE_HELLMAN_GROUPS_INT_ARRAY);
             for (int dhGroup : dhGroups) {
                 if (validateConfig(dhGroup, VALID_DH_GROUPS, CONFIG_TYPE_DH_GROUP)) {
                     saProposalBuilder.addDhGroup(dhGroup);
@@ -1524,7 +1576,9 @@ public class EpdgTunnelManager {
         }
 
         int[] encryptionAlgos =
-                getConfig(
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
                         CarrierConfigManager.Iwlan
                                 .KEY_SUPPORTED_CHILD_SESSION_ENCRYPTION_ALGORITHMS_INT_ARRAY);
         for (int encryptionAlgo : encryptionAlgos) {
@@ -1532,7 +1586,9 @@ public class EpdgTunnelManager {
                 if (ChildSaProposal.getSupportedEncryptionAlgorithms().contains(encryptionAlgo)) {
                     if (encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_CBC) {
                         int[] aesCbcKeyLens =
-                                getConfig(
+                                IwlanCarrierConfig.getConfigIntArray(
+                                        mContext,
+                                        mSlotId,
                                         CarrierConfigManager.Iwlan
                                                 .KEY_CHILD_SESSION_AES_CBC_KEY_SIZE_INT_ARRAY);
                         for (int aesCbcKeyLen : aesCbcKeyLens) {
@@ -1546,7 +1602,9 @@ public class EpdgTunnelManager {
 
                     if (encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_CTR) {
                         int[] aesCtrKeyLens =
-                                getConfig(
+                                IwlanCarrierConfig.getConfigIntArray(
+                                        mContext,
+                                        mSlotId,
                                         CarrierConfigManager.Iwlan
                                                 .KEY_CHILD_SESSION_AES_CTR_KEY_SIZE_INT_ARRAY);
                         for (int aesCtrKeyLen : aesCtrKeyLens) {
@@ -1564,7 +1622,10 @@ public class EpdgTunnelManager {
         }
 
         int[] integrityAlgos =
-                getConfig(CarrierConfigManager.Iwlan.KEY_SUPPORTED_INTEGRITY_ALGORITHMS_INT_ARRAY);
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_SUPPORTED_INTEGRITY_ALGORITHMS_INT_ARRAY);
         for (int integrityAlgo : integrityAlgos) {
             if (validateConfig(integrityAlgo, VALID_INTEGRITY_ALGOS, CONFIG_TYPE_INTEGRITY_ALGO)) {
                 if (ChildSaProposal.getSupportedIntegrityAlgorithms().contains(integrityAlgo)) {
@@ -1581,7 +1642,11 @@ public class EpdgTunnelManager {
     private ChildSaProposal buildAeadChildSaProposal() {
         ChildSaProposal.Builder saProposalBuilder = new ChildSaProposal.Builder();
 
-        int[] dhGroups = getConfig(CarrierConfigManager.Iwlan.KEY_DIFFIE_HELLMAN_GROUPS_INT_ARRAY);
+        int[] dhGroups =
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_DIFFIE_HELLMAN_GROUPS_INT_ARRAY);
         for (int dhGroup : dhGroups) {
             if (validateConfig(dhGroup, VALID_DH_GROUPS, CONFIG_TYPE_DH_GROUP)) {
                 saProposalBuilder.addDhGroup(dhGroup);
@@ -1589,7 +1654,9 @@ public class EpdgTunnelManager {
         }
 
         int[] encryptionAlgos =
-                getConfig(
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
                         CarrierConfigManager.Iwlan
                                 .KEY_SUPPORTED_CHILD_SESSION_AEAD_ALGORITHMS_INT_ARRAY);
         for (int encryptionAlgo : encryptionAlgos) {
@@ -1600,7 +1667,9 @@ public class EpdgTunnelManager {
                     || (encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12)
                     || (encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16)) {
                 int[] aesGcmKeyLens =
-                        getConfig(
+                        IwlanCarrierConfig.getConfigIntArray(
+                                mContext,
+                                mSlotId,
                                 CarrierConfigManager.Iwlan
                                         .KEY_CHILD_SESSION_AES_GCM_KEY_SIZE_INT_ARRAY);
                 for (int aesGcmKeyLen : aesGcmKeyLens) {
@@ -1632,7 +1701,7 @@ public class EpdgTunnelManager {
                 isLocal
                         ? CarrierConfigManager.Iwlan.KEY_IKE_LOCAL_ID_TYPE_INT
                         : CarrierConfigManager.Iwlan.KEY_IKE_REMOTE_ID_TYPE_INT;
-        int idType = getConfig(idTypeConfig);
+        int idType = IwlanCarrierConfig.getConfigInt(mContext, mSlotId, idTypeConfig);
         switch (idType) {
             case CarrierConfigManager.Iwlan.ID_TYPE_FQDN:
                 return new IkeFqdnIdentification(id);
@@ -2101,7 +2170,9 @@ public class EpdgTunnelManager {
                     tunnelConfig.setPcscfAddrList(sessionConfiguration.getPcscfServers());
 
                     boolean enabledFastReauth =
-                            getConfig(
+                            IwlanCarrierConfig.getConfigBoolean(
+                                    mContext,
+                                    mSlotId,
                                     CarrierConfigManager.Iwlan
                                             .KEY_SUPPORTS_EAP_AKA_FAST_REAUTH_BOOL);
                     Log.d(
@@ -2227,10 +2298,10 @@ public class EpdgTunnelManager {
         mEpdgServerSelectionStartTime = System.currentTimeMillis();
 
         final int ipPreference =
-                IwlanHelper.getConfig(
-                        CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_IP_TYPE_PREFERENCE_INT,
+                IwlanCarrierConfig.getConfigInt(
                         mContext,
-                        mSlotId);
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_IP_TYPE_PREFERENCE_INT);
 
         IpPreferenceConflict ipPreferenceConflict =
                 isIpPreferenceConflictsWithNetwork(ipPreference);
@@ -2625,7 +2696,11 @@ public class EpdgTunnelManager {
     }
 
     private int[] getRetransmissionTimeoutsFromConfig() {
-        int[] timeList = getConfig(CarrierConfigManager.Iwlan.KEY_RETRANSMIT_TIMER_MSEC_INT_ARRAY);
+        int[] timeList =
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_RETRANSMIT_TIMER_MSEC_INT_ARRAY);
         boolean isValid =
                 timeList != null
                         && timeList.length != 0
@@ -2646,7 +2721,9 @@ public class EpdgTunnelManager {
     }
 
     private int getDpdDelayFromConfig() {
-        int dpdDelay = getConfig(CarrierConfigManager.Iwlan.KEY_DPD_TIMER_SEC_INT);
+        int dpdDelay =
+                IwlanCarrierConfig.getConfigInt(
+                        mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_DPD_TIMER_SEC_INT);
         if (dpdDelay < IKE_DPD_DELAY_SEC_MIN || dpdDelay > IKE_DPD_DELAY_SEC_MAX) {
             dpdDelay =
                     IwlanHelper.getDefaultConfig(CarrierConfigManager.Iwlan.KEY_DPD_TIMER_SEC_INT);
