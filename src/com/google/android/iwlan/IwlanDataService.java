@@ -20,6 +20,11 @@ import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 import static android.net.ipsec.ike.ike3gpp.Ike3gppParams.PDU_SESSION_ID_UNSET;
 
+import static com.google.android.iwlan.epdg.EpdgTunnelManager.BRINGDOWN_REASON_DEACTIVATE_DATA_CALL;
+import static com.google.android.iwlan.epdg.EpdgTunnelManager.BRINGDOWN_REASON_IN_DEACTIVATING_STATE;
+import static com.google.android.iwlan.epdg.EpdgTunnelManager.BRINGDOWN_REASON_NETWORK_UPDATE_WHEN_TUNNEL_IN_BRINGUP;
+import static com.google.android.iwlan.epdg.EpdgTunnelManager.BRINGDOWN_REASON_SERVICE_OUT_OF_SYNC;
+
 import android.content.Context;
 import android.content.Intent;
 import android.net.ConnectivityManager;
@@ -923,7 +928,8 @@ public class IwlanDataService extends DataService {
                                     entry.getKey(),
                                     true /* forceClose */,
                                     getIwlanTunnelCallback(),
-                                    getIwlanTunnelMetrics());
+                                    getIwlanTunnelMetrics(),
+                                    BRINGDOWN_REASON_IN_DEACTIVATING_STATE);
                 }
             }
         }
@@ -1047,7 +1053,8 @@ public class IwlanDataService extends DataService {
                                     entry.getKey(),
                                     true /* forceClose */,
                                     getIwlanTunnelCallback(),
-                                    getIwlanTunnelMetrics());
+                                    getIwlanTunnelMetrics(),
+                                    BRINGDOWN_REASON_NETWORK_UPDATE_WHEN_TUNNEL_IN_BRINGUP);
                 }
             }
         }
@@ -1229,7 +1236,10 @@ public class IwlanDataService extends DataService {
 
         // TODO(b/309867756): Include N1_MODE_CAPABILITY inclusion status in metrics.
         private boolean needIncludeN1ModeCapability() {
-            if (!mFeatureFlags.updateN1ModeOnUiChange()) {
+            if (!IwlanCarrierConfig.getConfigBoolean(
+                    mContext,
+                    getSlotIndex(),
+                    IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL)) {
                 return isN1ModeSupported();
             }
             if (!isN1ModeSupported()) {
@@ -1529,7 +1539,10 @@ public class IwlanDataService extends DataService {
                     int previousCallState = iwlanDataServiceProvider.mCallState;
                     int currentCallState = iwlanDataServiceProvider.mCallState = msg.arg2;
 
-                    if (!mFeatureFlags.updateN1ModeOnUiChange()) {
+                    if (!IwlanCarrierConfig.getConfigBoolean(
+                            mContext,
+                            iwlanDataServiceProvider.getSlotIndex(),
+                            IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL)) {
                         break;
                     }
 
@@ -1542,11 +1555,14 @@ public class IwlanDataService extends DataService {
                     break;
 
                 case IwlanEventListener.PREFERRED_NETWORK_TYPE_CHANGED_EVENT:
-                    if (!mFeatureFlags.updateN1ModeOnUiChange()) {
-                        break;
-                    }
                     iwlanDataServiceProvider =
                             (IwlanDataServiceProvider) getDataServiceProvider(msg.arg1);
+                    if (!IwlanCarrierConfig.getConfigBoolean(
+                            mContext,
+                            iwlanDataServiceProvider.getSlotIndex(),
+                            IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL)) {
+                        break;
+                    }
                     long allowedNetworkType = (long) msg.obj;
                     onPreferredNetworkTypeChanged(iwlanDataServiceProvider, allowedNetworkType);
                     break;
@@ -1642,7 +1658,8 @@ public class IwlanDataService extends DataService {
                                             dataProfile.getApnSetting().getApnName(),
                                             true /* forceClose */,
                                             iwlanDataServiceProvider.getIwlanTunnelCallback(),
-                                            iwlanDataServiceProvider.getIwlanTunnelMetrics());
+                                            iwlanDataServiceProvider.getIwlanTunnelMetrics(),
+                                            BRINGDOWN_REASON_SERVICE_OUT_OF_SYNC);
                             iwlanDataServiceProvider.deliverCallback(
                                     IwlanDataServiceProvider.CALLBACK_TYPE_SETUP_DATACALL_COMPLETE,
                                     5 /* DataServiceCallback
@@ -1913,7 +1930,8 @@ public class IwlanDataService extends DataService {
                             matchingApn,
                             isNetworkLost || isHandoverSuccessful, /* forceClose */
                             serviceProvider.getIwlanTunnelCallback(),
-                            serviceProvider.getIwlanTunnelMetrics());
+                            serviceProvider.getIwlanTunnelMetrics(),
+                            BRINGDOWN_REASON_DEACTIVATE_DATA_CALL);
         }
 
         private void resumePendingDeactivationIfExists(
