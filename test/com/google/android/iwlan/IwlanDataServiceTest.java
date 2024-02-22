@@ -145,7 +145,6 @@ public class IwlanDataServiceTest {
     @Mock private LinkAddress mMockIPv6LinkAddress;
     @Mock private Inet4Address mMockInet4Address;
     @Mock private Inet6Address mMockInet6Address;
-    @Mock private CarrierConfigManager mMockCarrierConfigManager;
     @Mock private FeatureFlags mFakeFeatureFlags;
 
     MockitoSession mStaticMockSession;
@@ -216,7 +215,6 @@ public class IwlanDataServiceTest {
                         .mockStatic(ErrorPolicyManager.class)
                         .mockStatic(IwlanBroadcastReceiver.class)
                         .mockStatic(SubscriptionManager.class)
-                        .mockStatic(IwlanCarrierConfig.class)
                         .strictness(Strictness.LENIENT)
                         .startMocking();
 
@@ -265,8 +263,6 @@ public class IwlanDataServiceTest {
 
         mIwlanDataService = spy(new IwlanDataService(mFakeFeatureFlags));
 
-        when(mMockContext.getSystemService(eq(CarrierConfigManager.class)))
-                .thenReturn(mMockCarrierConfigManager);
         // Injects the test looper into the IwlanDataServiceHandler
         doReturn(mTestLooper.getLooper()).when(mIwlanDataService).getLooper();
         mIwlanDataService.setAppContext(mMockContext);
@@ -284,8 +280,9 @@ public class IwlanDataServiceTest {
 
         when(mMockConnectivityManager.getLinkProperties(eq(mMockNetwork)))
                 .thenReturn(mLinkProperties);
-
         when(mMockTunnelLinkProperties.ifaceName()).thenReturn("mockipsec0");
+
+        mockCarrierConfigForN1Mode(true);
     }
 
     private void moveTimeForwardAndDispatch(long milliSeconds) {
@@ -296,6 +293,7 @@ public class IwlanDataServiceTest {
     @After
     public void cleanUp() throws Exception {
         mStaticMockSession.finishMocking();
+        IwlanCarrierConfig.resetTestConfig();
         mSpyIwlanDataServiceProvider.close();
         mTestLooper.dispatchAll();
         if (mIwlanDataService != null) {
@@ -928,11 +926,8 @@ public class IwlanDataServiceTest {
     public void testDeactivateDataCall_DelayedReleaseAfterHandover() {
         DataProfile dp = buildImsDataProfile();
 
-        when(IwlanCarrierConfig.getConfigInt(
-                        mMockContext,
-                        DEFAULT_SLOT_INDEX,
-                        IwlanCarrierConfig.KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT))
-                .thenReturn(3);
+        IwlanCarrierConfig.putTestConfigInt(
+                IwlanCarrierConfig.KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT, 3);
         onSystemDefaultNetworkConnected(TRANSPORT_WIFI);
 
         mSpyIwlanDataServiceProvider.setTunnelState(
@@ -984,11 +979,8 @@ public class IwlanDataServiceTest {
     public void testDeactivateDataCall_DelayedReleaseAfterHandover_NetworkReleaseBeforeDelay() {
         DataProfile dp = buildImsDataProfile();
 
-        when(IwlanCarrierConfig.getConfigInt(
-                        mMockContext,
-                        DEFAULT_SLOT_INDEX,
-                        IwlanCarrierConfig.KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT))
-                .thenReturn(3);
+        IwlanCarrierConfig.putTestConfigInt(
+                IwlanCarrierConfig.KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT, 3);
         when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
                 .thenReturn(mMockErrorPolicyManager);
         when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
@@ -2089,15 +2081,6 @@ public class IwlanDataServiceTest {
                 .build();
     }
 
-    private void setupMockForGetConfig(PersistableBundle bundle) {
-        if (bundle == null) {
-            bundle = new PersistableBundle();
-        }
-        when(mMockContext.getSystemService(eq(CarrierConfigManager.class)))
-                .thenReturn(mMockCarrierConfigManager);
-        when(mMockCarrierConfigManager.getConfigForSubId(DEFAULT_SLOT_INDEX)).thenReturn(bundle);
-    }
-
     private void mockCarrierConfigForN1Mode(boolean supportN1Mode) {
         PersistableBundle bundle = new PersistableBundle();
         if (supportN1Mode) {
@@ -2112,7 +2095,7 @@ public class IwlanDataServiceTest {
                     CarrierConfigManager.KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY,
                     new int[] {CarrierConfigManager.CARRIER_NR_AVAILABILITY_NSA});
         }
-        setupMockForGetConfig(bundle);
+        IwlanCarrierConfig.putTestConfigBundle(bundle);
     }
 
     private void mockCallState(int callState) {
@@ -2149,7 +2132,7 @@ public class IwlanDataServiceTest {
                     CarrierConfigManager.CARRIER_NR_AVAILABILITY_NSA,
                     CarrierConfigManager.CARRIER_NR_AVAILABILITY_SA
                 });
-        setupMockForGetConfig(bundle);
+        IwlanCarrierConfig.putTestConfigBundle(bundle);
         assertTrue(mSpyIwlanDataServiceProvider.isN1ModeSupported());
 
         bundle.putIntArray(
@@ -2157,18 +2140,15 @@ public class IwlanDataServiceTest {
                 new int[] {
                     CarrierConfigManager.CARRIER_NR_AVAILABILITY_NSA,
                 });
-        setupMockForGetConfig(bundle);
+        IwlanCarrierConfig.putTestConfigBundle(bundle);
         assertFalse(mSpyIwlanDataServiceProvider.isN1ModeSupported());
     }
 
     @Test
     public void testMultipleAllowedNetworkTypeChangeInIdle_updateN1Mode() throws Exception {
         mockCarrierConfigForN1Mode(true);
-        when(IwlanCarrierConfig.getConfigBoolean(
-                        mMockContext,
-                        DEFAULT_SLOT_INDEX,
-                        IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL))
-                .thenReturn(true);
+        IwlanCarrierConfig.putTestConfigBoolean(
+                IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL, true);
         mockCallState(CALL_STATE_IDLE);
         mockSetupDataCallWithPduSessionId(0);
         updatePreferredNetworkType(NETWORK_TYPE_BITMASK_NR);
@@ -2197,11 +2177,8 @@ public class IwlanDataServiceTest {
     public void testMultipleAllowedNetworkTypeChangeInCall_preferenceChanged_updateAfterCallEnds()
             throws Exception {
         mockCarrierConfigForN1Mode(true);
-        when(IwlanCarrierConfig.getConfigBoolean(
-                        mMockContext,
-                        DEFAULT_SLOT_INDEX,
-                        IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL))
-                .thenReturn(true);
+        IwlanCarrierConfig.putTestConfigBoolean(
+                IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL, true);
 
         mockCallState(CALL_STATE_RINGING);
         mockSetupDataCallWithPduSessionId(0);
@@ -2235,11 +2212,8 @@ public class IwlanDataServiceTest {
     public void testMultipleAllowedNetworkTypeChangeInCall_preferenceNotChanged_noUpdate()
             throws Exception {
         mockCarrierConfigForN1Mode(true);
-        when(IwlanCarrierConfig.getConfigBoolean(
-                        mMockContext,
-                        DEFAULT_SLOT_INDEX,
-                        IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL))
-                .thenReturn(true);
+        IwlanCarrierConfig.putTestConfigBoolean(
+                IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL, true);
 
         mockCallState(CALL_STATE_RINGING);
         mockSetupDataCallWithPduSessionId(0);
@@ -2266,11 +2240,8 @@ public class IwlanDataServiceTest {
     @Test
     public void testOnAllowedNetworkTypeChange_flagDisabled_noTunnelClose() {
         mockCarrierConfigForN1Mode(true);
-        when(IwlanCarrierConfig.getConfigBoolean(
-                        mMockContext,
-                        DEFAULT_SLOT_INDEX,
-                        IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL))
-                .thenReturn(false);
+        IwlanCarrierConfig.putTestConfigBoolean(
+                IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL, false);
 
         mockCallState(CALL_STATE_IDLE);
         mockSetupDataCallWithPduSessionId(0);
@@ -2283,11 +2254,8 @@ public class IwlanDataServiceTest {
     @Test
     public void testOnAllowedNetworkTypeChange_n1ModeNotSupported_noTunnelClose() {
         mockCarrierConfigForN1Mode(false);
-        when(IwlanCarrierConfig.getConfigBoolean(
-                        mMockContext,
-                        DEFAULT_SLOT_INDEX,
-                        IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL))
-                .thenReturn(true);
+        IwlanCarrierConfig.putTestConfigBoolean(
+                IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL, true);
 
         mockCallState(CALL_STATE_IDLE);
         mockSetupDataCallWithPduSessionId(0);
@@ -2300,11 +2268,8 @@ public class IwlanDataServiceTest {
     @Test
     public void testN1ModeNotSupported_tunnelBringupWithNoN1ModeCapability() {
         mockCarrierConfigForN1Mode(false);
-        when(IwlanCarrierConfig.getConfigBoolean(
-                        mMockContext,
-                        DEFAULT_SLOT_INDEX,
-                        IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL))
-                .thenReturn(true);
+        IwlanCarrierConfig.putTestConfigBoolean(
+                IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL, true);
 
         mockSetupDataCallWithPduSessionId(1);
 
@@ -2319,11 +2284,8 @@ public class IwlanDataServiceTest {
     @Test
     public void testNoN1ModeCapabilityInOngoingDataCall_newTunnelBringup_doNotIncludeN1() {
         mockCarrierConfigForN1Mode(true);
-        when(IwlanCarrierConfig.getConfigBoolean(
-                        mMockContext,
-                        DEFAULT_SLOT_INDEX,
-                        IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL))
-                .thenReturn(true);
+        IwlanCarrierConfig.putTestConfigBoolean(
+                IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL, true);
 
         mockSetupDataCallWithPduSessionId(0);
 
@@ -2376,6 +2338,7 @@ public class IwlanDataServiceTest {
     @Test
     public void testN1ModeForEmergencySession() {
         int pduSessionId = 5;
+        updatePreferredNetworkType(NETWORK_TYPE_BITMASK_NR);
         DataProfile dp = buildDataProfile(ApnSetting.TYPE_EMERGENCY);
         verifySetupDataCallRequestHandled(pduSessionId, dp);
 
@@ -2389,11 +2352,9 @@ public class IwlanDataServiceTest {
 
     @Test
     public void testN1ModeExclusionForEmergencySession() {
-        when(IwlanCarrierConfig.getConfigBoolean(
-                        mMockContext,
-                        DEFAULT_SLOT_INDEX,
-                        IwlanCarrierConfig.KEY_N1_MODE_EXCLUSION_FOR_EMERGENCY_SESSION_BOOL))
-                .thenReturn(true);
+        IwlanCarrierConfig.putTestConfigBoolean(
+                IwlanCarrierConfig.KEY_N1_MODE_EXCLUSION_FOR_EMERGENCY_SESSION_BOOL, true);
+        updatePreferredNetworkType(NETWORK_TYPE_BITMASK_NR);
         DataProfile dp = buildDataProfile(ApnSetting.TYPE_EMERGENCY);
         verifySetupDataCallRequestHandled(5 /* pduSessionId */, dp);
 
