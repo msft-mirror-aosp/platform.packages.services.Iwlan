@@ -243,10 +243,6 @@ public class EpdgTunnelManager {
 
     @VisibleForTesting protected EpdgMonitor mEpdgMonitor = new EpdgMonitor();
 
-    // TODO(b/239753287): Some networks request DEVICE_IDENTITY, but errors out when parsing
-    //  the response. Temporarily disabled.
-    private static final boolean INCLUDE_DEVICE_IDENTITY = false;
-
     public static final int BRINGDOWN_REASON_UNKNOWN = 0;
     public static final int BRINGDOWN_REASON_DISABLE_N1_MODE = 1;
     public static final int BRINGDOWN_REASON_ENABLE_N1_MODE = 2;
@@ -1250,7 +1246,8 @@ public class EpdgTunnelManager {
             TunnelSetupRequest setupRequest, String apnName, int token) {
         Ike3gppParams.Builder builder3gppParams = new Ike3gppParams.Builder();
 
-        if (INCLUDE_DEVICE_IDENTITY) {
+        if (IwlanCarrierConfig.getConfigBoolean(
+                mContext, mSlotId, IwlanCarrierConfig.KEY_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL)) {
             String imei = getMobileDeviceIdentity();
             if (imei != null) {
                 Log.d(TAG, "DEVICE_IDENTITY set in Ike3gppParams");
