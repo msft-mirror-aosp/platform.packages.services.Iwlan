@@ -65,6 +65,13 @@ public class IwlanCarrierConfig {
             PREFIX + "ike_device_identity_supported_bool";
 
     /**
+     * Boolean indicating if reordering ike SA transforms enabled. Refer to
+     * {@link #DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL} for the default value.
+     */
+    public static final String KEY_IKE_SA_TRANSFORMS_REORDER_BOOL =
+            PREFIX + "ike_sa_transforms_reorder_bool";
+
+    /**
      * Default delay in seconds for releasing the IWLAN connection after a WWAN handover. This is
      * the default value for {@link #KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT}.
      */
@@ -90,6 +97,9 @@ public class IwlanCarrierConfig {
      * #KEY_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL}.
      */
     public static final boolean DEFAULT_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL = false;
+
+    /** This is the default value for {@link #KEY_IKE_SA_TRANSFORMS_REORDER_BOOL}. */
+    public static final boolean DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL = false;
 
     private static PersistableBundle sTestBundle = new PersistableBundle();
 
@@ -119,6 +129,8 @@ public class IwlanCarrierConfig {
                 DEFAULT_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL);
         bundle.putBoolean(
                 KEY_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL, DEFAULT_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL);
+        bundle.putBoolean(
+                KEY_IKE_SA_TRANSFORMS_REORDER_BOOL, DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL);
         return bundle;
     }
 
