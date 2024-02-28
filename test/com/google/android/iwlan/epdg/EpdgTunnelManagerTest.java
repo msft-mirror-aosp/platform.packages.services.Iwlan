@@ -16,6 +16,8 @@
 
 package com.google.android.iwlan.epdg;
 
+import static com.google.android.iwlan.epdg.EpdgTunnelManager.BRINGDOWN_REASON_UNKNOWN;
+
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -553,7 +555,8 @@ public class EpdgTunnelManagerTest {
                 testApnName,
                 false /*forceClose*/,
                 mMockIwlanTunnelCallback,
-                mMockIwlanTunnelMetrics);
+                mMockIwlanTunnelMetrics,
+                BRINGDOWN_REASON_UNKNOWN);
         mTestLooper.dispatchAll();
 
         verify(mEpdgTunnelManager).closePendingRequestsForApn(eq(testApnName));
@@ -582,7 +585,8 @@ public class EpdgTunnelManagerTest {
                 testApnName,
                 true /*forceClose*/,
                 mMockIwlanTunnelCallback,
-                mMockIwlanTunnelMetrics);
+                mMockIwlanTunnelMetrics,
+                BRINGDOWN_REASON_UNKNOWN);
         mTestLooper.dispatchAll();
 
         verify(mMockIkeSession).kill();
@@ -606,7 +610,8 @@ public class EpdgTunnelManagerTest {
                 testApnName,
                 false /*forceClose*/,
                 mMockIwlanTunnelCallback,
-                mMockIwlanTunnelMetrics);
+                mMockIwlanTunnelMetrics,
+                BRINGDOWN_REASON_UNKNOWN);
         mTestLooper.dispatchAll();
 
         verify(mMockIkeSession).close();
@@ -2091,7 +2096,8 @@ public class EpdgTunnelManagerTest {
                 TEST_APN_NAME,
                 false /*forceClose*/,
                 mMockIwlanTunnelCallback,
-                mMockIwlanTunnelMetrics);
+                mMockIwlanTunnelMetrics,
+                BRINGDOWN_REASON_UNKNOWN);
         mTestLooper.dispatchAll();
 
         verify(mMockIwlanTunnelCallback, times(1))

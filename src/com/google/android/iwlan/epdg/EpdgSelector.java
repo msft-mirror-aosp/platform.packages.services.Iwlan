@@ -68,6 +68,7 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class EpdgSelector {
@@ -101,6 +102,7 @@ public class EpdgSelector {
     private static final int PCO_IPV6_LEN = 16; // 16 bytes for IPv6 address in PCO data.
 
     private static final String NO_DOMAIN = "NO_DOMAIN";
+    private static final Pattern PLMN_PATTERN = Pattern.compile("\\d{5,6}");
 
     BlockingQueue<Runnable> dnsResolutionQueue;
 
@@ -1388,6 +1390,6 @@ public class EpdgSelector {
      * @return True if the PLMN identifier is valid, false otherwise.
      */
     private static boolean isValidPlmn(String plmn) {
-        return plmn != null && plmn.matches("\\d{5,6}");
+        return plmn != null && PLMN_PATTERN.matcher(plmn).matches();
     }
 }
