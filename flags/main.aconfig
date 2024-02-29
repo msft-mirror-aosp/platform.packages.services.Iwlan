@@ -37,3 +37,9 @@ flag {
     description: "Enables a 5G SA capable UE to re-establish PDN connections over Wi-Fi with/without N1_MODE_CAPABILITY, when the user enables/disables 5G via UI/UX."
     bug: "273384888"
 }
+flag {
+    name: "distinct_epdg_selection_for_emergency_sessions"
+    namespace: "iwlan_telephony"
+    description: "Allow additional ePDG selections for emergency PDN"
+    bug: "244670857"
+}
