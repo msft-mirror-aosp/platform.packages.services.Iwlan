@@ -1294,6 +1294,7 @@ public class IwlanDataService extends DataService {
 
         private void disconnectPdnForN1ModeUpdate() {
             if (hasActiveOrInitiatingDataCall()) {
+                Log.d(TAG, "Disconnect PDNs for N1 mode update");
                 forceCloseTunnels(
                         mIs5GEnabledOnUi
                                 ? EpdgTunnelManager.BRINGDOWN_REASON_ENABLE_N1_MODE
