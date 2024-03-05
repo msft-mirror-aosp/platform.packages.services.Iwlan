@@ -715,6 +715,8 @@ public class EpdgTunnelManagerTest {
         IwlanCarrierConfig.putTestConfigBoolean(
                 CarrierConfigManager.Iwlan.KEY_SUPPORTS_CHILD_SESSION_MULTIPLE_SA_PROPOSALS_BOOL,
                 true);
+        IwlanCarrierConfig.putTestConfigBoolean(
+                IwlanCarrierConfig.KEY_IKE_SA_TRANSFORMS_REORDER_BOOL, true);
 
         IkeSessionArgumentCaptors tunnelArgumentCaptors =
                 verifyBringUpTunnelWithDnsQuery(apnName, mMockDefaultNetwork);

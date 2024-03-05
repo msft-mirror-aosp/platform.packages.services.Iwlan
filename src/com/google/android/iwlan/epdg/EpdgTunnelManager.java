@@ -998,7 +998,11 @@ public class EpdgTunnelManager {
                                 .KEY_SUPPORTS_CHILD_SESSION_MULTIPLE_SA_PROPOSALS_BOOL)) {
             EpdgChildSaProposal epdgChildSaProposal = createEpdgChildSaProposal();
 
-            if (mFeatureFlags.highSecureTransformsPrioritized()) {
+            if (mFeatureFlags.highSecureTransformsPrioritized()
+                    && IwlanCarrierConfig.getConfigBoolean(
+                            mContext,
+                            mSlotId,
+                            IwlanCarrierConfig.KEY_IKE_SA_TRANSFORMS_REORDER_BOOL)) {
                 epdgChildSaProposal.enableReorderingSaferProposals();
             }
 
@@ -1176,7 +1180,11 @@ public class EpdgTunnelManager {
                                 .KEY_SUPPORTS_IKE_SESSION_MULTIPLE_SA_PROPOSALS_BOOL)) {
             EpdgIkeSaProposal epdgIkeSaProposal = createEpdgIkeSaProposal();
 
-            if (mFeatureFlags.highSecureTransformsPrioritized()) {
+            if (mFeatureFlags.highSecureTransformsPrioritized()
+                    && IwlanCarrierConfig.getConfigBoolean(
+                            mContext,
+                            mSlotId,
+                            IwlanCarrierConfig.KEY_IKE_SA_TRANSFORMS_REORDER_BOOL)) {
                 epdgIkeSaProposal.enableReorderingSaferProposals();
             }
 
