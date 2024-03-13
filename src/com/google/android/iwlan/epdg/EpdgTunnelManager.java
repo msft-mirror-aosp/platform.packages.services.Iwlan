@@ -32,6 +32,7 @@ import android.net.IpSecTransform;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.eap.EapAkaInfo;
 import android.net.eap.EapInfo;
 import android.net.eap.EapSessionConfig;
@@ -1805,6 +1806,9 @@ public class EpdgTunnelManager {
             TunnelConfig tunnelConfig;
             OnClosedMetrics.Builder onClosedMetricsBuilder;
             TunnelRequestWrapper tunnelRequestWrapper;
+            ConnectivityManager connectivityManager;
+            NetworkCapabilities networkCapabilities;
+            boolean isNetworkValidated;
             switch (msg.what) {
                 case EVENT_CHILD_SESSION_OPENED:
                 case EVENT_IKE_SESSION_CLOSED:
@@ -1898,6 +1902,13 @@ public class EpdgTunnelManager {
                     mIkeTunnelEstablishmentDuration =
                             System.currentTimeMillis() - mIkeTunnelEstablishmentStartTime;
                     mIkeTunnelEstablishmentStartTime = 0;
+                    connectivityManager = mContext.getSystemService(ConnectivityManager.class);
+                    networkCapabilities =
+                            connectivityManager.getNetworkCapabilities(mIkeSessionNetwork);
+                    isNetworkValidated =
+                            (networkCapabilities != null)
+                                    && networkCapabilities.hasCapability(
+                                            NetworkCapabilities.NET_CAPABILITY_VALIDATED);
                     tunnelConfig
                             .getTunnelMetrics()
                             .onOpened(
@@ -1908,6 +1919,7 @@ public class EpdgTunnelManager {
                                                     (int) mEpdgServerSelectionDuration)
                                             .setIkeTunnelEstablishmentDuration(
                                                     (int) mIkeTunnelEstablishmentDuration)
+                                            .setIsNetworkValidated(isNetworkValidated)
                                             .build());
 
                     mEpdgMonitor.onApnConnectToEpdg(apnName, tunnelConfig.getEpdgAddress());
@@ -1985,11 +1997,19 @@ public class EpdgTunnelManager {
                                         : 0;
                         mIkeTunnelEstablishmentStartTime = 0;
 
+                        connectivityManager = mContext.getSystemService(ConnectivityManager.class);
+                        networkCapabilities =
+                                connectivityManager.getNetworkCapabilities(mIkeSessionNetwork);
+                        isNetworkValidated =
+                                (networkCapabilities != null)
+                                        && networkCapabilities.hasCapability(
+                                                NetworkCapabilities.NET_CAPABILITY_VALIDATED);
                         onClosedMetricsBuilder
                                 .setEpdgServerAddress(tunnelConfig.getEpdgAddress())
                                 .setEpdgServerSelectionDuration((int) mEpdgServerSelectionDuration)
                                 .setIkeTunnelEstablishmentDuration(
-                                        (int) mIkeTunnelEstablishmentDuration);
+                                        (int) mIkeTunnelEstablishmentDuration)
+                                .setIsNetworkValidated(isNetworkValidated);
                         tunnelConfig.getTunnelMetrics().onClosed(onClosedMetricsBuilder.build());
                     }
 
@@ -2179,8 +2199,7 @@ public class EpdgTunnelManager {
                             ikeSessionConnectionInfoData.mIkeSessionConnectionInfo.getNetwork();
                     apnName = ikeSessionConnectionInfoData.mApnName;
 
-                    ConnectivityManager connectivityManager =
-                            mContext.getSystemService(ConnectivityManager.class);
+                    connectivityManager = mContext.getSystemService(ConnectivityManager.class);
                     if (Objects.requireNonNull(connectivityManager).getLinkProperties(network)
                             == null) {
                         Log.e(TAG, "Network " + network + " has null LinkProperties!");
