@@ -29,6 +29,7 @@ import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSess
 
 import static com.google.android.iwlan.epdg.EpdgTunnelManager.BRINGDOWN_REASON_DEACTIVATE_DATA_CALL;
 import static com.google.android.iwlan.epdg.EpdgTunnelManager.BRINGDOWN_REASON_NETWORK_UPDATE_WHEN_TUNNEL_IN_BRINGUP;
+import static com.google.android.iwlan.epdg.EpdgTunnelManager.BRINGDOWN_REASON_SERVICE_OUT_OF_SYNC;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -1015,7 +1016,7 @@ public class IwlanDataServiceTest {
         mTestLooper.dispatchAll();
 
         moveTimeForwardAndDispatch(50);
-        /* Check closeTunnel() is called. */
+        /* Check closeTunnel() is not called. */
         verify(mMockEpdgTunnelManager, never())
                 .closeTunnel(
                         eq(TEST_APN_NAME),
@@ -1030,7 +1031,7 @@ public class IwlanDataServiceTest {
                 .onClosed(TEST_APN_NAME, new IwlanError(IwlanError.NO_ERROR));
         mTestLooper.dispatchAll();
         verify(mMockDataServiceCallback, times(1))
-                .onDeactivateDataCallComplete(eq(DataServiceCallback.RESULT_ERROR_INVALID_ARG));
+                .onDeactivateDataCallComplete(eq(DataServiceCallback.RESULT_SUCCESS));
 
         moveTimeForwardAndDispatch(4000);
 
@@ -2146,7 +2147,7 @@ public class IwlanDataServiceTest {
     }
 
     @Test
-    public void testMultipleAllowedNetworkTypeChangeInIdle_updateN1Mode() throws Exception {
+    public void testAllowedNetworkTypeChangeFromLteToNrInIdle_enableN1Mode() throws Exception {
         mockCarrierConfigForN1Mode(true);
         IwlanCarrierConfig.putTestConfigBoolean(
                 IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL, true);
@@ -2162,9 +2163,19 @@ public class IwlanDataServiceTest {
                         any(IwlanTunnelCallback.class),
                         any(IwlanTunnelMetricsImpl.class),
                         eq(EpdgTunnelManager.BRINGDOWN_REASON_ENABLE_N1_MODE));
+    }
 
+    @Test
+    public void testAllowedNetworkTypeChangeFromNrToLteInIdle_disableN1Mode() throws Exception {
+        mockCarrierConfigForN1Mode(true);
+        IwlanCarrierConfig.putTestConfigBoolean(
+                IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL, true);
+        mockCallState(CALL_STATE_IDLE);
+        updatePreferredNetworkType(NETWORK_TYPE_BITMASK_NR);
+        mockSetupDataCallWithPduSessionId(5 /* pduSessionId */);
         updatePreferredNetworkType(NETWORK_TYPE_BITMASK_LTE);
 
+        /* Check closeTunnel() is called. */
         verify(mMockEpdgTunnelManager, atLeastOnce())
                 .closeTunnel(
                         eq(TEST_APN_NAME),
@@ -2493,5 +2504,79 @@ public class IwlanDataServiceTest {
         assertEquals(1, dataCallList.size());
         assertDataCallResponsePresentByCidAndStatus(
                 cid, PreciseDataConnectionState.NETWORK_VALIDATION_IN_PROGRESS, dataCallList);
+    }
+
+    @Test
+    public void testSetupDataCallDuringDeactivateDataCallWithDelay_tunnelCloseWithOutOfSync() {
+        IwlanCarrierConfig.putTestConfigInt(
+                IwlanCarrierConfig.KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT, 3);
+        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
+                .thenReturn(mMockErrorPolicyManager);
+        when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
+                .thenReturn(DataFailCause.NONE);
+
+        onSystemDefaultNetworkConnected(TRANSPORT_WIFI);
+
+        DataProfile dp = buildImsDataProfile();
+        mSpyIwlanDataServiceProvider.setTunnelState(
+                dp,
+                mMockDataServiceCallback,
+                TunnelState.TUNNEL_UP,
+                null, /* linkProperties */
+                false, /* isHandover */
+                1, /* pduSessionId */
+                true /* isImsOrEmergency */,
+                true /* isDataCallSetupWithN1 */);
+
+        mSpyIwlanDataServiceProvider.deactivateDataCall(
+                TEST_APN_NAME.hashCode() /* cid: hashcode() of "ims" */,
+                DataService.REQUEST_REASON_HANDOVER,
+                mMockDataServiceCallback);
+
+        moveTimeForwardAndDispatch(50);
+
+        /* Check closeTunnel() is not called. */
+        verify(mMockEpdgTunnelManager, never())
+                .closeTunnel(
+                        eq(TEST_APN_NAME),
+                        anyBoolean(),
+                        any(IwlanTunnelCallback.class),
+                        any(IwlanTunnelMetricsImpl.class),
+                        anyInt());
+
+        mSpyIwlanDataServiceProvider.setupDataCall(
+                AccessNetworkType.IWLAN, /* AccessNetworkType */
+                dp, /* dataProfile */
+                false, /* isRoaming */
+                true, /* allowRoaming */
+                DataService.REQUEST_REASON_NORMAL, /* DataService.REQUEST_REASON_NORMAL */
+                null, /* LinkProperties */
+                1, /* pduSessionId */
+                null, /* sliceInfo */
+                null, /* trafficDescriptor */
+                true, /* matchAllRuleAllowed */
+                mMockDataServiceCallback);
+        mTestLooper.dispatchAll();
+
+        verify(mMockEpdgTunnelManager, times(1))
+                .closeTunnel(
+                        eq(TEST_APN_NAME),
+                        anyBoolean(),
+                        any(IwlanTunnelCallback.class),
+                        any(IwlanTunnelMetricsImpl.class),
+                        eq(BRINGDOWN_REASON_SERVICE_OUT_OF_SYNC));
+        verify(mMockDataServiceCallback, times(1))
+                .onSetupDataCallComplete(
+                        eq(DataServiceCallback.RESULT_ERROR_TEMPORARILY_UNAVAILABLE), isNull());
+        mSpyIwlanDataServiceProvider
+                .getIwlanTunnelCallback()
+                .onClosed(TEST_APN_NAME, new IwlanError(IwlanError.NO_ERROR));
+        mTestLooper.dispatchAll();
+        verify(mMockDataServiceCallback, times(1))
+                .onDeactivateDataCallComplete(eq(DataServiceCallback.RESULT_SUCCESS));
+        moveTimeForwardAndDispatch(3000);
+
+        // No additional callbacks are involved.
+        verify(mMockDataServiceCallback, times(1)).onDeactivateDataCallComplete(anyInt());
     }
 }
