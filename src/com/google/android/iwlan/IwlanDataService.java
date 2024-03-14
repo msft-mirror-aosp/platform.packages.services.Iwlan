@@ -1417,7 +1417,7 @@ public class IwlanDataService extends DataService {
                         // to release the PDN.  This allows for immediate response to Telephony if
                         // the network releases the PDN before timeout. Otherwise, Telephony's PDN
                         // state waits for Iwlan, blocking further actions on this PDN.
-                        suspendPendingDeactivationIfExists(
+                        cancelPendingDeactivationIfExists(
                                 tunnelState.getPendingDeactivateDataCallData());
                     }
 
@@ -2064,7 +2064,7 @@ public class IwlanDataService extends DataService {
                             BRINGDOWN_REASON_DEACTIVATE_DATA_CALL);
         }
 
-        private void suspendPendingDeactivationIfExists(
+        private void cancelPendingDeactivationIfExists(
                 DeactivateDataCallData deactivateDataCallData) {
             Handler handler = getIwlanDataServiceHandler();
             if (handler.hasMessages(EVENT_DEACTIVATE_DATA_CALL, deactivateDataCallData)) {
