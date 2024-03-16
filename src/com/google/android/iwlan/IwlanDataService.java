@@ -1018,6 +1018,7 @@ public class IwlanDataService extends DataService {
          */
         void forceCloseTunnels(@EpdgTunnelManager.TunnelBringDownReason int reason) {
             for (Map.Entry<String, TunnelState> entry : mTunnelStateForApn.entrySet()) {
+                entry.getValue().setState(TunnelState.TUNNEL_IN_BRINGDOWN);
                 getTunnelManager()
                         .closeTunnel(
                                 entry.getKey(),
@@ -1068,14 +1069,14 @@ public class IwlanDataService extends DataService {
         @VisibleForTesting
         void setMetricsAtom(
                 String apnName,
-                int apntype,
+                int apnType,
                 boolean isHandover,
                 int sourceRat,
                 boolean isRoaming,
                 boolean isNetworkConnected,
                 int transportType) {
             MetricsAtom metricsAtom = new MetricsAtom();
-            metricsAtom.setApnType(apntype);
+            metricsAtom.setApnType(apnType);
             metricsAtom.setIsHandover(isHandover);
             metricsAtom.setSourceRat(sourceRat);
             metricsAtom.setIsCellularRoaming(isRoaming);
@@ -1416,7 +1417,7 @@ public class IwlanDataService extends DataService {
                         // to release the PDN.  This allows for immediate response to Telephony if
                         // the network releases the PDN before timeout. Otherwise, Telephony's PDN
                         // state waits for Iwlan, blocking further actions on this PDN.
-                        resumePendingDeactivationIfExists(
+                        cancelPendingDeactivationIfExists(
                                 tunnelState.getPendingDeactivateDataCallData());
                     }
 
@@ -2030,6 +2031,7 @@ public class IwlanDataService extends DataService {
             IwlanDataServiceProvider.TunnelState tunnelState =
                     serviceProvider.mTunnelStateForApn.get(matchingApn);
             tunnelState.setPendingDeactivateDataCallData(data);
+            tunnelState.setState(IwlanDataServiceProvider.TunnelState.TUNNEL_IN_BRINGDOWN);
             Handler handler = getIwlanDataServiceHandler();
             handler.sendMessageDelayed(
                     handler.obtainMessage(EVENT_DEACTIVATE_DATA_CALL, data),
@@ -2062,14 +2064,12 @@ public class IwlanDataService extends DataService {
                             BRINGDOWN_REASON_DEACTIVATE_DATA_CALL);
         }
 
-        private void resumePendingDeactivationIfExists(
+        private void cancelPendingDeactivationIfExists(
                 DeactivateDataCallData deactivateDataCallData) {
             Handler handler = getIwlanDataServiceHandler();
             if (handler.hasMessages(EVENT_DEACTIVATE_DATA_CALL, deactivateDataCallData)) {
                 // Remove any existing deactivation messages and request a new one in the front
                 handler.removeMessages(EVENT_DEACTIVATE_DATA_CALL, deactivateDataCallData);
-                handler.sendMessageAtFrontOfQueue(
-                        handler.obtainMessage(EVENT_DEACTIVATE_DATA_CALL, deactivateDataCallData));
             }
         }
 
