@@ -30,7 +30,6 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.res.AssetManager;
 import android.net.ipsec.ike.exceptions.IkeProtocolException;
-import android.os.PersistableBundle;
 import android.os.test.TestLooper;
 import android.telephony.CarrierConfigManager;
 import android.telephony.DataFailCause;
@@ -39,7 +38,6 @@ import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.telephony.data.DataService;
 
-import androidx.test.InstrumentationRegistry;
 
 import com.google.auto.value.AutoValue;
 
@@ -52,9 +50,6 @@ import org.mockito.MockitoAnnotations;
 import org.mockito.MockitoSession;
 import org.mockito.quality.Strictness;
 
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -140,6 +135,7 @@ public class ErrorPolicyManagerTest {
 
     private TestLooper mTestLooper = new TestLooper();
     private long mMockedClockTime = 0;
+    private int mCarrierId = TEST_CARRIER_ID;
 
     @Mock private Context mMockContext;
     @Mock CarrierConfigManager mMockCarrierConfigManager;
@@ -162,12 +158,20 @@ public class ErrorPolicyManagerTest {
         when(IwlanDataService.getDataServiceProvider(anyInt()))
                 .thenReturn(mMockDataServiceProvider);
         when(IwlanHelper.elapsedRealtime()).thenAnswer(i -> mMockedClockTime);
-        AssetManager mockAssetManager = mock(AssetManager.class);
-        Context context = InstrumentationRegistry.getTargetContext();
-        InputStream is = context.getResources().getAssets().open("defaultiwlanerrorconfig.json");
-        doReturn(mockAssetManager).when(mMockContext).getAssets();
-        doReturn(is).when(mockAssetManager).open(any());
-        setupMockForCarrierConfig(null);
+        doReturn(mMockSubscriptionManager)
+                .when(mMockContext)
+                .getSystemService(eq(SubscriptionManager.class));
+        doReturn(mMockTelephonyManager).when(mMockContext).getSystemService(TelephonyManager.class);
+        doReturn(mMockTelephonyManager)
+                .when(mMockTelephonyManager)
+                .createForSubscriptionId(anyInt());
+        when(mMockTelephonyManager.getSimCarrierId()).thenAnswer(i -> mCarrierId);
+        SubscriptionInfo mockSubInfo = mock(SubscriptionInfo.class);
+        doReturn(mockSubInfo)
+                .when(mMockSubscriptionManager)
+                .getActiveSubscriptionInfoForSimSlotIndex(DEFAULT_SLOT_INDEX);
+        doReturn(DEFAULT_SUBID).when(mockSubInfo).getSubscriptionId();
+        when(mMockContext.getContentResolver()).thenReturn(mMockContentResolver);
         ErrorPolicyManager.resetAllInstances();
         mErrorPolicyManager = spy(ErrorPolicyManager.getInstance(mMockContext, DEFAULT_SLOT_INDEX));
         doReturn(mTestLooper.getLooper()).when(mErrorPolicyManager).getLooper();
@@ -178,6 +182,7 @@ public class ErrorPolicyManagerTest {
     public void cleanUp() throws Exception {
         mStaticMockSession.finishMocking();
         mErrorPolicyManager.releaseInstance();
+        IwlanCarrierConfig.resetTestConfig();
     }
 
     private static IwlanError buildIwlanIkeProtocolError(int errorCode, byte[] errorData) {
@@ -231,9 +236,8 @@ public class ErrorPolicyManagerTest {
                         + "}]"
                         + "}]";
 
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, config);
-        setupMockForCarrierConfig(bundle);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, config);
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -323,10 +327,8 @@ public class ErrorPolicyManagerTest {
                                 .getErrorPolicyInString()
                         + "}]"
                         + "}]";
-
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, config);
-        setupMockForCarrierConfig(bundle);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, config);
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -396,9 +398,8 @@ public class ErrorPolicyManagerTest {
                         + "}]"
                         + "}]";
 
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, config);
-        setupMockForCarrierConfig(bundle);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, config);
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -473,9 +474,8 @@ public class ErrorPolicyManagerTest {
                                 .getErrorPolicyInString()
                         + "}]"
                         + "}]";
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, config);
-        setupMockForCarrierConfig(bundle);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, config);
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -524,9 +524,9 @@ public class ErrorPolicyManagerTest {
                         + "}]"
                         + "}]";
 
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, config);
-        setupMockForCarrierConfigWithCarrierId(bundle, 1 /* carrierId */);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, config);
+        mCarrierId = 1;
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -538,8 +538,9 @@ public class ErrorPolicyManagerTest {
         long time = mErrorPolicyManager.reportIwlanError(apn, iwlanError);
         assertEquals(100, time);
 
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, null);
-        setupMockForCarrierConfigWithCarrierId(bundle, 2 /* carrierId */);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, null);
+        mCarrierId = 2;
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -572,9 +573,8 @@ public class ErrorPolicyManagerTest {
                         + "}]"
                         + "}]";
 
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, config);
-        setupMockForCarrierConfig(bundle);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, config);
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -608,7 +608,9 @@ public class ErrorPolicyManagerTest {
         assertEquals(new IwlanError(IwlanError.NO_ERROR), mErrorPolicyManager.getLastError(apn2));
 
         // After CarrierConfigChanged, all last error should be cleared
-        setupMockForCarrierConfigWithCarrierId(bundle, 2 /* carrierId */);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, config);
+        mCarrierId = 2;
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -646,9 +648,8 @@ public class ErrorPolicyManagerTest {
                                 .getErrorPolicyInString()
                         + "}]"
                         + "}]";
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, config);
-        setupMockForCarrierConfig(bundle);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, config);
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -702,9 +703,8 @@ public class ErrorPolicyManagerTest {
                                 .getErrorPolicyInString()
                         + "}]"
                         + "}]";
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, config);
-        setupMockForCarrierConfig(bundle);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, config);
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -753,9 +753,8 @@ public class ErrorPolicyManagerTest {
                                 .getErrorPolicyInString()
                         + "}]"
                         + "}]";
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, config);
-        setupMockForCarrierConfig(bundle);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, config);
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -809,9 +808,8 @@ public class ErrorPolicyManagerTest {
                                 .getErrorPolicyInString()
                         + "}]"
                         + "}]";
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, config);
-        setupMockForCarrierConfig(bundle);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, config);
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -865,9 +863,8 @@ public class ErrorPolicyManagerTest {
                                 .getErrorPolicyInString()
                         + "}]"
                         + "}]";
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, config);
-        setupMockForCarrierConfig(bundle);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, config);
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -924,9 +921,8 @@ public class ErrorPolicyManagerTest {
                                 .getErrorPolicyInString()
                         + "}]"
                         + "}]";
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, config);
-        setupMockForCarrierConfig(bundle);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, config);
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -981,9 +977,8 @@ public class ErrorPolicyManagerTest {
                                 .getErrorPolicyInString()
                         + "}]"
                         + "}]";
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, config);
-        setupMockForCarrierConfig(bundle);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, config);
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -1043,9 +1038,8 @@ public class ErrorPolicyManagerTest {
                         + "}]"
                         + "}]";
 
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, config);
-        setupMockForCarrierConfig(bundle);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, config);
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -1114,9 +1108,8 @@ public class ErrorPolicyManagerTest {
                         + "}]"
                         + "}]";
 
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, config);
-        setupMockForCarrierConfig(bundle);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, config);
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -1189,9 +1182,8 @@ public class ErrorPolicyManagerTest {
                         + "}]"
                         + "}]";
 
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, config);
-        setupMockForCarrierConfig(bundle);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, config);
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -1239,9 +1231,8 @@ public class ErrorPolicyManagerTest {
                         + "}]"
                         + "}]";
 
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, config);
-        setupMockForCarrierConfig(bundle);
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, config);
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -1291,8 +1282,6 @@ public class ErrorPolicyManagerTest {
         String apn1 = "ims";
         String apn2 = "mms";
 
-        setupMockForCarrierConfig(null);
-
         IwlanError iwlanError1 = buildIwlanIkeAuthFailedError();
         long ikeAuthCountApn1 = 4L;
         long ikeAuthCountApn2 = 5L;
@@ -1331,7 +1320,6 @@ public class ErrorPolicyManagerTest {
     public void testGetLastRetryIndex() {
         String apn = "ims";
 
-        setupMockForCarrierConfig(null);
         mErrorPolicyManager
                 .mHandler
                 .obtainMessage(IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT)
@@ -1418,19 +1406,14 @@ public class ErrorPolicyManagerTest {
                         + "\"RetryArray\": [\"0\"], \"UnthrottlingEvents\": []}";
         String defaultConfigJson =
                 "[{\"ApnName\": \"*\", \"ErrorTypes\": [" + defaultConfigErrorTypeJson + "]}]";
-        InputStream defaultConfigInputStream =
-                new ByteArrayInputStream(defaultConfigJson.getBytes(StandardCharsets.UTF_8));
-        doReturn(defaultConfigInputStream).when(mockAssetManager).open(any());
-        PersistableBundle bundle = new PersistableBundle();
+        IwlanCarrierConfig.putTestConfigString(
+                IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING, defaultConfigJson);
 
         // need to reconstruct error policy manager with the mocked default config
         mErrorPolicyManager.releaseInstance();
         mErrorPolicyManager = spy(ErrorPolicyManager.getInstance(mMockContext, DEFAULT_SLOT_INDEX));
         doReturn(mTestLooper.getLooper()).when(mErrorPolicyManager).getLooper();
         mErrorPolicyManager.initHandler();
-
-        bundle.putString(ErrorPolicyManager.KEY_ERROR_POLICY_CONFIG_STRING, null);
-        setupMockForCarrierConfig(bundle);
 
         mErrorPolicyManager
                 .mHandler
@@ -1442,30 +1425,5 @@ public class ErrorPolicyManagerTest {
         // not have at least 1 policy can apply to all error, it should not throw error
         IwlanError iwlanError = new IwlanError(IwlanError.EPDG_SELECTOR_SERVER_SELECTION_FAILED);
         mErrorPolicyManager.reportIwlanError(apn, iwlanError);
-    }
-
-    private void setupMockForCarrierConfig(PersistableBundle bundle) {
-        setupMockForCarrierConfigWithCarrierId(bundle, TEST_CARRIER_ID);
-    }
-
-    private void setupMockForCarrierConfigWithCarrierId(PersistableBundle bundle, int carrierId) {
-        doReturn(mMockCarrierConfigManager)
-                .when(mMockContext)
-                .getSystemService(eq(CarrierConfigManager.class));
-        doReturn(mMockSubscriptionManager)
-                .when(mMockContext)
-                .getSystemService(eq(SubscriptionManager.class));
-        doReturn(mMockTelephonyManager).when(mMockContext).getSystemService(TelephonyManager.class);
-        doReturn(mMockTelephonyManager)
-                .when(mMockTelephonyManager)
-                .createForSubscriptionId(anyInt());
-        doReturn(carrierId).when(mMockTelephonyManager).getSimCarrierId();
-        SubscriptionInfo mockSubInfo = mock(SubscriptionInfo.class);
-        doReturn(mockSubInfo)
-                .when(mMockSubscriptionManager)
-                .getActiveSubscriptionInfoForSimSlotIndex(DEFAULT_SLOT_INDEX);
-        doReturn(DEFAULT_SUBID).when(mockSubInfo).getSubscriptionId();
-        doReturn(bundle).when(mMockCarrierConfigManager).getConfigForSubId(DEFAULT_SLOT_INDEX);
-        when(mMockContext.getContentResolver()).thenReturn(mMockContentResolver);
     }
 }
