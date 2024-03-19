@@ -1018,7 +1018,6 @@ public class IwlanDataService extends DataService {
          */
         void forceCloseTunnels(@EpdgTunnelManager.TunnelBringDownReason int reason) {
             for (Map.Entry<String, TunnelState> entry : mTunnelStateForApn.entrySet()) {
-                entry.getValue().setState(TunnelState.TUNNEL_IN_BRINGDOWN);
                 getTunnelManager()
                         .closeTunnel(
                                 entry.getKey(),
