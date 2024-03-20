@@ -15,12 +15,12 @@
  */
 package com.google.android.iwlan;
 
-import java.net.InetAddress;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
 import com.google.android.iwlan.IwlanDataService.IwlanDataServiceProvider;
 
+import java.net.InetAddress;
 import java.util.Objects;
 
 public interface TunnelMetricsInterface {
@@ -35,12 +35,14 @@ public interface TunnelMetricsInterface {
         private final int mEpdgServerSelectionDuration;
         private final int mIkeTunnelEstablishmentDuration;
         private IwlanDataServiceProvider mIwlanDataServiceProvider;
+        private boolean mIsNetworkValidated;
 
         protected TunnelMetricsData(Builder builder) {
             this.mApnName = builder.mApnName;
             this.mEpdgServerAddress = builder.mEpdgServerAddress;
             this.mEpdgServerSelectionDuration = builder.mEpdgServerSelectionDuration;
             this.mIkeTunnelEstablishmentDuration = builder.mIkeTunnelEstablishmentDuration;
+            this.mIsNetworkValidated = builder.mIsNetworkValidated;
         }
 
         @Nullable
@@ -69,11 +71,16 @@ public interface TunnelMetricsInterface {
             mIwlanDataServiceProvider = dsp;
         }
 
+        public boolean getIsNetworkValidated() {
+            return mIsNetworkValidated;
+        }
+
         public static class Builder<T extends Builder> {
             @Nullable private String mApnName = null;
             @Nullable private String mEpdgServerAddress = null;
             private int mEpdgServerSelectionDuration = 0;
             private int mIkeTunnelEstablishmentDuration = 0;
+            private boolean mIsNetworkValidated = false;
 
             /** Default constructor for Builder. */
             public Builder() {}
@@ -95,6 +102,12 @@ public interface TunnelMetricsInterface {
 
             public T setIkeTunnelEstablishmentDuration(int ikeTunnelEstablishmentDuration) {
                 mIkeTunnelEstablishmentDuration = ikeTunnelEstablishmentDuration;
+                return (T) this;
+            }
+
+            /** whether underlying network is validated */
+            public T setIsNetworkValidated(boolean isNetworkValidated) {
+                mIsNetworkValidated = isNetworkValidated;
                 return (T) this;
             }
 
