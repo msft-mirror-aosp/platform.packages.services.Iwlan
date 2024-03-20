@@ -1018,7 +1018,6 @@ public class IwlanDataService extends DataService {
          */
         void forceCloseTunnels(@EpdgTunnelManager.TunnelBringDownReason int reason) {
             for (Map.Entry<String, TunnelState> entry : mTunnelStateForApn.entrySet()) {
-                entry.getValue().setState(TunnelState.TUNNEL_IN_BRINGDOWN);
                 getTunnelManager()
                         .closeTunnel(
                                 entry.getKey(),
@@ -1894,6 +1893,7 @@ public class IwlanDataService extends DataService {
                             openedMetricsData.getEpdgServerSelectionDuration());
                     metricsAtom.setIkeTunnelEstablishmentDurationMillis(
                             openedMetricsData.getIkeTunnelEstablishmentDuration());
+                    metricsAtom.setIsNetworkValidated(openedMetricsData.getIsNetworkValidated());
 
                     metricsAtom.sendMetricsData();
                     metricsAtom.setMessageId(metricsAtom.INVALID_MESSAGE_ID);
@@ -1920,6 +1920,7 @@ public class IwlanDataService extends DataService {
                             closedMetricsData.getEpdgServerSelectionDuration());
                     metricsAtom.setIkeTunnelEstablishmentDurationMillis(
                             closedMetricsData.getIkeTunnelEstablishmentDuration());
+                    metricsAtom.setIsNetworkValidated(closedMetricsData.getIsNetworkValidated());
 
                     metricsAtom.sendMetricsData();
                     metricsAtom.setMessageId(metricsAtom.INVALID_MESSAGE_ID);
