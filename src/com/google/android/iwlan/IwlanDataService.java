@@ -1893,7 +1893,6 @@ public class IwlanDataService extends DataService {
                             openedMetricsData.getEpdgServerSelectionDuration());
                     metricsAtom.setIkeTunnelEstablishmentDurationMillis(
                             openedMetricsData.getIkeTunnelEstablishmentDuration());
-                    metricsAtom.setIsNetworkValidated(openedMetricsData.getIsNetworkValidated());
 
                     metricsAtom.sendMetricsData();
                     metricsAtom.setMessageId(metricsAtom.INVALID_MESSAGE_ID);
@@ -1920,7 +1919,6 @@ public class IwlanDataService extends DataService {
                             closedMetricsData.getEpdgServerSelectionDuration());
                     metricsAtom.setIkeTunnelEstablishmentDurationMillis(
                             closedMetricsData.getIkeTunnelEstablishmentDuration());
-                    metricsAtom.setIsNetworkValidated(closedMetricsData.getIsNetworkValidated());
 
                     metricsAtom.sendMetricsData();
                     metricsAtom.setMessageId(metricsAtom.INVALID_MESSAGE_ID);
