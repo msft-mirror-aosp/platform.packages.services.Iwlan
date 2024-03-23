@@ -1807,6 +1807,7 @@ public class EpdgTunnelManager {
             OnClosedMetrics.Builder onClosedMetricsBuilder;
             TunnelRequestWrapper tunnelRequestWrapper;
             ConnectivityManager connectivityManager;
+            NetworkCapabilities networkCapabilities;
             boolean isNetworkValidated;
             switch (msg.what) {
                 case EVENT_CHILD_SESSION_OPENED:
@@ -1902,10 +1903,12 @@ public class EpdgTunnelManager {
                             System.currentTimeMillis() - mIkeTunnelEstablishmentStartTime;
                     mIkeTunnelEstablishmentStartTime = 0;
                     connectivityManager = mContext.getSystemService(ConnectivityManager.class);
+                    networkCapabilities =
+                            connectivityManager.getNetworkCapabilities(mIkeSessionNetwork);
                     isNetworkValidated =
-                            connectivityManager
-                                    .getNetworkCapabilities(mDefaultNetwork)
-                                    .hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+                            (networkCapabilities != null)
+                                    && networkCapabilities.hasCapability(
+                                            NetworkCapabilities.NET_CAPABILITY_VALIDATED);
                     tunnelConfig
                             .getTunnelMetrics()
                             .onOpened(
@@ -1995,10 +1998,11 @@ public class EpdgTunnelManager {
                         mIkeTunnelEstablishmentStartTime = 0;
 
                         connectivityManager = mContext.getSystemService(ConnectivityManager.class);
+                        networkCapabilities =
+                                connectivityManager.getNetworkCapabilities(mIkeSessionNetwork);
                         isNetworkValidated =
-                                connectivityManager
-                                        .getNetworkCapabilities(mDefaultNetwork)
-                                        .hasCapability(
+                                (networkCapabilities != null)
+                                        && networkCapabilities.hasCapability(
                                                 NetworkCapabilities.NET_CAPABILITY_VALIDATED);
                         onClosedMetricsBuilder
                                 .setEpdgServerAddress(tunnelConfig.getEpdgAddress())
