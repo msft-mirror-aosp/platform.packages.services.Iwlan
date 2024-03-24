@@ -71,7 +71,7 @@ public interface TunnelMetricsInterface {
             mIwlanDataServiceProvider = dsp;
         }
 
-        public boolean getIsNetworkValidated() {
+        public boolean isNetworkValidated() {
             return mIsNetworkValidated;
         }
 
