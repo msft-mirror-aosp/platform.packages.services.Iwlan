@@ -39,10 +39,6 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -171,9 +167,6 @@ public class ErrorPolicyManager {
     private int carrierId = TelephonyManager.UNKNOWN_CARRIER_ID;
 
     private String mCarrierConfigErrorPolicyString;
-
-    @VisibleForTesting
-    static final String KEY_ERROR_POLICY_CONFIG_STRING = "iwlan.key_error_policy_config_string";
 
     /**
      * Returns ErrorPolicyManager instance for the subId
@@ -497,10 +490,14 @@ public class ErrorPolicyManager {
 
         initHandler();
 
-        // read from default error policy config file
+        // read from default error policy config
         try {
-            mDefaultPolicies.putAll(readErrorPolicies(new JSONArray(getDefaultJSONConfig())));
-        } catch (IOException | JSONException | IllegalArgumentException e) {
+            mDefaultPolicies.putAll(
+                    readErrorPolicies(
+                            new JSONArray(
+                                    IwlanCarrierConfig.getDefaultConfigString(
+                                            IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING))));
+        } catch (JSONException | IllegalArgumentException e) {
             throw new AssertionError(e);
         }
 
@@ -565,23 +562,6 @@ public class ErrorPolicyManager {
         mHandlerThread = new HandlerThread("ErrorPolicyManagerThread");
         mHandlerThread.start();
         return mHandlerThread.getLooper();
-    }
-
-    private String getDefaultJSONConfig() throws IOException {
-        String str;
-        StringBuilder stringBuilder = new StringBuilder();
-        InputStream is = mContext.getAssets().open("defaultiwlanerrorconfig.json");
-        BufferedReader reader = new BufferedReader(new InputStreamReader(is));
-        while ((str = reader.readLine()) != null && str.length() > 0) {
-            // ignore the lines starting with '#' as they are intended to be
-            // comments
-            if (str.charAt(0) == '#') {
-                continue;
-            }
-            stringBuilder.append(str).append("\n");
-        }
-        is.close();
-        return stringBuilder.toString();
     }
 
     @VisibleForTesting
@@ -797,7 +777,8 @@ public class ErrorPolicyManager {
      */
     private synchronized void readFromCarrierConfig(int currentCarrierId) {
         String carrierConfigErrorPolicy =
-                IwlanHelper.getConfig(KEY_ERROR_POLICY_CONFIG_STRING, mContext, mSlotId);
+                IwlanCarrierConfig.getConfigString(
+                        mContext, mSlotId, IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING);
         if (carrierConfigErrorPolicy == null) {
             Log.e(LOG_TAG, "ErrorPolicy from Carrier Config is NULL");
             mCarrierConfigPolicies.clear();
@@ -807,7 +788,7 @@ public class ErrorPolicyManager {
         try {
             Map<String, List<ErrorPolicy>> errorPolicies =
                     readErrorPolicies(new JSONArray(carrierConfigErrorPolicy));
-            if (errorPolicies.size() > 0) {
+            if (!errorPolicies.isEmpty()) {
                 mCarrierConfigErrorPolicyString = carrierConfigErrorPolicy;
                 carrierId = currentCarrierId;
                 mCarrierConfigPolicies.clear();
@@ -1324,7 +1305,8 @@ public class ErrorPolicyManager {
 
     private boolean isValidCarrierConfigChangedEvent(int currentCarrierId) {
         String errorPolicyConfig =
-                IwlanHelper.getConfig(KEY_ERROR_POLICY_CONFIG_STRING, mContext, mSlotId);
+                IwlanCarrierConfig.getConfigString(
+                        mContext, mSlotId, IwlanCarrierConfig.KEY_ERROR_POLICY_CONFIG_STRING);
         return (currentCarrierId != carrierId)
                 || (mCarrierConfigErrorPolicyString == null)
                 || (errorPolicyConfig != null
