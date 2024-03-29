@@ -148,11 +148,11 @@ public class IwlanEventListenerTest {
 
         // First Wifi connected should not trigger WIFI_AP_CHANGED_EVENT
         when(mMockWifiInfo.getSSID()).thenReturn(WIFI_SSID_1);
-        IwlanEventListener.onWifiConnected(mMockContext);
+        IwlanEventListener.onWifiConnected(mMockWifiInfo);
         verify(mMockMessage, times(0)).sendToTarget();
 
         when(mMockWifiInfo.getSSID()).thenReturn(WIFI_SSID_2);
-        IwlanEventListener.onWifiConnected(mMockContext);
+        IwlanEventListener.onWifiConnected(mMockWifiInfo);
         verify(mMockMessage, times(1)).sendToTarget();
     }
 
