@@ -41,7 +41,7 @@ public class IwlanCarrierConfig {
      * for the default value.
      */
     public static final String KEY_N1_MODE_EXCLUSION_FOR_EMERGENCY_SESSION_BOOL =
-            PREFIX + "n1_mode_exclusion_for_emergency_session";
+            PREFIX + "n1_mode_exclusion_for_emergency_session_bool";
 
     /**
      * Key to decide whether N1 mode shall be enabled or disabled depending on 5G enabling status
