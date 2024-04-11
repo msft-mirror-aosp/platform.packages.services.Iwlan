@@ -88,24 +88,13 @@ public class IwlanBroadcastReceiverTest {
                 .thenReturn(mMockEpdgSelector);
 
         lenient()
-                .when(
-                        IwlanHelper.getConfig(
-                                eq(CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT),
-                                any(),
-                                eq(testSlotId)))
-                .thenReturn(testPcoIdIPv6);
-
-        lenient()
-                .when(
-                        IwlanHelper.getConfig(
-                                eq(CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT),
-                                any(),
-                                eq(testSlotId)))
-                .thenReturn(testPcoIdIPv4);
-
-        lenient()
                 .when(IwlanEventListener.getInstance(eq(mMockContext), eq(testSlotId)))
                 .thenReturn(mMockIwlanEventListener);
+
+        IwlanCarrierConfig.putTestConfigInt(
+                CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT, testPcoIdIPv6);
+        IwlanCarrierConfig.putTestConfigInt(
+                CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT, testPcoIdIPv4);
 
         // New BroadcastReceiver object
         mBroadcastReceiver = new IwlanBroadcastReceiver();
