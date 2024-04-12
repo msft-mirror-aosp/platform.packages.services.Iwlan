@@ -2045,7 +2045,9 @@ public class EpdgTunnelManagerTest {
         String testApnName = "www.xyz.com";
 
         int nattTimer = 4500; // valid range for natt timer is 0-3600
-        int ikeDefaultNattTimerValue = 20; // default value for natt timer is 20 secs
+        int defaultNattTimer =
+                IwlanCarrierConfig.getDefaultConfigInt(
+                        CarrierConfigManager.Iwlan.KEY_NATT_KEEP_ALIVE_TIMER_SEC_INT);
 
         IwlanCarrierConfig.putTestConfigInt(
                 CarrierConfigManager.Iwlan.KEY_NATT_KEEP_ALIVE_TIMER_SEC_INT, nattTimer);
@@ -2086,7 +2088,7 @@ public class EpdgTunnelManagerTest {
                         any(ChildSessionCallback.class));
 
         IkeSessionParams ikeSessionParams = ikeSessionParamsCaptor.getValue();
-        assertEquals(ikeSessionParams.getNattKeepAliveDelaySeconds(), ikeDefaultNattTimerValue);
+        assertEquals(ikeSessionParams.getNattKeepAliveDelaySeconds(), defaultNattTimer);
     }
 
     @Test

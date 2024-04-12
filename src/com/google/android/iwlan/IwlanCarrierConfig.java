@@ -251,6 +251,10 @@ public class IwlanCarrierConfig {
     }
 
     private static PersistableBundle getConfig(Context context, int slotId, String key) {
+        if (sTestBundle.containsKey(key)) {
+            return sTestBundle;
+        }
+
         CarrierConfigManager carrierConfigManager =
                 context.getSystemService(CarrierConfigManager.class);
         if (carrierConfigManager == null) {
@@ -263,10 +267,6 @@ public class IwlanCarrierConfig {
     }
 
     private static PersistableBundle getDefaultConfig(String key) {
-        if (sTestBundle.containsKey(key)) {
-            return sTestBundle;
-        }
-
         PersistableBundle bundle = CarrierConfigManager.getDefaultConfig();
         if (bundle.containsKey(key)) {
             return bundle;

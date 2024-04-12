@@ -33,7 +33,6 @@ import android.net.InetAddresses;
 import android.net.Network;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.PersistableBundle;
 import android.telephony.CarrierConfigManager;
 import android.telephony.CellIdentityGsm;
 import android.telephony.CellIdentityLte;
@@ -51,6 +50,7 @@ import android.telephony.TelephonyManager;
 import android.util.Log;
 
 import com.google.android.iwlan.ErrorPolicyManager;
+import com.google.android.iwlan.IwlanCarrierConfig;
 import com.google.android.iwlan.IwlanError;
 import com.google.android.iwlan.flags.FeatureFlags;
 
@@ -106,7 +106,6 @@ public class EpdgSelectorTest {
     @Mock private ErrorPolicyManager mMockErrorPolicyManager;
     @Mock private SubscriptionManager mMockSubscriptionManager;
     @Mock private SubscriptionInfo mMockSubscriptionInfo;
-    @Mock private CarrierConfigManager mMockCarrierConfigManager;
     @Mock private TelephonyManager mMockTelephonyManager;
     @Mock private SharedPreferences mMockSharedPreferences;
     @Mock private CellInfoGsm mMockCellInfoGsm;
@@ -120,7 +119,6 @@ public class EpdgSelectorTest {
     @Mock private DnsResolver mMockDnsResolver;
     @Mock private FeatureFlags mfakeFeatureFlags;
 
-    private PersistableBundle mTestBundle;
     private FakeDns mFakeDns;
     MockitoSession mStaticMockSession;
 
@@ -166,13 +164,9 @@ public class EpdgSelectorTest {
         when(mMockSharedPreferences.getString(any(), any())).thenReturn("US");
 
         // Mock carrier configs with test bundle
-        mTestBundle = new PersistableBundle();
-        mTestBundle.putInt(
+        IwlanCarrierConfig.putTestConfigInt(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_IP_TYPE_PREFERENCE_INT,
                 CarrierConfigManager.Iwlan.EPDG_ADDRESS_IPV4_PREFERRED);
-        when(mMockContext.getSystemService(eq(CarrierConfigManager.class)))
-                .thenReturn(mMockCarrierConfigManager);
-        when(mMockCarrierConfigManager.getConfigForSubId(anyInt())).thenReturn(mTestBundle);
 
         mFakeDns = new FakeDns();
         mFakeDns.startMocking();
@@ -181,6 +175,7 @@ public class EpdgSelectorTest {
     @After
     public void cleanUp() throws Exception {
         mStaticMockSession.finishMocking();
+        IwlanCarrierConfig.resetTestConfig();
         mFakeDns.clearAll();
     }
 
@@ -195,10 +190,10 @@ public class EpdgSelectorTest {
         mFakeDns.setAnswer(testStaticAddress, new String[] {TEST_IP_ADDRESS}, TYPE_A);
 
         // Set carrier config mock
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_STATIC});
-        mTestBundle.putString(
+        IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, testStaticAddress);
 
         ArrayList<InetAddress> testInetAddresses =
@@ -212,11 +207,11 @@ public class EpdgSelectorTest {
 
     @Test
     public void testStaticMethodDirectIpAddress_noDnsResolution() throws Exception {
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_STATIC});
         // Carrier config directly contains the ePDG IP address.
-        mTestBundle.putString(
+        IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, TEST_IP_ADDRESS);
 
         ArrayList<InetAddress> testInetAddresses =
@@ -237,10 +232,10 @@ public class EpdgSelectorTest {
         mFakeDns.setAnswer(testRoamStaticAddress, new String[] {TEST_IP_ADDRESS}, TYPE_A);
 
         // Set carrier config mock
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_STATIC});
-        mTestBundle.putString(
+        IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_ROAMING_STRING,
                 testRoamStaticAddress);
 
@@ -296,10 +291,10 @@ public class EpdgSelectorTest {
 
         when(mMockTelephonyManager.getNetworkOperator()).thenReturn("311121");
 
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN});
-        mTestBundle.putStringArray(
+        IwlanCarrierConfig.putTestConfigStringArray(
                 CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY,
                 new String[] {"310-480", "300-120", "311-120", "311-121"});
 
@@ -349,10 +344,10 @@ public class EpdgSelectorTest {
         ehplmnList.add("300122");
         ehplmnList.add("300123");
 
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN});
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
                 new int[] {
                     CarrierConfigManager.Iwlan.EPDG_PLMN_HPLMN,
@@ -386,10 +381,10 @@ public class EpdgSelectorTest {
         ehplmnList.add("3001");
         ehplmnList.add("3");
 
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN});
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
                 new int[] {
                     CarrierConfigManager.Iwlan.EPDG_PLMN_RPLMN,
@@ -416,10 +411,10 @@ public class EpdgSelectorTest {
         ehplmnList.add("1 23456");
         ehplmnList.add("1 2345");
 
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN});
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
                 new int[] {
                     CarrierConfigManager.Iwlan.EPDG_PLMN_RPLMN,
@@ -444,10 +439,10 @@ public class EpdgSelectorTest {
         when(mMockTelephonyManager.getNetworkOperator()).thenReturn("");
         ehplmnList.add("");
 
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN});
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
                 new int[] {
                     CarrierConfigManager.Iwlan.EPDG_PLMN_RPLMN,
@@ -475,10 +470,10 @@ public class EpdgSelectorTest {
         ehplmnList.add("300122");
         ehplmnList.add("300123");
 
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN});
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_PLMN_EHPLMN_FIRST});
 
@@ -506,14 +501,14 @@ public class EpdgSelectorTest {
         when(mMockTelephonyManager.getNetworkOperator()).thenReturn("300122");
         ehplmnList.add("300121");
 
-        mTestBundle.putStringArray(
+        IwlanCarrierConfig.putTestConfigStringArray(
                 CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY,
                 new String[] {"310-480", "300-122", "300-121"});
 
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN});
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_PLMN_RPLMN});
 
@@ -544,10 +539,10 @@ public class EpdgSelectorTest {
         mFakeDns.setAnswer(addr3, new String[] {TEST_IP_ADDRESS}, TYPE_A);
 
         // Set carrier config mock
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_STATIC});
-        mTestBundle.putString(
+        IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, testStaticAddress);
 
         ArrayList<InetAddress> testInetAddresses =
@@ -620,7 +615,7 @@ public class EpdgSelectorTest {
 
     @Test
     public void testPcoResolutionMethod() throws Exception {
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PCO});
         addTestPcoIdsToTestConfigBundle();
@@ -639,7 +634,7 @@ public class EpdgSelectorTest {
 
     @Test
     public void testPcoResolutionMethodWithNoPcoData() throws Exception {
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PCO});
         addTestPcoIdsToTestConfigBundle();
@@ -656,7 +651,7 @@ public class EpdgSelectorTest {
 
     @Test
     public void testPcoResolutionMethodWithOnlyPlmnData() throws Exception {
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PCO});
         addTestPcoIdsToTestConfigBundle();
@@ -672,8 +667,10 @@ public class EpdgSelectorTest {
     }
 
     private void addTestPcoIdsToTestConfigBundle() {
-        mTestBundle.putInt(CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT, testPcoIdIPv6);
-        mTestBundle.putInt(CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT, testPcoIdIPv4);
+        IwlanCarrierConfig.putTestConfigInt(
+                CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT, testPcoIdIPv6);
+        IwlanCarrierConfig.putTestConfigInt(
+                CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT, testPcoIdIPv4);
     }
 
     @Test
@@ -699,7 +696,7 @@ public class EpdgSelectorTest {
 
         List<CellInfo> fakeCellInfoArray = new ArrayList<CellInfo>();
 
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_CELLULAR_LOC});
 
@@ -757,20 +754,20 @@ public class EpdgSelectorTest {
         final String staticAddr = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
 
         when(mMockTelephonyManager.getNetworkOperator()).thenReturn("300122");
-        mTestBundle.putStringArray(
+        IwlanCarrierConfig.putTestConfigStringArray(
                 CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY, new String[] {"300-122"});
 
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {
                     CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN,
                     CarrierConfigManager.Iwlan.EPDG_ADDRESS_STATIC
                 });
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_PLMN_RPLMN});
 
-        mTestBundle.putString(
+        IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, staticAddr);
 
         mFakeDns.setAnswer(fqdnFromRplmn, new String[] {TEST_IP_ADDRESS}, TYPE_A);
@@ -819,20 +816,20 @@ public class EpdgSelectorTest {
         final String staticAddr = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
 
         when(mMockTelephonyManager.getNetworkOperator()).thenReturn("300122");
-        mTestBundle.putStringArray(
+        IwlanCarrierConfig.putTestConfigStringArray(
                 CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY, new String[] {"300-122"});
 
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {
                     CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN,
                     CarrierConfigManager.Iwlan.EPDG_ADDRESS_STATIC
                 });
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_PLMN_RPLMN});
 
-        mTestBundle.putString(
+        IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, staticAddr);
 
         mFakeDns.setAnswer(fqdnFromRplmn, new String[] {TEST_IP_ADDRESS}, TYPE_A);
@@ -971,10 +968,10 @@ public class EpdgSelectorTest {
         mFakeDns.setAnswer(addr2, new String[] {TEST_IPV6_ADDRESS}, TYPE_AAAA);
 
         // Set carrier config mock
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_STATIC});
-        mTestBundle.putString(
+        IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, testStaticAddress);
 
         ArrayList<InetAddress> testInetAddresses =
@@ -1002,10 +999,10 @@ public class EpdgSelectorTest {
         mFakeDns.setAnswer(addr2, new String[] {TEST_IPV6_ADDRESS}, TYPE_AAAA);
 
         // Set carrier config mock
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_STATIC});
-        mTestBundle.putString(
+        IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, testStaticAddress);
 
         ArrayList<InetAddress> testInetAddresses =
@@ -1033,10 +1030,10 @@ public class EpdgSelectorTest {
         mFakeDns.setAnswer(addr2, new String[] {TEST_IPV6_ADDRESS}, TYPE_AAAA);
 
         // Set carrier config mock
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_STATIC});
-        mTestBundle.putString(
+        IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, testStaticAddress);
 
         ArrayList<InetAddress> testInetAddresses =
@@ -1063,10 +1060,10 @@ public class EpdgSelectorTest {
         String expectedFqdnFromEHplmn = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
         String expectedFqdnFromConfig = "epdg.epc.mnc480.mcc310.pub.3gppnetwork.org";
 
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN});
-        mTestBundle.putStringArray(
+        IwlanCarrierConfig.putTestConfigStringArray(
                 CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY,
                 new String[] {"310-480", "300-120", "311-120"});
 
@@ -1098,10 +1095,10 @@ public class EpdgSelectorTest {
         mFakeDns.setAnswer(addr2, new String[] {TEST_IPV6_ADDRESS}, TYPE_AAAA);
 
         // Set carrier config mock
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_STATIC});
-        mTestBundle.putString(
+        IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, testStaticAddress);
 
         ArrayList<InetAddress> testInetAddresses =
@@ -1130,10 +1127,10 @@ public class EpdgSelectorTest {
         mFakeDns.setAnswer(addr3, new String[] {TEST_IP_ADDRESS_2}, TYPE_A);
 
         // Set carrier config mock
-        mTestBundle.putIntArray(
+        IwlanCarrierConfig.putTestConfigIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_STATIC});
-        mTestBundle.putString(
+        IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, testStaticAddress);
 
         ArrayList<InetAddress> testInetAddresses =

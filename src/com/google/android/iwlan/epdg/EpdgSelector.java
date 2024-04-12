@@ -45,6 +45,7 @@ import android.util.Log;
 import com.android.internal.annotations.VisibleForTesting;
 
 import com.google.android.iwlan.ErrorPolicyManager;
+import com.google.android.iwlan.IwlanCarrierConfig;
 import com.google.android.iwlan.IwlanError;
 import com.google.android.iwlan.IwlanHelper;
 import com.google.android.iwlan.epdg.NaptrDnsResolver.NaptrTarget;
@@ -209,11 +210,11 @@ public class EpdgSelector {
                         + Arrays.toString(pcoData));
 
         int PCO_ID_IPV6 =
-                IwlanHelper.getConfig(
-                        CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT, mContext, mSlotId);
+                IwlanCarrierConfig.getConfigInt(
+                        mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT);
         int PCO_ID_IPV4 =
-                IwlanHelper.getConfig(
-                        CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT, mContext, mSlotId);
+                IwlanCarrierConfig.getConfigInt(
+                        mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT);
 
         Log.d(
                 TAG,
@@ -569,10 +570,10 @@ public class EpdgSelector {
         String plmnFromImsi = subInfo.getMccString() + subInfo.getMncString();
 
         int[] prioritizedPlmnTypes =
-                IwlanHelper.getConfig(
-                        CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
+                IwlanCarrierConfig.getConfigIntArray(
                         mContext,
-                        mSlotId);
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY);
 
         List<String> ehplmns = getEhplmns();
         String registeredPlmn = getRegisteredPlmn();
@@ -615,8 +616,8 @@ public class EpdgSelector {
 
     private List<String> getPlmnsFromCarrierConfig() {
         return Arrays.asList(
-                IwlanHelper.getConfig(
-                        CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY, mContext, mSlotId));
+                IwlanCarrierConfig.getConfigStringArray(
+                        mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY));
     }
 
     private boolean isInEpdgSelectionInfo(String plmn) {
@@ -728,7 +729,7 @@ public class EpdgSelector {
     }
 
     private String[] getDomainNames(String key) {
-        String configValue = (String) IwlanHelper.getConfig(key, mContext, mSlotId);
+        String configValue = IwlanCarrierConfig.getConfigString(mContext, mSlotId, key);
         if (configValue == null || configValue.isEmpty()) {
             Log.d(TAG, key + " string is null");
             return null;
@@ -966,11 +967,11 @@ public class EpdgSelector {
         Log.d(TAG, "PCO Method");
 
         int PCO_ID_IPV6 =
-                IwlanHelper.getConfig(
-                        CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT, mContext, mSlotId);
+                IwlanCarrierConfig.getConfigInt(
+                        mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT);
         int PCO_ID_IPV4 =
-                IwlanHelper.getConfig(
-                        CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT, mContext, mSlotId);
+                IwlanCarrierConfig.getConfigInt(
+                        mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT);
 
         switch (filter) {
             case PROTO_FILTER_IPV4:
@@ -1149,10 +1150,10 @@ public class EpdgSelector {
         final Set<String> plmnsFromCarrierConfig =
                 new LinkedHashSet<>(
                         Arrays.asList(
-                                IwlanHelper.getConfig(
-                                        CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY,
+                                IwlanCarrierConfig.getConfigStringArray(
                                         mContext,
-                                        mSlotId)));
+                                        mSlotId,
+                                        CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY)));
 
         final String cellMcc = telephonyManager.getNetworkOperator().substring(0, 3);
         final String cellMnc = telephonyManager.getNetworkOperator().substring(3);
@@ -1296,10 +1297,10 @@ public class EpdgSelector {
                                     + isEmergency);
 
                     int[] addrResolutionMethods =
-                            IwlanHelper.getConfig(
-                                    CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
+                            IwlanCarrierConfig.getConfigIntArray(
                                     mContext,
-                                    mSlotId);
+                                    mSlotId,
+                                    CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY);
 
                     final boolean isVisitedCountryMethodRequired =
                             Arrays.stream(addrResolutionMethods)
