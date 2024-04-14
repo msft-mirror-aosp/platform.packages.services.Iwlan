@@ -18,7 +18,8 @@ package com.google.android.iwlan.epdg;
 
 import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
 
-import static com.google.android.iwlan.epdg.NaptrDnsResolver.*;
+import static com.google.android.iwlan.epdg.NaptrDnsResolver.QUERY_TYPE_NAPTR;
+import static com.google.android.iwlan.epdg.NaptrDnsResolver.TYPE_SRV;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
