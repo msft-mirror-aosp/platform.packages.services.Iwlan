@@ -1,7 +1,8 @@
 package com.google.android.iwlan.epdg;
 
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 
 import android.telephony.data.NetworkSliceInfo;
 
@@ -10,8 +11,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
-
-import java.util.*;
 
 @RunWith(JUnit4.class)
 public class NetworkSliceSelectionAssistanceInformationTest {
