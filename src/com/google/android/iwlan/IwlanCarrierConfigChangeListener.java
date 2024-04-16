@@ -34,7 +34,7 @@ public class IwlanCarrierConfigChangeListener
     private static IwlanCarrierConfigChangeListener mInstance;
     private static HandlerThread mHandlerThread;
 
-    private Handler mHandler;
+    private final Handler mHandler;
 
     public static void startListening(Context context) {
         if (mIsListenerRegistered) {

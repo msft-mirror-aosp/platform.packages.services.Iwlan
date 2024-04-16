@@ -191,12 +191,11 @@ public class IwlanHelper {
     }
 
     public static boolean isDefaultDataSlot(Context context, int slotId) {
-        SubscriptionManager sm = context.getSystemService(SubscriptionManager.class);
-        int ddsSlotId = sm.getSlotIndex(sm.getDefaultDataSubscriptionId());
-        if (ddsSlotId != sm.INVALID_SIM_SLOT_INDEX) {
-            if (ddsSlotId == slotId) {
-                return true;
-            }
+        int ddsSlotId =
+                SubscriptionManager.getSlotIndex(
+                        SubscriptionManager.getDefaultDataSubscriptionId());
+        if (ddsSlotId != SubscriptionManager.INVALID_SIM_SLOT_INDEX) {
+            return ddsSlotId == slotId;
         }
         return false;
     }

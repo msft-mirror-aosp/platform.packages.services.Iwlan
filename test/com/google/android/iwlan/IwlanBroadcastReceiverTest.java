@@ -54,11 +54,11 @@ public class IwlanBroadcastReceiverTest {
     private static final String EXTRA_PCO_VALUE_KEY = TelephonyManager.EXTRA_PCO_VALUE;
 
     private static final String TEST_PCO_STRING = "testPcoData";
-    private byte[] pcoData = TEST_PCO_STRING.getBytes();
-    private static int testSubId = 5;
-    private static int testSlotId = 6;
-    private static int testPcoIdIPv6 = 0xFF01;
-    private static int testPcoIdIPv4 = 0xFF02;
+    private final byte[] pcoData = TEST_PCO_STRING.getBytes();
+    private static final int TEST_SUB_ID = 5;
+    private static final int TEST_SLOT_ID = 6;
+    private static final int TEST_PCO_ID_I_PV_6 = 0xFF01;
+    private static final int TEST_PCO_ID_I_PV_4 = 0xFF02;
 
     MockitoSession mStaticMockSession;
     @Mock private Context mMockContext;
@@ -79,22 +79,22 @@ public class IwlanBroadcastReceiverTest {
                         .mockStatic(IwlanEventListener.class)
                         .startMocking();
 
-        lenient().when(SubscriptionManager.getSlotIndex(eq(testSubId))).thenReturn(testSlotId);
+        lenient().when(SubscriptionManager.getSlotIndex(eq(TEST_SUB_ID))).thenReturn(TEST_SLOT_ID);
 
         lenient().when(IwlanDataService.getContext()).thenReturn(mMockContext);
 
         lenient()
-                .when(EpdgSelector.getSelectorInstance(eq(mMockContext), eq(testSlotId)))
+                .when(EpdgSelector.getSelectorInstance(eq(mMockContext), eq(TEST_SLOT_ID)))
                 .thenReturn(mMockEpdgSelector);
 
         lenient()
-                .when(IwlanEventListener.getInstance(eq(mMockContext), eq(testSlotId)))
+                .when(IwlanEventListener.getInstance(eq(mMockContext), eq(TEST_SLOT_ID)))
                 .thenReturn(mMockIwlanEventListener);
 
         IwlanCarrierConfig.putTestConfigInt(
-                CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT, testPcoIdIPv6);
+                CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT, TEST_PCO_ID_I_PV_6);
         IwlanCarrierConfig.putTestConfigInt(
-                CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT, testPcoIdIPv4);
+                CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT, TEST_PCO_ID_I_PV_4);
 
         // New BroadcastReceiver object
         mBroadcastReceiver = new IwlanBroadcastReceiver();
@@ -107,7 +107,7 @@ public class IwlanBroadcastReceiverTest {
 
     @Test
     public void testOnReceiveNoPcoData() throws Exception {
-        onReceiveMethodWithArgs(ApnSetting.TYPE_IMS, testPcoIdIPv6, null);
+        onReceiveMethodWithArgs(ApnSetting.TYPE_IMS, TEST_PCO_ID_I_PV_6, null);
 
         // Verify the called times of setPcoData method
         verify(mMockEpdgSelector, times(0)).setPcoData(anyInt(), any(byte[].class));
@@ -115,26 +115,26 @@ public class IwlanBroadcastReceiverTest {
 
     @Test
     public void testOnReceiveIPv6Pass() throws Exception {
-        onReceiveMethodWithArgs(ApnSetting.TYPE_IMS, testPcoIdIPv6);
+        onReceiveMethodWithArgs(ApnSetting.TYPE_IMS, TEST_PCO_ID_I_PV_6);
 
         // Verify the called times of setPcoData method
-        verify(mMockEpdgSelector, times(1)).setPcoData(testPcoIdIPv6, pcoData);
+        verify(mMockEpdgSelector, times(1)).setPcoData(TEST_PCO_ID_I_PV_6, pcoData);
     }
 
     @Test
     public void testOnReceiveIPv4Pass() throws Exception {
-        onReceiveMethodWithArgs(ApnSetting.TYPE_IMS, testPcoIdIPv4);
+        onReceiveMethodWithArgs(ApnSetting.TYPE_IMS, TEST_PCO_ID_I_PV_4);
 
         // Verify the called times of setPcoData method
-        verify(mMockEpdgSelector, times(1)).setPcoData(testPcoIdIPv4, pcoData);
+        verify(mMockEpdgSelector, times(1)).setPcoData(TEST_PCO_ID_I_PV_4, pcoData);
     }
 
     @Test
     public void testOnReceiveIncorrectApnType() throws Exception {
-        onReceiveMethodWithArgs(ApnSetting.TYPE_DEFAULT, testPcoIdIPv6);
+        onReceiveMethodWithArgs(ApnSetting.TYPE_DEFAULT, TEST_PCO_ID_I_PV_6);
 
         // Verify the called times of setPcoData method
-        verify(mMockEpdgSelector, times(0)).setPcoData(testPcoIdIPv6, pcoData);
+        verify(mMockEpdgSelector, times(0)).setPcoData(TEST_PCO_ID_I_PV_6, pcoData);
     }
 
     @Test
@@ -148,7 +148,7 @@ public class IwlanBroadcastReceiverTest {
     @Test
     public void testCarrierConfigChanged() throws Exception {
         final Intent intent = new Intent(CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED);
-        intent.putExtra(CarrierConfigManager.EXTRA_SLOT_INDEX, testSlotId);
+        intent.putExtra(CarrierConfigManager.EXTRA_SLOT_INDEX, TEST_SLOT_ID);
 
         // Trigger the onReceive
         mBroadcastReceiver.onReceive(mMockContext, intent);
@@ -169,7 +169,7 @@ public class IwlanBroadcastReceiverTest {
     private void onReceiveMethodWithArgs(int apnType, int pcoId) {
         // Create intent object
         final Intent mIntent = new Intent(ACTION_CARRIER_SIGNAL_PCO_VALUE);
-        mIntent.putExtra(SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX, testSubId);
+        mIntent.putExtra(SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX, TEST_SUB_ID);
         mIntent.putExtra(EXTRA_APN_TYPE_INT_KEY, apnType);
         mIntent.putExtra(EXTRA_PCO_ID_KEY, pcoId);
         mIntent.putExtra(EXTRA_PCO_VALUE_KEY, pcoData);
@@ -181,7 +181,7 @@ public class IwlanBroadcastReceiverTest {
     private void onReceiveMethodWithArgs(int apnType, int pcoId, byte[] pcoData) {
         // Create intent object
         final Intent mIntent = new Intent(ACTION_CARRIER_SIGNAL_PCO_VALUE);
-        mIntent.putExtra(SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX, testSubId);
+        mIntent.putExtra(SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX, TEST_SUB_ID);
         mIntent.putExtra(EXTRA_APN_TYPE_INT_KEY, apnType);
         mIntent.putExtra(EXTRA_PCO_ID_KEY, pcoId);
         mIntent.putExtra(EXTRA_PCO_VALUE_KEY, pcoData);

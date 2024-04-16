@@ -187,36 +187,36 @@ public class IwlanCarrierConfig {
     public static final String DEFAULT_ERROR_POLICY_CONFIG_STRING =
             """
             [{
-            \"ApnName\": \"*\",
-            \"ErrorTypes\": [{
-                \"ErrorType\": \"*\",
-                \"ErrorDetails\": [\"*\"],
-                \"RetryArray\": [\"1\",\"2\",\"2\",\"10\",\"20\",\"40\",\"80\",\"160\",
-                                \"320\",\"640\",\"1280\",\"1800\",\"3600\",\"-1\"],
-                \"UnthrottlingEvents\": [\"APM_ENABLE_EVENT\",\"APM_DISABLE_EVENT\",
-                                        \"WIFI_DISABLE_EVENT\",\"WIFI_AP_CHANGED_EVENT\"]},{
-                \"ErrorType\": \"GENERIC_ERROR_TYPE\",
-                \"ErrorDetails\": [\"IO_EXCEPTION\"],
-                \"RetryArray\": [\"0\",\"0\",\"0\",\"30\",\"60+r15\",\"120\",\"-1\"],
-                \"UnthrottlingEvents\": [\"APM_ENABLE_EVENT\",\"APM_DISABLE_EVENT\",
-                                        \"WIFI_DISABLE_EVENT\",\"WIFI_AP_CHANGED_EVENT\"]},{
-                \"ErrorType\": \"IKE_PROTOCOL_ERROR_TYPE\",
-                \"ErrorDetails\": [\"*\"],
-                \"RetryArray\": [\"5\",\"10\",\"10\",\"20\",\"40\",\"80\",\"160\",
-                                \"320\",\"640\",\"1280\",\"1800\",\"3600\",\"-1\"],
-                \"UnthrottlingEvents\": [\"APM_ENABLE_EVENT\",\"WIFI_DISABLE_EVENT\",
-                                        \"WIFI_CALLING_DISABLE_EVENT\"]},{
-                \"ErrorType\": \"IKE_PROTOCOL_ERROR_TYPE\",
-                \"ErrorDetails\": [\"36\"],
-                \"RetryArray\": [\"0\",\"0\",\"0\",\"10\",\"20\",\"40\",\"80\",\"160\",
-                                \"320\",\"640\",\"1280\",\"1800\",\"3600\",\"-1\"],
-                \"UnthrottlingEvents\": [\"APM_ENABLE_EVENT\",\"WIFI_DISABLE_EVENT\",
-                                        \"WIFI_CALLING_DISABLE_EVENT\"],
-                \"HandoverAttemptCount\": \"3\"}]
+            "ApnName": "*",
+            "ErrorTypes": [{
+                "ErrorType": "*",
+                "ErrorDetails": ["*"],
+                "RetryArray": ["1","2","2","10","20","40","80","160",
+                                "320","640","1280","1800","3600","-1"],
+                "UnthrottlingEvents": ["APM_ENABLE_EVENT","APM_DISABLE_EVENT",
+                                        "WIFI_DISABLE_EVENT","WIFI_AP_CHANGED_EVENT"]},{
+                "ErrorType": "GENERIC_ERROR_TYPE",
+                "ErrorDetails": ["IO_EXCEPTION"],
+                "RetryArray": ["0","0","0","30","60+r15","120","-1"],
+                "UnthrottlingEvents": ["APM_ENABLE_EVENT","APM_DISABLE_EVENT",
+                                        "WIFI_DISABLE_EVENT","WIFI_AP_CHANGED_EVENT"]},{
+                "ErrorType": "IKE_PROTOCOL_ERROR_TYPE",
+                "ErrorDetails": ["*"],
+                "RetryArray": ["5","10","10","20","40","80","160",
+                                "320","640","1280","1800","3600","-1"],
+                "UnthrottlingEvents": ["APM_ENABLE_EVENT","WIFI_DISABLE_EVENT",
+                                        "WIFI_CALLING_DISABLE_EVENT"]},{
+                "ErrorType": "IKE_PROTOCOL_ERROR_TYPE",
+                "ErrorDetails": ["36"],
+                "RetryArray": ["0","0","0","10","20","40","80","160",
+                                "320","640","1280","1800","3600","-1"],
+                "UnthrottlingEvents": ["APM_ENABLE_EVENT","WIFI_DISABLE_EVENT",
+                                        "WIFI_CALLING_DISABLE_EVENT"],
+                "HandoverAttemptCount": "3"}]
             }]
             """;
 
-    private static PersistableBundle sTestBundle = new PersistableBundle();
+    private static final PersistableBundle sTestBundle = new PersistableBundle();
 
     private static PersistableBundle sHiddenBundle = new PersistableBundle();
 

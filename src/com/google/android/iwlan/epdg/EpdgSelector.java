@@ -543,7 +543,7 @@ public class EpdgSelector {
                 Log.e(TAG, "Cause of ExecutionException: ", e.getCause());
             } catch (InterruptedException e) {
                 Thread thread = Thread.currentThread();
-                if (thread.interrupted()) {
+                if (Thread.interrupted()) {
                     thread.interrupt();
                 }
                 Log.e(TAG, "InterruptedException: ", e);
@@ -1236,7 +1236,7 @@ public class EpdgSelector {
             Log.e(TAG, "Cause of ExecutionException: ", e.getCause());
         } catch (InterruptedException e) {
             Thread thread = Thread.currentThread();
-            if (thread.interrupted()) {
+            if (Thread.interrupted()) {
                 thread.interrupt();
             }
             Log.e(TAG, "InterruptedException: ", e);
