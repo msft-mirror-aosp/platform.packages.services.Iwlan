@@ -145,12 +145,12 @@ public class NaptrDnsResolverTest {
                 null,
                 mNaptrDnsCb);
         List<NaptrTarget> records = mNaptrDnsResult.join();
-        assertEquals(records.size(), 1);
+        assertEquals(1, records.size());
 
         NaptrTarget record = records.get(0);
-        assertEquals(record.mName, "_sip._udp.columbia.edu");
+        assertEquals("_sip._udp.columbia.edu", record.mName);
         // SRV record type.
-        assertEquals(record.mType, TYPE_SRV);
+        assertEquals(TYPE_SRV, record.mType);
     }
 
     // Demonstrates that NAPTR responses with flag field 'U' and 'P' are unexpected and with throw
@@ -194,6 +194,6 @@ public class NaptrDnsResolverTest {
             Log.d(TAG, e.getMessage() + e.getCause());
         }
         assertNotNull("Exception wasn't thrown!", exception);
-        assertEquals(exception.code, DnsResolver.ERROR_PARSE);
+        assertEquals(DnsResolver.ERROR_PARSE, exception.code);
     }
 }
