@@ -108,12 +108,12 @@ public class EpdgSelectorTest {
     private static final String TEST_IP_ADDRESS_7 = "127.0.0.8";
     private static final String TEST_IPV6_ADDRESS = "0000:0000:0000:0000:0000:0000:0000:0001";
 
-    private static int testPcoIdIPv6 = 0xFF01;
-    private static int testPcoIdIPv4 = 0xFF02;
+    private static final int TEST_PCO_ID_IPV6 = 0xFF01;
+    private static final int TEST_PCO_ID_IPV4 = 0xFF02;
 
-    private String testPcoString = "testPcoData";
-    private byte[] pcoData = testPcoString.getBytes();
-    private List<String> ehplmnList = new ArrayList<String>();
+    private final String testPcoString = "testPcoData";
+    private final byte[] pcoData = testPcoString.getBytes();
+    private final List<String> ehplmnList = new ArrayList<String>();
 
     @Mock private Context mMockContext;
     @Mock private Network mMockNetwork;
@@ -618,8 +618,8 @@ public class EpdgSelectorTest {
     public void testSetPcoData() throws Exception {
         addTestPcoIdsToTestConfigBundle();
 
-        boolean retIPv6 = mEpdgSelector.setPcoData(testPcoIdIPv6, pcoData);
-        boolean retIPv4 = mEpdgSelector.setPcoData(testPcoIdIPv4, pcoData);
+        boolean retIPv6 = mEpdgSelector.setPcoData(TEST_PCO_ID_IPV6, pcoData);
+        boolean retIPv4 = mEpdgSelector.setPcoData(TEST_PCO_ID_IPV4, pcoData);
         boolean retIncorrect = mEpdgSelector.setPcoData(0xFF00, pcoData);
 
         assertTrue(retIPv6);
@@ -635,8 +635,8 @@ public class EpdgSelectorTest {
         addTestPcoIdsToTestConfigBundle();
 
         mEpdgSelector.clearPcoData();
-        assertTrue(mEpdgSelector.setPcoData(testPcoIdIPv6, TEST_PCO_IPV6_DATA));
-        assertTrue(mEpdgSelector.setPcoData(testPcoIdIPv4, TEST_PCO_IPV4_DATA));
+        assertTrue(mEpdgSelector.setPcoData(TEST_PCO_ID_IPV6, TEST_PCO_IPV6_DATA));
+        assertTrue(mEpdgSelector.setPcoData(TEST_PCO_ID_IPV4, TEST_PCO_IPV4_DATA));
 
         ArrayList<InetAddress> testInetAddresses =
                 getValidatedServerListWithDefaultParams(false /* isEmergency */);
@@ -654,8 +654,8 @@ public class EpdgSelectorTest {
         addTestPcoIdsToTestConfigBundle();
 
         mEpdgSelector.clearPcoData();
-        assertTrue(mEpdgSelector.setPcoData(testPcoIdIPv6, TEST_PCO_NO_DATA));
-        assertTrue(mEpdgSelector.setPcoData(testPcoIdIPv4, TEST_PCO_NO_DATA));
+        assertTrue(mEpdgSelector.setPcoData(TEST_PCO_ID_IPV6, TEST_PCO_NO_DATA));
+        assertTrue(mEpdgSelector.setPcoData(TEST_PCO_ID_IPV4, TEST_PCO_NO_DATA));
 
         ArrayList<InetAddress> testInetAddresses =
                 getValidatedServerListWithDefaultParams(false /* isEmergency */);
@@ -671,8 +671,8 @@ public class EpdgSelectorTest {
         addTestPcoIdsToTestConfigBundle();
 
         mEpdgSelector.clearPcoData();
-        assertTrue(mEpdgSelector.setPcoData(testPcoIdIPv6, TEST_PCO_PLMN_DATA));
-        assertTrue(mEpdgSelector.setPcoData(testPcoIdIPv4, TEST_PCO_PLMN_DATA));
+        assertTrue(mEpdgSelector.setPcoData(TEST_PCO_ID_IPV6, TEST_PCO_PLMN_DATA));
+        assertTrue(mEpdgSelector.setPcoData(TEST_PCO_ID_IPV4, TEST_PCO_PLMN_DATA));
 
         ArrayList<InetAddress> testInetAddresses =
                 getValidatedServerListWithDefaultParams(false /* isEmergency */);
@@ -682,9 +682,9 @@ public class EpdgSelectorTest {
 
     private void addTestPcoIdsToTestConfigBundle() {
         IwlanCarrierConfig.putTestConfigInt(
-                CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT, testPcoIdIPv6);
+                CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT, TEST_PCO_ID_IPV6);
         IwlanCarrierConfig.putTestConfigInt(
-                CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT, testPcoIdIPv4);
+                CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT, TEST_PCO_ID_IPV4);
     }
 
     @Test

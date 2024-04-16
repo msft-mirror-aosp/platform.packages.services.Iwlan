@@ -22,6 +22,7 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.any;
@@ -145,7 +146,7 @@ public class EpdgTunnelManagerTest {
     }
 
     @Rule public final MockitoRule mockito = MockitoJUnit.rule();
-    private TestLooper mTestLooper = new TestLooper();
+    private final TestLooper mTestLooper = new TestLooper();
 
     @Mock private Context mMockContext;
     @Mock private Network mMockDefaultNetwork;
@@ -610,7 +611,7 @@ public class EpdgTunnelManagerTest {
         assertEquals(
                 "IKE AEAD algorithms mismatch",
                 (long) aeadAlgos.length * aeadAlgosKeyLens.length,
-                (long) ikeEncrAlgos.size());
+                ikeEncrAlgos.size());
 
         ChildSessionParams childTunnelParams =
                 tunnelArgumentCaptors.mChildSessionParamsCaptor.getValue();
@@ -622,7 +623,7 @@ public class EpdgTunnelManagerTest {
         assertEquals(
                 "Child AEAD algorithms mismatch",
                 (long) aeadAlgos.length * aeadAlgosKeyLens.length,
-                (long) childEncrAlgos.size());
+                childEncrAlgos.size());
     }
 
     @Test
@@ -668,7 +669,7 @@ public class EpdgTunnelManagerTest {
                 ikeTunnelParams.getIkeSaProposals().get(0).getEncryptionAlgorithms();
         assertEquals(
                 "Reorder higher AEAD in  IKE SA mismatch",
-                (long) SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12,
+                SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12,
                 (long) ikeAeadAlgos.get(0).first);
 
         ChildSessionParams childTunnelParams =
@@ -680,9 +681,9 @@ public class EpdgTunnelManagerTest {
                 childTunnelParams.getChildSaProposals().get(0).getEncryptionAlgorithms();
         assertEquals(
                 "Reorder higher AEAD in  Child SA mismatch",
-                (long) SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12,
+                SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12,
                 (long) childAeadAlgos.get(0).first);
-        assertTrue(childTunnelParams.getChildSaProposals().get(0).getDhGroups().size() == 0);
+        assertEquals(0, childTunnelParams.getChildSaProposals().get(0).getDhGroups().size());
     }
 
     @Test
@@ -735,14 +736,14 @@ public class EpdgTunnelManagerTest {
 
         assertEquals(
                 "Reorder bigger key length in IKE SA mismatch",
-                (long) SaProposal.KEY_LEN_AES_256,
+                SaProposal.KEY_LEN_AES_256,
                 (long) ikeEncrAlgos.get(0).second);
 
         List<Pair<Integer, Integer>> ikeAeadAlgos =
                 ikeTunnelParams.getIkeSaProposals().get(1).getEncryptionAlgorithms();
         assertEquals(
                 "Reorder higher AEAD in  IKE SA mismatch",
-                (long) SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16,
+                SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16,
                 (long) ikeAeadAlgos.get(0).first);
 
         ChildSessionParams childTunnelParams =
@@ -755,14 +756,14 @@ public class EpdgTunnelManagerTest {
 
         assertEquals(
                 "Reorder bigger key length in Child SA mismatch",
-                (long) SaProposal.KEY_LEN_AES_256,
+                SaProposal.KEY_LEN_AES_256,
                 (long) childEncrAlgos.get(0).second);
 
         List<Pair<Integer, Integer>> childAeadAlgos =
                 childTunnelParams.getChildSaProposals().get(1).getEncryptionAlgorithms();
         assertEquals(
                 "Reorder higher AEAD in  Child SA mismatch",
-                (long) SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16,
+                SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16,
                 (long) childAeadAlgos.get(0).first);
     }
 
@@ -1829,18 +1830,12 @@ public class EpdgTunnelManagerTest {
             case ApnSetting.PROTOCOL_IPV4V6:
                 assertEquals(childSessionParams.getInboundTrafficSelectors().size(), 2);
                 assertEquals(childSessionParams.getOutboundTrafficSelectors().size(), 2);
-                assertTrue(
-                        childSessionParams.getInboundTrafficSelectors().get(0).endingAddress
-                                != childSessionParams
-                                        .getInboundTrafficSelectors()
-                                        .get(1)
-                                        .endingAddress);
-                assertTrue(
-                        childSessionParams.getInboundTrafficSelectors().get(0).startingAddress
-                                != childSessionParams
-                                        .getInboundTrafficSelectors()
-                                        .get(1)
-                                        .startingAddress);
+                assertNotSame(
+                        childSessionParams.getInboundTrafficSelectors().get(0).endingAddress,
+                        childSessionParams.getInboundTrafficSelectors().get(1).endingAddress);
+                assertNotSame(
+                        childSessionParams.getInboundTrafficSelectors().get(0).startingAddress,
+                        childSessionParams.getInboundTrafficSelectors().get(1).startingAddress);
                 break;
             case ApnSetting.PROTOCOL_IPV6:
                 assertEquals(childSessionParams.getInboundTrafficSelectors().size(), 1);

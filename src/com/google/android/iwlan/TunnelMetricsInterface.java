@@ -29,13 +29,13 @@ public interface TunnelMetricsInterface {
     /** Called for logging the tunnel is closed or bring up failed. */
     void onClosed(OnClosedMetrics metricsData);
 
-    static class TunnelMetricsData {
+    class TunnelMetricsData {
         private final String mApnName;
         private final String mEpdgServerAddress;
         private final int mEpdgServerSelectionDuration;
         private final int mIkeTunnelEstablishmentDuration;
         private IwlanDataServiceProvider mIwlanDataServiceProvider;
-        private boolean mIsNetworkValidated;
+        private final boolean mIsNetworkValidated;
 
         protected TunnelMetricsData(Builder builder) {
             this.mApnName = builder.mApnName;
@@ -120,7 +120,7 @@ public interface TunnelMetricsInterface {
         }
     }
 
-    static class OnOpenedMetrics extends TunnelMetricsData {
+    class OnOpenedMetrics extends TunnelMetricsData {
 
         protected OnOpenedMetrics(Builder builder) {
             super(builder);
@@ -136,7 +136,7 @@ public interface TunnelMetricsInterface {
         }
     }
 
-    static class OnClosedMetrics extends TunnelMetricsData {
+    class OnClosedMetrics extends TunnelMetricsData {
 
         protected OnClosedMetrics(Builder builder) {
             super(builder);
