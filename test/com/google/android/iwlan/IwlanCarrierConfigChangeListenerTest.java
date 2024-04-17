@@ -16,8 +16,8 @@
 
 package com.google.android.iwlan;
 
-import static com.android.dx.mockito.inline.extended.ExtendedMockito.*;
 import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
+import static com.android.dx.mockito.inline.extended.ExtendedMockito.verify;
 
 import static org.mockito.Mockito.lenient;
 
