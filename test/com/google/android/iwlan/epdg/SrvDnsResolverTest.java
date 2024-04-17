@@ -18,7 +18,7 @@ package com.google.android.iwlan.epdg;
 
 import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
 
-import static com.google.android.iwlan.epdg.SrvDnsResolver.*;
+import static com.google.android.iwlan.epdg.SrvDnsResolver.QUERY_TYPE_SRV;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
