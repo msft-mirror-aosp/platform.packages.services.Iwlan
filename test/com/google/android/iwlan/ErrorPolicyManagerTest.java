@@ -137,7 +137,7 @@ public class ErrorPolicyManagerTest {
     private static final int DEFAULT_SUBID = 0;
     private static final int TEST_CARRIER_ID = 1;
 
-    private TestLooper mTestLooper = new TestLooper();
+    private final TestLooper mTestLooper = new TestLooper();
     private long mMockedClockTime = 0;
     private int mCarrierId = TEST_CARRIER_ID;
 
