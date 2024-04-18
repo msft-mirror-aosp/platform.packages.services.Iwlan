@@ -158,9 +158,9 @@ public class IwlanDataServiceTest {
     private @DataServiceCallback.ResultCode int mResultCode;
     private IwlanDataService mIwlanDataService;
     private IwlanDataServiceProvider mSpyIwlanDataServiceProvider;
-    private TestLooper mTestLooper = new TestLooper();
+    private final TestLooper mTestLooper = new TestLooper();
     private long mMockedCalendarTime;
-    private ArgumentCaptor<NetworkCallback> mNetworkCallbackCaptor =
+    private final ArgumentCaptor<NetworkCallback> mNetworkCallbackCaptor =
             ArgumentCaptor.forClass(NetworkCallback.class);
 
     private final class IwlanDataServiceCallback extends IDataServiceCallback.Stub {

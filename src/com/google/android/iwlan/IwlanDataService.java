@@ -1106,7 +1106,7 @@ public class IwlanDataService extends DataService {
 
         private void updateNetwork(
                 @Nullable Network network, @Nullable LinkProperties linkProperties) {
-            if (mIwlanDataService.isNetworkConnected(
+            if (isNetworkConnected(
                     isActiveDataOnOtherSub(getSlotIndex()),
                     IwlanHelper.isCrossSimCallingEnabled(mContext, getSlotIndex()))) {
                 getTunnelManager().updateNetwork(network, linkProperties);
@@ -1151,7 +1151,7 @@ public class IwlanDataService extends DataService {
 
         private void dnsPrefetchCheck() {
             boolean networkConnected =
-                    mIwlanDataService.isNetworkConnected(
+                    isNetworkConnected(
                             isActiveDataOnOtherSub(getSlotIndex()),
                             IwlanHelper.isCrossSimCallingEnabled(mContext, getSlotIndex()));
             /* Check if we need to do prefecting */
@@ -1169,7 +1169,7 @@ public class IwlanDataService extends DataService {
                 boolean isRoaming = telephonyManager.isNetworkRoaming();
                 Log.d(TAG, "Trigger EPDG prefetch. Roaming=" + isRoaming);
 
-                prefetchEpdgServerList(mIwlanDataService.sNetwork, isRoaming);
+                prefetchEpdgServerList(sNetwork, isRoaming);
             }
         }
 

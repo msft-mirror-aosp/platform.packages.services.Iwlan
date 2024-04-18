@@ -96,9 +96,9 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -163,7 +163,7 @@ public class EpdgTunnelManager {
     private static final Map<Integer, EpdgTunnelManager> mTunnelManagerInstances =
             new ConcurrentHashMap<>();
 
-    private Queue<TunnelRequestWrapper> mPendingBringUpRequests = new LinkedList<>();
+    private final Queue<TunnelRequestWrapper> mPendingBringUpRequests = new ArrayDeque<>();
 
     private final EpdgInfo mValidEpdgInfo = new EpdgInfo();
 
@@ -175,9 +175,9 @@ public class EpdgTunnelManager {
     private int mTransactionId = 0;
     private boolean mHasConnectedToEpdg;
     private final IkeSessionCreator mIkeSessionCreator;
-    private IpSecManager mIpSecManager;
+    private final IpSecManager mIpSecManager;
 
-    private Map<String, TunnelConfig> mApnNameToTunnelConfig = new ConcurrentHashMap<>();
+    private final Map<String, TunnelConfig> mApnNameToTunnelConfig = new ConcurrentHashMap<>();
     private final Map<String, Integer> mApnNameToCurrentToken = new ConcurrentHashMap<>();
 
     private final String TAG;
@@ -316,7 +316,7 @@ public class EpdgTunnelManager {
         @NonNull final IkeSession mIkeSession;
 
         IwlanError mError;
-        private IpSecManager.IpSecTunnelInterface mIface;
+        private final IpSecManager.IpSecTunnelInterface mIface;
         private IkeSessionState mIkeSessionState;
         private final boolean mIsEmergency;
         private final InetAddress mEpdgAddress;
