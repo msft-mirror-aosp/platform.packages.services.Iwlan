@@ -593,7 +593,7 @@ public class EpdgSelectorTest {
                             @Override
                             public void onServerListChanged(
                                     int transactionId, List<InetAddress> validIPList) {
-                                assertEquals(transactionId, 1234);
+                                assertEquals(1234, transactionId);
 
                                 for (InetAddress mInetAddress : validIPList) {
                                     testInetAddresses.add(mInetAddress);
@@ -609,7 +609,7 @@ public class EpdgSelectorTest {
                             }
                         });
 
-        assertEquals(ret.getErrorType(), IwlanError.NO_ERROR);
+        assertEquals(IwlanError.NO_ERROR, ret.getErrorType());
         latch.await(1, TimeUnit.SECONDS);
         return testInetAddresses;
     }

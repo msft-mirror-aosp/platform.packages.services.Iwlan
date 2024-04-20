@@ -108,6 +108,7 @@ public class IwlanDataService extends DataService {
     private static boolean sNetworkConnected = false;
     private static Network sNetwork = null;
     private static LinkProperties sLinkProperties = null;
+    private static NetworkCapabilities sNetworkCapabilities;
     @VisibleForTesting Handler mIwlanDataServiceHandler;
     private HandlerThread mIwlanDataServiceHandlerThread;
     private static final Map<Integer, IwlanDataServiceProvider> sIwlanDataServiceProviders =
@@ -157,6 +158,9 @@ public class IwlanDataService extends DataService {
     // networkservice
     // This callback runs in the same thread as IwlanDataServiceHandler
     static class IwlanNetworkMonitorCallback extends ConnectivityManager.NetworkCallback {
+        IwlanNetworkMonitorCallback() {
+            super(ConnectivityManager.NetworkCallback.FLAG_INCLUDE_LOCATION_INFO);
+        }
 
         /** Called when the framework connects and has declared a new network ready for use. */
         @Override
@@ -228,6 +232,7 @@ public class IwlanDataService extends DataService {
                 } else if (networkCapabilities.hasTransport(TRANSPORT_WIFI)) {
                     Log.d(TAG, "Network " + network + " connected using transport WIFI");
                     IwlanDataService.setConnectedDataSub(INVALID_SUB_ID);
+                    IwlanDataService.setNetworkCapabilities(networkCapabilities);
                     IwlanDataService.setNetworkConnected(true, network, Transport.WIFI);
                 } else {
                     Log.w(TAG, "Network does not have cellular or wifi capability");
@@ -1536,7 +1541,7 @@ public class IwlanDataService extends DataService {
                         return;
                     }
 
-                    WifiInfo wifiInfo = wifiManager.getConnectionInfo();
+                    WifiInfo wifiInfo = getWifiInfo(sNetworkCapabilities);
                     if (wifiInfo == null) {
                         Log.e(TAG, "wifiInfo is null");
                         return;
@@ -2301,7 +2306,7 @@ public class IwlanDataService extends DataService {
             }
 
             if (transport == Transport.WIFI && hasNetworkConnectedChanged) {
-                IwlanEventListener.onWifiConnected(mContext);
+                IwlanEventListener.onWifiConnected(getWifiInfo(sNetworkCapabilities));
             }
             // only prefetch dns and updateNetwork if Network has changed
             if (hasNetworkChanged) {
@@ -2325,6 +2330,10 @@ public class IwlanDataService extends DataService {
             }
         }
         sNetwork = network;
+    }
+
+    private static void setNetworkCapabilities(NetworkCapabilities networkCapabilities) {
+        sNetworkCapabilities = networkCapabilities;
     }
 
     /**
@@ -2490,6 +2499,17 @@ public class IwlanDataService extends DataService {
                 iwlanDataServiceProvider.disconnectPdnForN1ModeUpdate();
             }
         }
+    }
+
+    @Nullable
+    private static WifiInfo getWifiInfo(@Nullable NetworkCapabilities networkCapabilities) {
+        if (networkCapabilities == null) {
+            Log.d(TAG, "Cannot obtain wifi info, networkCapabilities is null");
+            return null;
+        }
+        return networkCapabilities.getTransportInfo() instanceof WifiInfo wifiInfo
+                ? wifiInfo
+                : null;
     }
 
     @Override
