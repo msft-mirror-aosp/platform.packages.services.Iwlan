@@ -96,9 +96,9 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -163,7 +163,7 @@ public class EpdgTunnelManager {
     private static final Map<Integer, EpdgTunnelManager> mTunnelManagerInstances =
             new ConcurrentHashMap<>();
 
-    private Queue<TunnelRequestWrapper> mPendingBringUpRequests = new LinkedList<>();
+    private final Queue<TunnelRequestWrapper> mPendingBringUpRequests = new ArrayDeque<>();
 
     private final EpdgInfo mValidEpdgInfo = new EpdgInfo();
 
@@ -175,9 +175,9 @@ public class EpdgTunnelManager {
     private int mTransactionId = 0;
     private boolean mHasConnectedToEpdg;
     private final IkeSessionCreator mIkeSessionCreator;
-    private IpSecManager mIpSecManager;
+    private final IpSecManager mIpSecManager;
 
-    private Map<String, TunnelConfig> mApnNameToTunnelConfig = new ConcurrentHashMap<>();
+    private final Map<String, TunnelConfig> mApnNameToTunnelConfig = new ConcurrentHashMap<>();
     private final Map<String, Integer> mApnNameToCurrentToken = new ConcurrentHashMap<>();
 
     private final String TAG;
@@ -316,7 +316,7 @@ public class EpdgTunnelManager {
         @NonNull final IkeSession mIkeSession;
 
         IwlanError mError;
-        private IpSecManager.IpSecTunnelInterface mIface;
+        private final IpSecManager.IpSecTunnelInterface mIface;
         private IkeSessionState mIkeSessionState;
         private final boolean mIsEmergency;
         private final InetAddress mEpdgAddress;
@@ -973,10 +973,10 @@ public class EpdgTunnelManager {
                 softTimeSeconds = CHILD_HARD_LIFETIME_SEC_MAXIMUM - LIFETIME_MARGIN_SEC_MINIMUM;
             } else {
                 hardTimeSeconds =
-                        IwlanHelper.getDefaultConfig(
+                        IwlanCarrierConfig.getDefaultConfigInt(
                                 CarrierConfigManager.Iwlan.KEY_CHILD_SA_REKEY_HARD_TIMER_SEC_INT);
                 softTimeSeconds =
-                        IwlanHelper.getDefaultConfig(
+                        IwlanCarrierConfig.getDefaultConfigInt(
                                 CarrierConfigManager.Iwlan.KEY_CHILD_SA_REKEY_SOFT_TIMER_SEC_INT);
             }
             Log.d(
@@ -1141,10 +1141,10 @@ public class EpdgTunnelManager {
                 softTimeSeconds = IKE_HARD_LIFETIME_SEC_MAXIMUM - LIFETIME_MARGIN_SEC_MINIMUM;
             } else {
                 hardTimeSeconds =
-                        IwlanHelper.getDefaultConfig(
+                        IwlanCarrierConfig.getDefaultConfigInt(
                                 CarrierConfigManager.Iwlan.KEY_IKE_REKEY_HARD_TIMER_SEC_INT);
                 softTimeSeconds =
-                        IwlanHelper.getDefaultConfig(
+                        IwlanCarrierConfig.getDefaultConfigInt(
                                 CarrierConfigManager.Iwlan.KEY_IKE_REKEY_SOFT_TIMER_SEC_INT);
             }
             Log.d(
@@ -1241,9 +1241,9 @@ public class EpdgTunnelManager {
                         CarrierConfigManager.Iwlan.KEY_NATT_KEEP_ALIVE_TIMER_SEC_INT);
         if (nattKeepAliveTimer < NATT_KEEPALIVE_DELAY_SEC_MIN
                 || nattKeepAliveTimer > NATT_KEEPALIVE_DELAY_SEC_MAX) {
-            Log.d(TAG, "Falling back to default natt keep alive timer");
+            Log.d(TAG, "Falling back to default natt keep alive timer" + nattKeepAliveTimer);
             nattKeepAliveTimer =
-                    IwlanHelper.getDefaultConfig(
+                    IwlanCarrierConfig.getDefaultConfigInt(
                             CarrierConfigManager.Iwlan.KEY_NATT_KEEP_ALIVE_TIMER_SEC_INT);
         }
         builder.setNattKeepAliveDelaySeconds(nattKeepAliveTimer);
@@ -2808,7 +2808,7 @@ public class EpdgTunnelManager {
         }
         if (!isValid) {
             timeList =
-                    IwlanHelper.getDefaultConfig(
+                    IwlanCarrierConfig.getDefaultConfigIntArray(
                             CarrierConfigManager.Iwlan.KEY_RETRANSMIT_TIMER_MSEC_INT_ARRAY);
         }
         Log.d(TAG, "getRetransmissionTimeoutsFromConfig: " + Arrays.toString(timeList));
@@ -2821,7 +2821,8 @@ public class EpdgTunnelManager {
                         mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_DPD_TIMER_SEC_INT);
         if (dpdDelay < IKE_DPD_DELAY_SEC_MIN || dpdDelay > IKE_DPD_DELAY_SEC_MAX) {
             dpdDelay =
-                    IwlanHelper.getDefaultConfig(CarrierConfigManager.Iwlan.KEY_DPD_TIMER_SEC_INT);
+                    IwlanCarrierConfig.getDefaultConfigInt(
+                            CarrierConfigManager.Iwlan.KEY_DPD_TIMER_SEC_INT);
         }
         return dpdDelay;
     }
