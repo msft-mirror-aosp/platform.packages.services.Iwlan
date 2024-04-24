@@ -291,10 +291,6 @@ public class EpdgTunnelManagerTest {
         TunnelSetupRequest TSR_v4v6 =
                 getBasicTunnelSetupRequest(testApnName3, ApnSetting.PROTOCOL_IPV4V6);
 
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName1));
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName2));
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName3));
-
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
                         TSR_v4, mMockIwlanTunnelCallback, mMockIwlanTunnelMetrics);
@@ -354,7 +350,6 @@ public class EpdgTunnelManagerTest {
                 0 /* srcIPv6AddrPrefixLen */,
                 false /* isEmergency */,
                 mEpdgTunnelManager.mEpdgMonitor.getEpdgAddressForNormalSession());
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(TEST_APN_NAME));
 
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
@@ -366,7 +361,6 @@ public class EpdgTunnelManagerTest {
     public void testBringUpTunnelSuccess() throws Exception {
 
         TunnelSetupRequest TSR = getBasicTunnelSetupRequest(TEST_APN_NAME, ApnSetting.PROTOCOL_IP);
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(TEST_APN_NAME));
 
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
@@ -396,8 +390,6 @@ public class EpdgTunnelManagerTest {
                         any(Executor.class),
                         any(IkeSessionCallback.class),
                         any(ChildSessionCallback.class));
-
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(apnName));
 
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
@@ -904,7 +896,6 @@ public class EpdgTunnelManagerTest {
                         any(Executor.class),
                         any(IkeSessionCallback.class),
                         any(ChildSessionCallback.class));
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName));
 
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
@@ -959,7 +950,6 @@ public class EpdgTunnelManagerTest {
                         any(Executor.class),
                         any(IkeSessionCallback.class),
                         any(ChildSessionCallback.class));
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName));
 
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
@@ -1007,7 +997,6 @@ public class EpdgTunnelManagerTest {
                         any(Executor.class),
                         any(IkeSessionCallback.class),
                         any(ChildSessionCallback.class));
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName));
 
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
@@ -1058,7 +1047,6 @@ public class EpdgTunnelManagerTest {
                         any(Executor.class),
                         any(IkeSessionCallback.class),
                         any(ChildSessionCallback.class));
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName));
 
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
@@ -1107,7 +1095,6 @@ public class EpdgTunnelManagerTest {
                         any(Executor.class),
                         any(IkeSessionCallback.class),
                         any(ChildSessionCallback.class));
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName));
 
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
@@ -1157,7 +1144,6 @@ public class EpdgTunnelManagerTest {
                         any(Executor.class),
                         any(IkeSessionCallback.class),
                         any(ChildSessionCallback.class));
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName));
 
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
@@ -1275,7 +1261,6 @@ public class EpdgTunnelManagerTest {
                         any(Executor.class),
                         any(IkeSessionCallback.class),
                         any(ChildSessionCallback.class));
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName));
 
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
@@ -1409,7 +1394,6 @@ public class EpdgTunnelManagerTest {
                 new IwlanError(IwlanError.IKE_SESSION_CLOSED_BEFORE_CHILD_SESSION_OPENED);
 
         doReturn(0L).when(mEpdgTunnelManager).reportIwlanError(eq(testApnName), eq(error));
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName));
 
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
@@ -1501,8 +1485,6 @@ public class EpdgTunnelManagerTest {
                         any(Executor.class),
                         ikeSessionArgumentCaptors.mIkeSessionCallbackCaptor.capture(),
                         ikeSessionArgumentCaptors.mChildSessionCallbackCaptor.capture());
-
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(apnName));
 
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
@@ -1635,7 +1617,6 @@ public class EpdgTunnelManagerTest {
         IwlanError error = new IwlanError(mMockIkeException);
 
         doReturn(0L).when(mEpdgTunnelManager).reportIwlanError(eq(testApnName), eq(error));
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName));
 
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
@@ -1792,7 +1773,6 @@ public class EpdgTunnelManagerTest {
                         any(Executor.class),
                         any(IkeSessionCallback.class),
                         any(ChildSessionCallback.class));
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName));
 
         boolean ret;
 
@@ -1927,7 +1907,6 @@ public class EpdgTunnelManagerTest {
         IwlanError error = new IwlanError(IwlanError.EPDG_SELECTOR_SERVER_SELECTION_FAILED);
 
         doReturn(0L).when(mEpdgTunnelManager).reportIwlanError(eq(testApnName), eq(error));
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName));
 
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
@@ -1974,7 +1953,7 @@ public class EpdgTunnelManagerTest {
         String testApnName = "www.xyz.com";
         IwlanError error = new IwlanError(mMockIkeException);
 
-        doReturn(false).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName));
+        doReturn(error).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName), anyBoolean());
         doReturn(error).when(mEpdgTunnelManager).getLastError(eq(testApnName));
 
         boolean ret =
@@ -2001,7 +1980,6 @@ public class EpdgTunnelManagerTest {
                         any(Executor.class),
                         any(IkeSessionCallback.class),
                         any(ChildSessionCallback.class));
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName));
 
         boolean ret;
 
@@ -2062,7 +2040,6 @@ public class EpdgTunnelManagerTest {
                         any(Executor.class),
                         any(IkeSessionCallback.class),
                         any(ChildSessionCallback.class));
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName));
 
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
@@ -2125,7 +2102,6 @@ public class EpdgTunnelManagerTest {
                         any(Executor.class),
                         any(IkeSessionCallback.class),
                         any(ChildSessionCallback.class));
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName));
 
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
@@ -2224,7 +2200,6 @@ public class EpdgTunnelManagerTest {
         IwlanError error = new IwlanError(IwlanError.SIM_NOT_READY_EXCEPTION);
 
         doReturn(0L).when(mEpdgTunnelManager).reportIwlanError(eq(testApnName), eq(error));
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName));
 
         when(mMockSubscriptionManager.getActiveSubscriptionInfoForSimSlotIndex(DEFAULT_SLOT_INDEX))
                 .thenReturn(null);
@@ -2250,7 +2225,6 @@ public class EpdgTunnelManagerTest {
         IwlanError error = new IwlanError(IwlanError.SIM_NOT_READY_EXCEPTION);
 
         doReturn(0L).when(mEpdgTunnelManager).reportIwlanError(eq(testApnName), eq(error));
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testApnName));
 
         when(mMockSubscriptionManager.getActiveSubscriptionInfoForSimSlotIndex(DEFAULT_SLOT_INDEX))
                 .thenReturn(mMockSubscriptionInfo)
@@ -2275,7 +2249,6 @@ public class EpdgTunnelManagerTest {
     @Test
     public void testCloseTunnelWithEpdgSelectionIncomplete() {
         // Bring up tunnel
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(TEST_APN_NAME));
 
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
@@ -2345,7 +2318,6 @@ public class EpdgTunnelManagerTest {
     @Test
     public void testBringUpTunnelIpv4Preferred() throws Exception {
         TunnelSetupRequest TSR = getBasicTunnelSetupRequest(TEST_APN_NAME, ApnSetting.PROTOCOL_IP);
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(TEST_APN_NAME));
 
         IwlanCarrierConfig.putTestConfigInt(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_IP_TYPE_PREFERENCE_INT,
@@ -2371,7 +2343,6 @@ public class EpdgTunnelManagerTest {
     @Test
     public void testBringUpTunnelIpv6Preferred() throws Exception {
         TunnelSetupRequest TSR = getBasicTunnelSetupRequest(TEST_APN_NAME, ApnSetting.PROTOCOL_IP);
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(TEST_APN_NAME));
 
         IwlanCarrierConfig.putTestConfigInt(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_IP_TYPE_PREFERENCE_INT,
@@ -2397,7 +2368,6 @@ public class EpdgTunnelManagerTest {
     @Test
     public void testBringUpTunnelIpv4Only() throws Exception {
         TunnelSetupRequest TSR = getBasicTunnelSetupRequest(TEST_APN_NAME, ApnSetting.PROTOCOL_IP);
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(TEST_APN_NAME));
 
         IwlanCarrierConfig.putTestConfigInt(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_IP_TYPE_PREFERENCE_INT,
@@ -2424,7 +2394,6 @@ public class EpdgTunnelManagerTest {
     public void testBringUpTunnelIpv6Only() throws Exception {
         TunnelSetupRequest TSR =
                 getBasicTunnelSetupRequest(TEST_APN_NAME, ApnSetting.PROTOCOL_IPV6);
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(TEST_APN_NAME));
         doReturn(EXPECTED_IPV6_LOCAL_ADDRESSES)
                 .when(mEpdgTunnelManager)
                 .getAddressForNetwork(any());
@@ -2455,7 +2424,6 @@ public class EpdgTunnelManagerTest {
         TunnelSetupRequest TSR =
                 getBasicTunnelSetupRequest(TEST_APN_NAME, ApnSetting.PROTOCOL_IPV6);
         IwlanError error = new IwlanError(IwlanError.EPDG_ADDRESS_ONLY_IPV6_ALLOWED);
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(TEST_APN_NAME));
         doReturn(0L).when(mEpdgTunnelManager).reportIwlanError(eq(TEST_APN_NAME), eq(error));
 
         IwlanCarrierConfig.putTestConfigInt(
@@ -2484,7 +2452,6 @@ public class EpdgTunnelManagerTest {
     @Test
     public void testBringUpTunnelSystemPreferred() throws Exception {
         TunnelSetupRequest TSR = getBasicTunnelSetupRequest(TEST_APN_NAME, ApnSetting.PROTOCOL_IP);
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(TEST_APN_NAME));
 
         IwlanCarrierConfig.putTestConfigInt(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_IP_TYPE_PREFERENCE_INT,
@@ -2509,7 +2476,6 @@ public class EpdgTunnelManagerTest {
 
     @Test
     public void testOnOpenedTunnelMetricsData() throws Exception {
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(TEST_APN_NAME));
         mEpdgTunnelManager.bringUpTunnel(
                 getBasicTunnelSetupRequest(TEST_APN_NAME, ApnSetting.PROTOCOL_IP),
                 mMockIwlanTunnelCallback,
@@ -2934,7 +2900,6 @@ public class EpdgTunnelManagerTest {
         assertTrue(mEpdgTunnelManager.mEpdgMonitor.hasEpdgConnectedForNormalSession());
         assertFalse(mEpdgTunnelManager.mEpdgMonitor.hasSeparateEpdgConnectedForEmergencySession());
 
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testEmergencyApnName));
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
                         getBasicEmergencyTunnelSetupRequest(testEmergencyApnName),
@@ -2979,7 +2944,6 @@ public class EpdgTunnelManagerTest {
         assertTrue(mEpdgTunnelManager.mEpdgMonitor.hasEpdgConnectedForNormalSession());
         assertFalse(mEpdgTunnelManager.mEpdgMonitor.hasSeparateEpdgConnectedForEmergencySession());
 
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testEmergencyApnName));
         IwlanError error =
                 new IwlanError(IwlanError.IKE_SESSION_CLOSED_BEFORE_CHILD_SESSION_OPENED);
         doReturn(0L).when(mEpdgTunnelManager).reportIwlanError(eq(testEmergencyApnName), eq(error));
@@ -3068,7 +3032,6 @@ public class EpdgTunnelManagerTest {
         String testMmsApnName = "testMms";
         bringUpImsPdnAndEmergencyPdnWithDifferentEpdgs();
 
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testMmsApnName));
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
                         getBasicTunnelSetupRequest(testMmsApnName, ApnSetting.PROTOCOL_IP),
@@ -3110,7 +3073,6 @@ public class EpdgTunnelManagerTest {
                 InetAddresses.parseNumericAddress(SEPARATE_EPDG_ADDRESS_FOR_EMERGENCY),
                 mEpdgTunnelManager.mEpdgMonitor.getEpdgAddressForNormalSession());
 
-        doReturn(true).when(mEpdgTunnelManager).canBringUpTunnel(eq(testImsApnName));
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
                         getBasicTunnelSetupRequest(testImsApnName, ApnSetting.PROTOCOL_IP),

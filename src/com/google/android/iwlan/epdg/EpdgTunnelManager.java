@@ -1318,7 +1318,6 @@ public class EpdgTunnelManager {
                 && hardLifetimeSeconds - softLifetimeSeconds >= LIFETIME_MARGIN_SEC_MINIMUM;
     }
 
-
     private void createEpdgSaProposal(EpdgSaProposal epdgSaProposal, boolean isChildProposal) {
         epdgSaProposal.addProposedDhGroups(
                 IwlanCarrierConfig.getConfigIntArray(
@@ -2288,31 +2287,13 @@ public class EpdgTunnelManager {
             OnClosedMetrics.Builder onClosedMetricsBuilder =
                     new OnClosedMetrics.Builder().setApnName(apnName);
 
-            IwlanError bringUpError = getBringUpError(apnName);
+            IwlanError bringUpError = canBringUpTunnel(apnName, setupRequest.isEmergency());
             if (Objects.nonNull(bringUpError)) {
                 tunnelRequestWrapper.getTunnelCallback().onClosed(apnName, bringUpError);
                 tunnelRequestWrapper.getTunnelMetrics().onClosed(onClosedMetricsBuilder.build());
                 return;
             }
             serviceTunnelBringUpRequest(tunnelRequestWrapper);
-        }
-
-        private IwlanError getBringUpError(String apnName) {
-            IwlanError bringUpError = null;
-            if (IwlanHelper.getSubId(mContext, mSlotId)
-                    == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
-                Log.e(TAG, "SIM isn't ready");
-                bringUpError = new IwlanError(IwlanError.SIM_NOT_READY_EXCEPTION);
-                reportIwlanError(apnName, bringUpError);
-            } else if (Objects.isNull(mDefaultNetwork)) {
-                Log.e(TAG, "The default network is not ready");
-                bringUpError = new IwlanError(IwlanError.IKE_INTERNAL_IO_EXCEPTION);
-                reportIwlanError(apnName, bringUpError);
-            } else if (!canBringUpTunnel(apnName)) {
-                Log.d(TAG, "Cannot bring up tunnel as retry time has not passed");
-                bringUpError = getLastError(apnName);
-            }
-            return bringUpError;
         }
 
         private void serviceTunnelBringUpRequest(TunnelRequestWrapper tunnelRequestWrapper) {
@@ -3022,8 +3003,24 @@ public class EpdgTunnelManager {
     }
 
     @VisibleForTesting
-    boolean canBringUpTunnel(String apnName) {
-        return ErrorPolicyManager.getInstance(mContext, mSlotId).canBringUpTunnel(apnName);
+    IwlanError canBringUpTunnel(String apnName, boolean isEmergency) {
+        IwlanError bringUpError = null;
+        if (IwlanHelper.getSubId(mContext, mSlotId)
+                == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            Log.e(TAG, "SIM isn't ready");
+            bringUpError = new IwlanError(IwlanError.SIM_NOT_READY_EXCEPTION);
+            reportIwlanError(apnName, bringUpError);
+        } else if (Objects.isNull(mDefaultNetwork)) {
+            Log.e(TAG, "The default network is not ready");
+            bringUpError = new IwlanError(IwlanError.IKE_INTERNAL_IO_EXCEPTION);
+            reportIwlanError(apnName, bringUpError);
+        } else if (!isEmergency
+                && !ErrorPolicyManager.getInstance(mContext, mSlotId).canBringUpTunnel(apnName)) {
+            // TODO(b/343962773): Need to refactor emergency condition into ErrorPolicyManager
+            Log.d(TAG, "Cannot bring up tunnel as retry time has not passed");
+            bringUpError = getLastError(apnName);
+        }
+        return bringUpError;
     }
 
     @VisibleForTesting
