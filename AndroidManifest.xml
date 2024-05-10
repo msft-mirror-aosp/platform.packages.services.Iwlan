@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     coreApp="true"
+    android:sharedUserId="android.uid.system"
     package="com.google.android.iwlan">
 
   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
@@ -37,7 +38,6 @@
     <receiver android:name=".IwlanBroadcastReceiver"
               android:exported="true">
          <intent-filter>
-            <action android:name="android.telephony.action.CARRIER_CONFIG_CHANGED"/>
             <action android:name="android.telephony.action.CARRIER_SIGNAL_PCO_VALUE"/>
          </intent-filter>
     </receiver>

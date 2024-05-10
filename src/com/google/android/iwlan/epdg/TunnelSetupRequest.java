@@ -16,7 +16,7 @@
 
 package com.google.android.iwlan.epdg;
 
-import android.net.Network;
+import com.android.internal.annotations.VisibleForTesting;
 
 import com.google.auto.value.AutoValue;
 
@@ -28,8 +28,6 @@ public abstract class TunnelSetupRequest {
     abstract String apnName();
 
     abstract int apnIpProtocol();
-
-    abstract Network network();
 
     abstract Optional<InetAddress> srcIpv4Address();
 
@@ -45,6 +43,11 @@ public abstract class TunnelSetupRequest {
 
     abstract boolean requestPcscf();
 
+    @VisibleForTesting
+    public int getPduSessionId() {
+        return pduSessionId();
+    }
+
     public static Builder builder() {
         return new AutoValue_TunnelSetupRequest.Builder()
                 .setSrcIpv4Address(Optional.empty())
@@ -57,8 +60,6 @@ public abstract class TunnelSetupRequest {
         public abstract Builder setApnName(String apnName);
 
         public abstract Builder setApnIpProtocol(int protocol);
-
-        public abstract Builder setNetwork(Network network);
 
         public Builder setSrcIpv4Address(InetAddress srcIpv4Address) {
             return setSrcIpv4Address(Optional.ofNullable(srcIpv4Address));

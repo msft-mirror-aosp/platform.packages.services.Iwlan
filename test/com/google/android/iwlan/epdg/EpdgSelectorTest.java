@@ -52,6 +52,7 @@ import android.util.Log;
 
 import com.google.android.iwlan.ErrorPolicyManager;
 import com.google.android.iwlan.IwlanError;
+import com.google.android.iwlan.flags.FeatureFlags;
 
 import org.junit.After;
 import org.junit.Before;
@@ -67,19 +68,30 @@ import java.net.UnknownHostException;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
 public class EpdgSelectorTest {
+
     private static final String TAG = "EpdgSelectorTest";
     private EpdgSelector mEpdgSelector;
     public static final int DEFAULT_SLOT_INDEX = 0;
 
+    private static final byte[] TEST_PCO_NO_DATA = {0x00};
+    private static final byte[] TEST_PCO_PLMN_DATA = {0x38, 0x01, 0x24, 0x00};
+    private static final byte[] TEST_PCO_IPV4_DATA = {0x38, 0x01, 0x24, 0x7F, 0x00, 0x00, 0x01};
+    private static final byte[] TEST_PCO_IPV6_DATA = {
+        0x38, 0x01, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x01
+    };
     private static final String TEST_IP_ADDRESS = "127.0.0.1";
     private static final String TEST_IP_ADDRESS_1 = "127.0.0.2";
     private static final String TEST_IP_ADDRESS_2 = "127.0.0.3";
     private static final String TEST_IP_ADDRESS_3 = "127.0.0.4";
     private static final String TEST_IP_ADDRESS_4 = "127.0.0.5";
     private static final String TEST_IP_ADDRESS_5 = "127.0.0.6";
+    private static final String TEST_IP_ADDRESS_6 = "127.0.0.7";
+    private static final String TEST_IP_ADDRESS_7 = "127.0.0.8";
     private static final String TEST_IPV6_ADDRESS = "0000:0000:0000:0000:0000:0000:0000:0001";
 
     private static int testPcoIdIPv6 = 0xFF01;
@@ -106,6 +118,7 @@ public class EpdgSelectorTest {
     @Mock private CellInfoNr mMockCellInfoNr;
     @Mock private CellIdentityNr mMockCellIdentityNr;
     @Mock private DnsResolver mMockDnsResolver;
+    @Mock private FeatureFlags mfakeFeatureFlags;
 
     private PersistableBundle mTestBundle;
     private FakeDns mFakeDns;
@@ -122,7 +135,7 @@ public class EpdgSelectorTest {
 
         when(ErrorPolicyManager.getInstance(mMockContext, DEFAULT_SLOT_INDEX))
                 .thenReturn(mMockErrorPolicyManager);
-        mEpdgSelector = new EpdgSelector(mMockContext, DEFAULT_SLOT_INDEX);
+        mEpdgSelector = spy(new EpdgSelector(mMockContext, DEFAULT_SLOT_INDEX, mfakeFeatureFlags));
 
         when(mMockContext.getSystemService(eq(SubscriptionManager.class)))
                 .thenReturn(mMockSubscriptionManager);
@@ -133,6 +146,8 @@ public class EpdgSelectorTest {
         when(mMockSubscriptionInfo.getMccString()).thenReturn("311");
 
         when(mMockSubscriptionInfo.getMncString()).thenReturn("120");
+
+        when(mMockTelephonyManager.getNetworkOperator()).thenReturn("311120");
 
         when(mMockContext.getSystemService(eq(TelephonyManager.class)))
                 .thenReturn(mMockTelephonyManager);
@@ -159,8 +174,6 @@ public class EpdgSelectorTest {
                 .thenReturn(mMockCarrierConfigManager);
         when(mMockCarrierConfigManager.getConfigForSubId(anyInt())).thenReturn(mTestBundle);
 
-        lenient().when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
-
         mFakeDns = new FakeDns();
         mFakeDns.startMocking();
     }
@@ -173,6 +186,10 @@ public class EpdgSelectorTest {
 
     @Test
     public void testStaticMethodPass() throws Exception {
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
         // Set DnsResolver query mock
         final String testStaticAddress = "epdg.epc.mnc088.mcc888.pub.3gppnetwork.org";
         mFakeDns.setAnswer(testStaticAddress, new String[] {TEST_IP_ADDRESS}, TYPE_A);
@@ -189,12 +206,32 @@ public class EpdgSelectorTest {
 
         InetAddress expectedAddress = InetAddress.getByName(TEST_IP_ADDRESS);
 
-        assertEquals(testInetAddresses.size(), 1);
-        assertEquals(testInetAddresses.get(0), expectedAddress);
+        assertEquals(1, testInetAddresses.size());
+        assertEquals(expectedAddress, testInetAddresses.get(0));
+    }
+
+    @Test
+    public void testStaticMethodDirectIpAddress_noDnsResolution() throws Exception {
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
+                new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_STATIC});
+        // Carrier config directly contains the ePDG IP address.
+        mTestBundle.putString(
+                CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, TEST_IP_ADDRESS);
+
+        ArrayList<InetAddress> testInetAddresses =
+                getValidatedServerListWithDefaultParams(false /*isEmergency*/);
+
+        assertEquals(1, testInetAddresses.size());
+        assertEquals(InetAddresses.parseNumericAddress(TEST_IP_ADDRESS), testInetAddresses.get(0));
     }
 
     @Test
     public void testRoamStaticMethodPass() throws Exception {
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
         // Set DnsResolver query mock
         final String testRoamStaticAddress = "epdg.epc.mnc088.mcc888.pub.3gppnetwork.org";
         mFakeDns.setAnswer(testRoamStaticAddress, new String[] {TEST_IP_ADDRESS}, TYPE_A);
@@ -212,8 +249,8 @@ public class EpdgSelectorTest {
 
         InetAddress expectedAddress = InetAddress.getByName(TEST_IP_ADDRESS);
 
-        assertEquals(testInetAddresses.size(), 1);
-        assertEquals(testInetAddresses.get(0), expectedAddress);
+        assertEquals(1, testInetAddresses.size());
+        assertEquals(expectedAddress, testInetAddresses.get(0));
     }
 
     @Test
@@ -228,65 +265,275 @@ public class EpdgSelectorTest {
 
     @Test
     public void testPlmnResolutionMethodWithNoPlmnInCarrierConfig() throws Exception {
-        // setUp() fills default values for mcc-mnc
-        String expectedFqdn1 = "epdg.epc.mnc120.mcc311.pub.3gppnetwork.org";
-        String expectedFqdn2 = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
 
-        mFakeDns.setAnswer(expectedFqdn1, new String[] {TEST_IP_ADDRESS_1}, TYPE_A);
-        mFakeDns.setAnswer(expectedFqdn2, new String[] {TEST_IP_ADDRESS_2}, TYPE_A);
+        // setUp() fills default values for mcc-mnc
+        String expectedFqdnFromImsi = "epdg.epc.mnc120.mcc311.pub.3gppnetwork.org";
+        String expectedFqdnFromEhplmn = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
+
+        mFakeDns.setAnswer(expectedFqdnFromImsi, new String[] {TEST_IP_ADDRESS_1}, TYPE_A);
+        mFakeDns.setAnswer(expectedFqdnFromEhplmn, new String[] {TEST_IP_ADDRESS_2}, TYPE_A);
 
         ArrayList<InetAddress> testInetAddresses =
                 getValidatedServerListWithDefaultParams(false /*isEmergency*/);
 
-        assertEquals(testInetAddresses.size(), 2);
+        assertEquals(2, testInetAddresses.size());
         assertTrue(testInetAddresses.contains(InetAddress.getByName(TEST_IP_ADDRESS_1)));
         assertTrue(testInetAddresses.contains(InetAddress.getByName(TEST_IP_ADDRESS_2)));
     }
 
     private void testPlmnResolutionMethod(boolean isEmergency) throws Exception {
-        String expectedFqdnFromHplmn = "epdg.epc.mnc120.mcc311.pub.3gppnetwork.org";
-        String expectedFqdnFromEHplmn = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
-        String expectedFqdnFromConfig = "epdg.epc.mnc480.mcc310.pub.3gppnetwork.org";
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
+        String expectedFqdnFromImsi = "epdg.epc.mnc120.mcc311.pub.3gppnetwork.org";
+        String expectedFqdnFromRplmn = "epdg.epc.mnc121.mcc311.pub.3gppnetwork.org";
+        String expectedFqdnFromEhplmn = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
+        String excludedFqdnFromConfig = "epdg.epc.mnc480.mcc310.pub.3gppnetwork.org";
+
+        when(mMockTelephonyManager.getNetworkOperator()).thenReturn("311121");
 
         mTestBundle.putIntArray(
                 CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
                 new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN});
         mTestBundle.putStringArray(
                 CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY,
-                new String[] {"310-480", "300-120", "311-120"});
+                new String[] {"310-480", "300-120", "311-120", "311-121"});
 
-        mFakeDns.setAnswer(expectedFqdnFromHplmn, new String[] {TEST_IP_ADDRESS}, TYPE_A);
-        mFakeDns.setAnswer(expectedFqdnFromEHplmn, new String[] {TEST_IP_ADDRESS_1}, TYPE_A);
-        mFakeDns.setAnswer(expectedFqdnFromConfig, new String[] {TEST_IP_ADDRESS_2}, TYPE_A);
+        mFakeDns.setAnswer(expectedFqdnFromImsi, new String[] {TEST_IP_ADDRESS}, TYPE_A);
+        mFakeDns.setAnswer(expectedFqdnFromEhplmn, new String[] {TEST_IP_ADDRESS_1}, TYPE_A);
+        mFakeDns.setAnswer(excludedFqdnFromConfig, new String[] {TEST_IP_ADDRESS_2}, TYPE_A);
+        mFakeDns.setAnswer("sos." + expectedFqdnFromImsi, new String[] {TEST_IP_ADDRESS_3}, TYPE_A);
         mFakeDns.setAnswer(
-                "sos." + expectedFqdnFromHplmn, new String[] {TEST_IP_ADDRESS_3}, TYPE_A);
+                "sos." + expectedFqdnFromEhplmn, new String[] {TEST_IP_ADDRESS_4}, TYPE_A);
         mFakeDns.setAnswer(
-                "sos." + expectedFqdnFromEHplmn, new String[] {TEST_IP_ADDRESS_4}, TYPE_A);
+                "sos." + excludedFqdnFromConfig, new String[] {TEST_IP_ADDRESS_5}, TYPE_A);
+        mFakeDns.setAnswer(expectedFqdnFromRplmn, new String[] {TEST_IP_ADDRESS_6}, TYPE_A);
         mFakeDns.setAnswer(
-                "sos." + expectedFqdnFromConfig, new String[] {TEST_IP_ADDRESS_5}, TYPE_A);
+                "sos." + expectedFqdnFromRplmn, new String[] {TEST_IP_ADDRESS_7}, TYPE_A);
 
         ArrayList<InetAddress> testInetAddresses =
                 getValidatedServerListWithDefaultParams(isEmergency);
 
         if (isEmergency) {
             assertEquals(6, testInetAddresses.size());
-            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_3), testInetAddresses.get(0));
-            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS), testInetAddresses.get(1));
-            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_4), testInetAddresses.get(2));
-            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_1), testInetAddresses.get(3));
-            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_5), testInetAddresses.get(4));
-            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_2), testInetAddresses.get(5));
+            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_7), testInetAddresses.get(0));
+            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_6), testInetAddresses.get(1));
+            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_3), testInetAddresses.get(2));
+            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS), testInetAddresses.get(3));
+            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_4), testInetAddresses.get(4));
+            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_1), testInetAddresses.get(5));
         } else {
             assertEquals(3, testInetAddresses.size());
-            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS), testInetAddresses.get(0));
-            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_1), testInetAddresses.get(1));
-            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_2), testInetAddresses.get(2));
+            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_6), testInetAddresses.get(0));
+            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS), testInetAddresses.get(1));
+            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_1), testInetAddresses.get(2));
         }
     }
 
     @Test
+    public void testPlmnResolutionMethodWithDuplicatedImsiAndEhplmn() throws Exception {
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
+        String fqdnFromEhplmn1 = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
+        String fqdnFromEhplmn2AndImsi = "epdg.epc.mnc120.mcc311.pub.3gppnetwork.org";
+        String fqdnFromEhplmn3 = "epdg.epc.mnc122.mcc300.pub.3gppnetwork.org";
+        String fqdnFromEhplmn4 = "epdg.epc.mnc123.mcc300.pub.3gppnetwork.org";
+
+        when(mMockTelephonyManager.getNetworkOperator()).thenReturn("300121");
+        ehplmnList.add("300122");
+        ehplmnList.add("300123");
+
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
+                new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN});
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
+                new int[] {
+                    CarrierConfigManager.Iwlan.EPDG_PLMN_HPLMN,
+                    CarrierConfigManager.Iwlan.EPDG_PLMN_EHPLMN_ALL,
+                });
+
+        mFakeDns.setAnswer(fqdnFromEhplmn1, new String[] {TEST_IP_ADDRESS}, TYPE_A);
+        mFakeDns.setAnswer(fqdnFromEhplmn2AndImsi, new String[] {TEST_IP_ADDRESS_1}, TYPE_A);
+        mFakeDns.setAnswer(fqdnFromEhplmn3, new String[] {TEST_IP_ADDRESS_2}, TYPE_A);
+        mFakeDns.setAnswer(fqdnFromEhplmn4, new String[] {TEST_IP_ADDRESS_3}, TYPE_A);
+
+        ArrayList<InetAddress> testInetAddresses = getValidatedServerListWithDefaultParams(false);
+
+        assertEquals(4, testInetAddresses.size());
+        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_1), testInetAddresses.get(0));
+        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS), testInetAddresses.get(1));
+        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_2), testInetAddresses.get(2));
+        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_3), testInetAddresses.get(3));
+    }
+
+    @Test
+    public void testPlmnResolutionMethodWithInvalidLengthPlmns() throws Exception {
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
+        when(mMockSubscriptionInfo.getMccString()).thenReturn("31");
+        when(mMockSubscriptionInfo.getMncString()).thenReturn("12");
+
+        when(mMockTelephonyManager.getNetworkOperator()).thenReturn("300");
+        ehplmnList.add("3001");
+        ehplmnList.add("3");
+
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
+                new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN});
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
+                new int[] {
+                    CarrierConfigManager.Iwlan.EPDG_PLMN_RPLMN,
+                    CarrierConfigManager.Iwlan.EPDG_PLMN_HPLMN,
+                    CarrierConfigManager.Iwlan.EPDG_PLMN_EHPLMN_ALL,
+                });
+
+        ArrayList<InetAddress> testInetAddresses = getValidatedServerListWithDefaultParams(false);
+
+        assertEquals(0, testInetAddresses.size());
+    }
+
+    @Test
+    public void testPlmnResolutionMethodWithInvalidCharacterPlmns() throws Exception {
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
+        when(mMockSubscriptionInfo.getMccString()).thenReturn("a b");
+        when(mMockSubscriptionInfo.getMncString()).thenReturn("!@#");
+
+        when(mMockTelephonyManager.getNetworkOperator()).thenReturn("a cde#");
+        ehplmnList.add("abcdef");
+        ehplmnList.add("1 23456");
+        ehplmnList.add("1 2345");
+
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
+                new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN});
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
+                new int[] {
+                    CarrierConfigManager.Iwlan.EPDG_PLMN_RPLMN,
+                    CarrierConfigManager.Iwlan.EPDG_PLMN_HPLMN,
+                    CarrierConfigManager.Iwlan.EPDG_PLMN_EHPLMN_ALL,
+                });
+
+        ArrayList<InetAddress> testInetAddresses = getValidatedServerListWithDefaultParams(false);
+
+        assertEquals(0, testInetAddresses.size());
+    }
+
+    @Test
+    public void testPlmnResolutionMethodWithEmptyPlmns() throws Exception {
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
+        when(mMockSubscriptionInfo.getMccString()).thenReturn(null);
+        when(mMockSubscriptionInfo.getMncString()).thenReturn(null);
+
+        when(mMockTelephonyManager.getNetworkOperator()).thenReturn("");
+        ehplmnList.add("");
+
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
+                new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN});
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
+                new int[] {
+                    CarrierConfigManager.Iwlan.EPDG_PLMN_RPLMN,
+                    CarrierConfigManager.Iwlan.EPDG_PLMN_HPLMN,
+                    CarrierConfigManager.Iwlan.EPDG_PLMN_EHPLMN_ALL,
+                });
+
+        ArrayList<InetAddress> testInetAddresses = getValidatedServerListWithDefaultParams(false);
+
+        assertEquals(0, testInetAddresses.size());
+    }
+
+    @Test
+    public void testPlmnResolutionMethodWithFirstEhplmn() throws Exception {
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
+        String fqdnFromEhplmn1 = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
+        String fqdnFromEhplmn2 = "epdg.epc.mnc121.mcc300.pub.3gppnetwork.org";
+        String fqdnFromEhplmn3 = "epdg.epc.mnc122.mcc300.pub.3gppnetwork.org";
+        String fqdnFromEhplmn4 = "epdg.epc.mnc123.mcc300.pub.3gppnetwork.org";
+
+        ehplmnList.add("300121");
+        ehplmnList.add("300122");
+        ehplmnList.add("300123");
+
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
+                new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN});
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
+                new int[] {CarrierConfigManager.Iwlan.EPDG_PLMN_EHPLMN_FIRST});
+
+        mFakeDns.setAnswer(fqdnFromEhplmn1, new String[] {TEST_IP_ADDRESS}, TYPE_A);
+        mFakeDns.setAnswer(fqdnFromEhplmn2, new String[] {TEST_IP_ADDRESS_1}, TYPE_A);
+        mFakeDns.setAnswer(fqdnFromEhplmn3, new String[] {TEST_IP_ADDRESS_2}, TYPE_A);
+        mFakeDns.setAnswer(fqdnFromEhplmn4, new String[] {TEST_IP_ADDRESS_3}, TYPE_A);
+
+        ArrayList<InetAddress> testInetAddresses = getValidatedServerListWithDefaultParams(false);
+
+        assertEquals(1, testInetAddresses.size());
+        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS), testInetAddresses.get(0));
+    }
+
+    @Test
+    public void testPlmnResolutionMethodWithRplmn() throws Exception {
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
+        String fqdnFromRplmn = "epdg.epc.mnc122.mcc300.pub.3gppnetwork.org";
+        String fqdnFromEhplmn1 = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
+        String fqdnFromEhplmn2 = "epdg.epc.mnc121.mcc300.pub.3gppnetwork.org";
+
+        when(mMockTelephonyManager.getNetworkOperator()).thenReturn("300122");
+        ehplmnList.add("300121");
+
+        mTestBundle.putStringArray(
+                CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY,
+                new String[] {"310-480", "300-122", "300-121"});
+
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
+                new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN});
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
+                new int[] {CarrierConfigManager.Iwlan.EPDG_PLMN_RPLMN});
+
+        mFakeDns.setAnswer(fqdnFromRplmn, new String[] {TEST_IP_ADDRESS}, TYPE_A);
+        mFakeDns.setAnswer(fqdnFromEhplmn1, new String[] {TEST_IP_ADDRESS_1}, TYPE_A);
+        mFakeDns.setAnswer(fqdnFromEhplmn2, new String[] {TEST_IP_ADDRESS_2}, TYPE_A);
+
+        ArrayList<InetAddress> testInetAddresses = getValidatedServerListWithDefaultParams(false);
+
+        assertEquals(1, testInetAddresses.size());
+        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS), testInetAddresses.get(0));
+    }
+
+    @Test
     public void testCarrierConfigStaticAddressList() throws Exception {
-        // Set Network.getAllByName mock
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
+        // Set DnsResolver query mock
         final String addr1 = "epdg.epc.mnc480.mcc310.pub.3gppnetwork.org";
         final String addr2 = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
         final String addr3 = "epdg.epc.mnc120.mcc311.pub.3gppnetwork.org";
@@ -306,10 +553,10 @@ public class EpdgSelectorTest {
         ArrayList<InetAddress> testInetAddresses =
                 getValidatedServerListWithDefaultParams(false /*isEmergency*/);
 
-        assertEquals(testInetAddresses.size(), 3);
-        assertEquals(testInetAddresses.get(0), InetAddress.getByName(TEST_IP_ADDRESS_1));
-        assertEquals(testInetAddresses.get(1), InetAddress.getByName(TEST_IP_ADDRESS_2));
-        assertEquals(testInetAddresses.get(2), InetAddress.getByName(TEST_IP_ADDRESS));
+        assertEquals(3, testInetAddresses.size());
+        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_1), testInetAddresses.get(0));
+        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_2), testInetAddresses.get(1));
+        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS), testInetAddresses.get(2));
     }
 
     private ArrayList<InetAddress> getValidatedServerListWithDefaultParams(boolean isEmergency)
@@ -336,7 +583,7 @@ public class EpdgSelectorTest {
                         new EpdgSelector.EpdgSelectorCallback() {
                             @Override
                             public void onServerListChanged(
-                                    int transactionId, ArrayList<InetAddress> validIPList) {
+                                    int transactionId, List<InetAddress> validIPList) {
                                 assertEquals(transactionId, 1234);
 
                                 for (InetAddress mInetAddress : validIPList) {
@@ -379,19 +626,49 @@ public class EpdgSelectorTest {
         addTestPcoIdsToTestConfigBundle();
 
         mEpdgSelector.clearPcoData();
-        boolean retIPv6 =
-                mEpdgSelector.setPcoData(
-                        testPcoIdIPv6, InetAddress.getByName(TEST_IPV6_ADDRESS).getAddress());
-        boolean retIPv4 =
-                mEpdgSelector.setPcoData(
-                        testPcoIdIPv4, InetAddress.getByName(TEST_IP_ADDRESS).getAddress());
+        assertTrue(mEpdgSelector.setPcoData(testPcoIdIPv6, TEST_PCO_IPV6_DATA));
+        assertTrue(mEpdgSelector.setPcoData(testPcoIdIPv4, TEST_PCO_IPV4_DATA));
 
         ArrayList<InetAddress> testInetAddresses =
                 getValidatedServerListWithDefaultParams(false /* isEmergency */);
 
-        assertEquals(testInetAddresses.size(), 2);
+        assertEquals(2, testInetAddresses.size());
         assertTrue(testInetAddresses.contains(InetAddress.getByName(TEST_IP_ADDRESS)));
         assertTrue(testInetAddresses.contains(InetAddress.getByName(TEST_IPV6_ADDRESS)));
+    }
+
+    @Test
+    public void testPcoResolutionMethodWithNoPcoData() throws Exception {
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
+                new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PCO});
+        addTestPcoIdsToTestConfigBundle();
+
+        mEpdgSelector.clearPcoData();
+        assertTrue(mEpdgSelector.setPcoData(testPcoIdIPv6, TEST_PCO_NO_DATA));
+        assertTrue(mEpdgSelector.setPcoData(testPcoIdIPv4, TEST_PCO_NO_DATA));
+
+        ArrayList<InetAddress> testInetAddresses =
+                getValidatedServerListWithDefaultParams(false /* isEmergency */);
+
+        assertEquals(0, testInetAddresses.size());
+    }
+
+    @Test
+    public void testPcoResolutionMethodWithOnlyPlmnData() throws Exception {
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
+                new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PCO});
+        addTestPcoIdsToTestConfigBundle();
+
+        mEpdgSelector.clearPcoData();
+        assertTrue(mEpdgSelector.setPcoData(testPcoIdIPv6, TEST_PCO_PLMN_DATA));
+        assertTrue(mEpdgSelector.setPcoData(testPcoIdIPv4, TEST_PCO_PLMN_DATA));
+
+        ArrayList<InetAddress> testInetAddresses =
+                getValidatedServerListWithDefaultParams(false /* isEmergency */);
+
+        assertEquals(0, testInetAddresses.size());
     }
 
     private void addTestPcoIdsToTestConfigBundle() {
@@ -410,6 +687,8 @@ public class EpdgSelectorTest {
     }
 
     private void testCellularResolutionMethod(boolean isEmergency) throws Exception {
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+
         int testMcc = 311;
         int testMnc = 120;
         String testMccString = "311";
@@ -461,10 +740,185 @@ public class EpdgSelectorTest {
         ArrayList<InetAddress> testInetAddresses =
                 getValidatedServerListWithDefaultParams(isEmergency);
 
-        assertEquals(testInetAddresses.size(), 3);
-        assertEquals(testInetAddresses.get(0), InetAddress.getByName(TEST_IP_ADDRESS));
-        assertEquals(testInetAddresses.get(1), InetAddress.getByName(TEST_IP_ADDRESS_1));
-        assertEquals(testInetAddresses.get(2), InetAddress.getByName(TEST_IP_ADDRESS_2));
+        assertEquals(3, testInetAddresses.size());
+        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS), testInetAddresses.get(0));
+        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_1), testInetAddresses.get(1));
+        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_2), testInetAddresses.get(2));
+    }
+
+    @Test
+    public void testTemporaryExcludedIpAddressWhenDisabledExcludeFailedIp() throws Exception {
+        doReturn(false).when(mfakeFeatureFlags).epdgSelectionExcludeFailedIpAddress();
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
+        String fqdnFromRplmn = "epdg.epc.mnc122.mcc300.pub.3gppnetwork.org";
+        final String staticAddr = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
+
+        when(mMockTelephonyManager.getNetworkOperator()).thenReturn("300122");
+        mTestBundle.putStringArray(
+                CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY, new String[] {"300-122"});
+
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
+                new int[] {
+                    CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN,
+                    CarrierConfigManager.Iwlan.EPDG_ADDRESS_STATIC
+                });
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
+                new int[] {CarrierConfigManager.Iwlan.EPDG_PLMN_RPLMN});
+
+        mTestBundle.putString(
+                CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, staticAddr);
+
+        mFakeDns.setAnswer(fqdnFromRplmn, new String[] {TEST_IP_ADDRESS}, TYPE_A);
+        mFakeDns.setAnswer(staticAddr, new String[] {TEST_IP_ADDRESS_1, TEST_IPV6_ADDRESS}, TYPE_A);
+
+        ArrayList<InetAddress> testInetAddresses = getValidatedServerListWithDefaultParams(false);
+        assertArrayEquals(
+                List.of(
+                                InetAddress.getByName(TEST_IP_ADDRESS),
+                                InetAddress.getByName(TEST_IP_ADDRESS_1),
+                                InetAddress.getByName(TEST_IPV6_ADDRESS))
+                        .toArray(),
+                testInetAddresses.toArray());
+
+        mEpdgSelector.onEpdgConnectionFailed(InetAddress.getByName(TEST_IP_ADDRESS));
+        // Flag disabled should not affect the result
+        testInetAddresses = getValidatedServerListWithDefaultParams(false);
+        assertArrayEquals(
+                List.of(
+                                InetAddress.getByName(TEST_IP_ADDRESS),
+                                InetAddress.getByName(TEST_IP_ADDRESS_1),
+                                InetAddress.getByName(TEST_IPV6_ADDRESS))
+                        .toArray(),
+                testInetAddresses.toArray());
+
+        mEpdgSelector.onEpdgConnectedSuccessfully();
+        // Flag disabled should not affect the result
+        testInetAddresses = getValidatedServerListWithDefaultParams(false);
+        assertArrayEquals(
+                List.of(
+                                InetAddress.getByName(TEST_IP_ADDRESS),
+                                InetAddress.getByName(TEST_IP_ADDRESS_1),
+                                InetAddress.getByName(TEST_IPV6_ADDRESS))
+                        .toArray(),
+                testInetAddresses.toArray());
+    }
+
+    @Test
+    public void testTemporaryExcludedIpAddressWhenEnabledExcludeFailedIp() throws Exception {
+        doReturn(true).when(mfakeFeatureFlags).epdgSelectionExcludeFailedIpAddress();
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
+        final String fqdnFromRplmn = "epdg.epc.mnc122.mcc300.pub.3gppnetwork.org";
+        final String staticAddr = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
+
+        when(mMockTelephonyManager.getNetworkOperator()).thenReturn("300122");
+        mTestBundle.putStringArray(
+                CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY, new String[] {"300-122"});
+
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
+                new int[] {
+                    CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN,
+                    CarrierConfigManager.Iwlan.EPDG_ADDRESS_STATIC
+                });
+        mTestBundle.putIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
+                new int[] {CarrierConfigManager.Iwlan.EPDG_PLMN_RPLMN});
+
+        mTestBundle.putString(
+                CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, staticAddr);
+
+        mFakeDns.setAnswer(fqdnFromRplmn, new String[] {TEST_IP_ADDRESS}, TYPE_A);
+        mFakeDns.setAnswer(staticAddr, new String[] {TEST_IP_ADDRESS_1, TEST_IPV6_ADDRESS}, TYPE_A);
+
+        ArrayList<InetAddress> testInetAddresses = getValidatedServerListWithDefaultParams(false);
+        assertArrayEquals(
+                List.of(
+                                InetAddress.getByName(TEST_IP_ADDRESS),
+                                InetAddress.getByName(TEST_IP_ADDRESS_1),
+                                InetAddress.getByName(TEST_IPV6_ADDRESS))
+                        .toArray(),
+                testInetAddresses.toArray());
+
+        mEpdgSelector.onEpdgConnectionFailed(InetAddress.getByName(TEST_IP_ADDRESS));
+        testInetAddresses = getValidatedServerListWithDefaultParams(false);
+        assertArrayEquals(
+                List.of(
+                                InetAddress.getByName(TEST_IP_ADDRESS_1),
+                                InetAddress.getByName(TEST_IPV6_ADDRESS))
+                        .toArray(),
+                testInetAddresses.toArray());
+
+        // Reset temporary excluded ip addresses
+        mEpdgSelector.onEpdgConnectedSuccessfully();
+        testInetAddresses = getValidatedServerListWithDefaultParams(false);
+        assertArrayEquals(
+                List.of(
+                                InetAddress.getByName(TEST_IP_ADDRESS),
+                                InetAddress.getByName(TEST_IP_ADDRESS_1),
+                                InetAddress.getByName(TEST_IPV6_ADDRESS))
+                        .toArray(),
+                testInetAddresses.toArray());
+
+        mEpdgSelector.onEpdgConnectionFailed(InetAddress.getByName(TEST_IP_ADDRESS));
+        testInetAddresses = getValidatedServerListWithDefaultParams(false);
+        assertArrayEquals(
+                List.of(
+                                InetAddress.getByName(TEST_IP_ADDRESS_1),
+                                InetAddress.getByName(TEST_IPV6_ADDRESS))
+                        .toArray(),
+                testInetAddresses.toArray());
+
+        mEpdgSelector.onEpdgConnectionFailed(InetAddress.getByName(TEST_IPV6_ADDRESS));
+        testInetAddresses = getValidatedServerListWithDefaultParams(false);
+        assertArrayEquals(
+                List.of(InetAddress.getByName(TEST_IP_ADDRESS_1)).toArray(),
+                testInetAddresses.toArray());
+
+        mEpdgSelector.onEpdgConnectionFailed(InetAddress.getByName(TEST_IP_ADDRESS_1));
+        // All ip addresses removed, should reset excluded address
+        testInetAddresses = getValidatedServerListWithDefaultParams(false);
+        assertArrayEquals(
+                List.of(
+                                InetAddress.getByName(TEST_IP_ADDRESS),
+                                InetAddress.getByName(TEST_IP_ADDRESS_1),
+                                InetAddress.getByName(TEST_IPV6_ADDRESS))
+                        .toArray(),
+                testInetAddresses.toArray());
+
+        mEpdgSelector.onEpdgConnectionFailed(InetAddress.getByName(TEST_IP_ADDRESS_1));
+        testInetAddresses = getValidatedServerListWithDefaultParams(false);
+        assertArrayEquals(
+                List.of(
+                                InetAddress.getByName(TEST_IP_ADDRESS),
+                                InetAddress.getByName(TEST_IPV6_ADDRESS))
+                        .toArray(),
+                testInetAddresses.toArray());
+
+        // When the original result changed
+        mFakeDns.setAnswer(staticAddr, new String[] {TEST_IP_ADDRESS_1}, TYPE_A);
+        mFakeDns.setAnswer(fqdnFromRplmn, new String[] {TEST_IP_ADDRESS_3}, TYPE_A);
+        testInetAddresses = getValidatedServerListWithDefaultParams(false);
+        assertArrayEquals(
+                List.of(InetAddress.getByName(TEST_IP_ADDRESS_3)).toArray(),
+                testInetAddresses.toArray());
+
+        mEpdgSelector.onEpdgConnectionFailed(InetAddress.getByName(TEST_IP_ADDRESS_3));
+        // It should also reset the excluded list once all ip addresses are excluded
+        testInetAddresses = getValidatedServerListWithDefaultParams(false);
+        assertArrayEquals(
+                List.of(
+                                InetAddress.getByName(TEST_IP_ADDRESS_3),
+                                InetAddress.getByName(TEST_IP_ADDRESS_1))
+                        .toArray(),
+                testInetAddresses.toArray());
     }
 
     private void setAnswerForCellularMethod(boolean isEmergency, int mcc, int mnc)
@@ -505,6 +959,10 @@ public class EpdgSelectorTest {
 
     @Test
     public void testGetValidatedServerListIpv4Preferred() throws Exception {
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
         final String addr1 = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
         final String addr2 = "epdg.epc.mnc120.mcc311.pub.3gppnetwork.org";
         final String testStaticAddress = addr1 + "," + addr2;
@@ -532,6 +990,10 @@ public class EpdgSelectorTest {
 
     @Test
     public void testGetValidatedServerListIpv6Preferred() throws Exception {
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
         final String addr1 = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
         final String addr2 = "epdg.epc.mnc120.mcc311.pub.3gppnetwork.org";
         final String testStaticAddress = addr1 + "," + addr2;
@@ -559,6 +1021,10 @@ public class EpdgSelectorTest {
 
     @Test
     public void testGetValidatedServerListIpv4Only() throws Exception {
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
         final String addr1 = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
         final String addr2 = "epdg.epc.mnc120.mcc311.pub.3gppnetwork.org";
         final String testStaticAddress = addr1 + "," + addr2;
@@ -585,6 +1051,10 @@ public class EpdgSelectorTest {
 
     @Test
     public void testGetValidatedServerListIpv4OnlyCongestion() throws Exception {
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
         when(mMockErrorPolicyManager.getMostRecentDataFailCause())
                 .thenReturn(DataFailCause.IWLAN_CONGESTION);
         when(mMockErrorPolicyManager.getCurrentFqdnIndex(anyInt())).thenReturn(0);
@@ -616,6 +1086,10 @@ public class EpdgSelectorTest {
 
     @Test
     public void testGetValidatedServerListIpv6Only() throws Exception {
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
         final String addr1 = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
         final String addr2 = "epdg.epc.mnc120.mcc311.pub.3gppnetwork.org";
         final String testStaticAddress = addr1 + "," + addr2;
@@ -642,6 +1116,10 @@ public class EpdgSelectorTest {
 
     @Test
     public void testGetValidatedServerListSystemPreferred() throws Exception {
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
         final String addr1 = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
         final String addr2 = "epdg.epc.mnc120.mcc311.pub.3gppnetwork.org";
         final String addr3 = "epdg.epc.mnc120.mcc312.pub.3gppnetwork.org";
@@ -695,20 +1173,20 @@ public class EpdgSelectorTest {
             }
         }
 
-        private final ArrayList<DnsEntry> mAnswers = new ArrayList<DnsEntry>();
+        private final List<DnsEntry> mAnswers = new ArrayList<>();
 
         /** Clears all DNS entries. */
         private synchronized void clearAll() {
             mAnswers.clear();
         }
 
-        /** Returns the answer for a given name and type on the given mock network. */
-        private synchronized List<InetAddress> getAnswer(Object mock, String hostname, int type) {
+        /** Returns the answer for a given name and type. */
+        private synchronized List<InetAddress> getAnswer(String hostname, int type) {
             return mAnswers.stream()
                     .filter(e -> e.matches(hostname, type))
                     .map(answer -> answer.mAddresses)
                     .findFirst()
-                    .orElse(null);
+                    .orElse(List.of());
         }
 
         /** Sets the answer for a given name and type. */
@@ -729,10 +1207,20 @@ public class EpdgSelectorTest {
         }
 
         // Regardless of the type, depends on what the responses contained in the network.
-        private List<InetAddress> queryAllTypes(Object mock, String hostname) {
+        private List<InetAddress> queryIpv4(String hostname) {
+            return getAnswer(hostname, TYPE_A);
+        }
+
+        // Regardless of the type, depends on what the responses contained in the network.
+        private List<InetAddress> queryIpv6(String hostname) {
+            return getAnswer(hostname, TYPE_AAAA);
+        }
+
+        // Regardless of the type, depends on what the responses contained in the network.
+        private List<InetAddress> queryAllTypes(String hostname) {
             List<InetAddress> answer = new ArrayList<>();
-            addAllIfNotNull(answer, getAnswer(mock, hostname, TYPE_A));
-            addAllIfNotNull(answer, getAnswer(mock, hostname, TYPE_AAAA));
+            answer.addAll(queryIpv4(hostname));
+            answer.addAll(queryIpv6(hostname));
             return answer;
         }
 
@@ -744,32 +1232,55 @@ public class EpdgSelectorTest {
 
         /** Starts mocking DNS queries. */
         private void startMocking() throws UnknownHostException {
+            // 5-arg DnsResolver.query()
             doAnswer(
                             invocation -> {
                                 return mockQuery(
                                         invocation,
                                         1 /* posHostname */,
+                                        -1 /* posType */,
                                         3 /* posExecutor */,
-                                        5 /* posCallback */,
-                                        -1 /* posType */);
+                                        5 /* posCallback */);
                             })
                     .when(mMockDnsResolver)
-                    .query(any(), any(), anyInt(), any(), any(), any());
+                    .query(any(), anyString(), anyInt(), any(), any(), any());
+
+            // 6-arg DnsResolver.query() with explicit query type (IPv4 or v6).
+            doAnswer(
+                            invocation -> {
+                                return mockQuery(
+                                        invocation,
+                                        1 /* posHostname */,
+                                        2 /* posType */,
+                                        4 /* posExecutor */,
+                                        6 /* posCallback */);
+                            })
+                    .when(mMockDnsResolver)
+                    .query(any(), anyString(), anyInt(), anyInt(), any(), any(), any());
         }
 
         // Mocking queries on DnsResolver#query.
         private Answer mockQuery(
                 InvocationOnMock invocation,
                 int posHostname,
+                int posType,
                 int posExecutor,
-                int posCallback,
-                int posType) {
-            String hostname = (String) invocation.getArgument(posHostname);
-            Executor executor = (Executor) invocation.getArgument(posExecutor);
+                int posCallback) {
+            String hostname = invocation.getArgument(posHostname);
+            Executor executor = invocation.getArgument(posExecutor);
             DnsResolver.Callback<List<InetAddress>> callback = invocation.getArgument(posCallback);
             List<InetAddress> answer;
 
-            answer = queryAllTypes(invocation.getMock(), hostname);
+            switch (posType) {
+                case TYPE_A:
+                    answer = queryIpv4(hostname);
+                    break;
+                case TYPE_AAAA:
+                    answer = queryIpv6(hostname);
+                    break;
+                default:
+                    answer = queryAllTypes(hostname);
+            }
 
             if (answer != null && answer.size() > 0) {
                 new Handler(Looper.getMainLooper())
@@ -781,5 +1292,37 @@ public class EpdgSelectorTest {
             // If no answers, do nothing. sendDnsProbeWithTimeout will time out and throw UHE.
             return null;
         }
+    }
+
+    @SuppressWarnings("FutureReturnValueIgnored")
+    @Test
+    public void testMultipleBackToBackSetupDataCallRequest() throws Exception {
+        when(mfakeFeatureFlags.preventEpdgSelectionThreadsExhausted()).thenReturn(true);
+        EpdgSelector epdgSelector =
+                new EpdgSelector(mMockContext, DEFAULT_SLOT_INDEX, mfakeFeatureFlags);
+        Runnable runnable = mock(Runnable.class);
+        // Prefetch
+        epdgSelector.trySubmitEpdgSelectionExecutor(runnable, true, false);
+        // First set up data call
+        epdgSelector.trySubmitEpdgSelectionExecutor(runnable, false, false);
+        // Second set up data call
+        epdgSelector.trySubmitEpdgSelectionExecutor(runnable, false, false);
+    }
+
+    @SuppressWarnings("FutureReturnValueIgnored")
+    @Test
+    public void testBackToBackSetupDataCallRequest() throws Exception {
+        when(mfakeFeatureFlags.preventEpdgSelectionThreadsExhausted()).thenReturn(false);
+        EpdgSelector epdgSelector =
+                new EpdgSelector(mMockContext, DEFAULT_SLOT_INDEX, mfakeFeatureFlags);
+        Runnable runnable = mock(Runnable.class);
+        // Prefetch
+        epdgSelector.trySubmitEpdgSelectionExecutor(runnable, true, false);
+        // First set up data call
+        epdgSelector.trySubmitEpdgSelectionExecutor(runnable, false, false);
+        // Second set up data call request exhausts the thread pool
+        assertThrows(
+                RejectedExecutionException.class,
+                () -> epdgSelector.trySubmitEpdgSelectionExecutor(runnable, false, false));
     }
 }

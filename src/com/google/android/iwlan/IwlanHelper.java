@@ -110,30 +110,15 @@ public class IwlanHelper {
         return info;
     }
 
-    public static List<InetAddress> getAddressesForNetwork(Network network, Context context) {
-        ConnectivityManager connectivityManager =
-                context.getSystemService(ConnectivityManager.class);
-        List<InetAddress> gatewayList = new ArrayList<>();
-        if (network != null) {
-            LinkProperties linkProperties = connectivityManager.getLinkProperties(network);
-            if (linkProperties != null) {
-                for (LinkAddress linkAddr : linkProperties.getLinkAddresses()) {
-                    InetAddress inetAddr = linkAddr.getAddress();
-                    // skip linklocal and loopback addresses
-                    if (!inetAddr.isLoopbackAddress() && !inetAddr.isLinkLocalAddress()) {
-                        gatewayList.add(inetAddr);
-                    }
-                }
-                if (linkProperties.getNat64Prefix() != null) {
-                    mNat64Prefix = linkProperties.getNat64Prefix();
-                }
-            }
-        }
-        return gatewayList;
-    }
-
-    public static List<InetAddress> getStackedAddressesForNetwork(
-            Network network, Context context) {
+    /**
+     * Retrieves all IP addresses of a Network, including stacked IPv4 addresses.
+     *
+     * @param context a valid {@link Context} instance.
+     * @param network the network for which IP addresses are to be retrieved.
+     * @return a list of all IP addresses for the specified network. Returns an empty list if none
+     *     are found.
+     */
+    public static List<InetAddress> getAllAddressesForNetwork(Context context, Network network) {
         ConnectivityManager connectivityManager =
                 context.getSystemService(ConnectivityManager.class);
         List<InetAddress> gatewayList = new ArrayList<>();
@@ -142,9 +127,13 @@ public class IwlanHelper {
             if (linkProperties != null) {
                 for (LinkAddress linkAddr : linkProperties.getAllLinkAddresses()) {
                     InetAddress inetAddr = linkAddr.getAddress();
-                    if ((inetAddr instanceof Inet4Address)) {
+                    // skip linklocal and loopback addresses
+                    if (!inetAddr.isLoopbackAddress() && !inetAddr.isLinkLocalAddress()) {
                         gatewayList.add(inetAddr);
                     }
+                }
+                if (linkProperties.getNat64Prefix() != null) {
+                    mNat64Prefix = linkProperties.getNat64Prefix();
                 }
             }
         }
@@ -162,22 +151,24 @@ public class IwlanHelper {
     }
 
     public static boolean hasIpv6Address(List<InetAddress> localAddresses) {
-        for (InetAddress address : localAddresses) {
-            if (address instanceof Inet6Address) {
-                return true;
+        if (localAddresses != null) {
+            for (InetAddress address : localAddresses) {
+                if (address instanceof Inet6Address) {
+                    return true;
+                }
             }
         }
-
         return false;
     }
 
     public static boolean hasIpv4Address(List<InetAddress> localAddresses) {
-        for (InetAddress address : localAddresses) {
-            if (address instanceof Inet4Address) {
-                return true;
+        if (localAddresses != null) {
+            for (InetAddress address : localAddresses) {
+                if (address instanceof Inet4Address) {
+                    return true;
+                }
             }
         }
-
         return false;
     }
 
@@ -201,6 +192,10 @@ public class IwlanHelper {
         throw new IllegalStateException("Local address should not be null.");
     }
 
+    /**
+     * @deprecated This method is deprecated. Use {@link IwlanCarrierConfig#getConfig()} instead.
+     */
+    @Deprecated
     public static <T> T getConfig(String key, Context context, int slotId) {
         CarrierConfigManager carrierConfigManager =
                 context.getSystemService(CarrierConfigManager.class);
@@ -218,6 +213,11 @@ public class IwlanHelper {
         }
     }
 
+    /**
+     * @deprecated This method is deprecated. Use {@link IwlanCarrierConfig#getDefaultConfig()}
+     *     instead.
+     */
+    @Deprecated
     public static <T> T getDefaultConfig(String key) {
         PersistableBundle bundle = CarrierConfigManager.getDefaultConfig();
         if (bundle == null) {
