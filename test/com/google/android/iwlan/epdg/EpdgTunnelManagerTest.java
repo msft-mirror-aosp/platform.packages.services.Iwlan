@@ -634,6 +634,7 @@ public class EpdgTunnelManagerTest {
 
     @Test
     public void testMultipleSaProposals() throws Exception {
+        when(mFakeFeatureFlags.aeadAlgosEnabled()).thenReturn(true);
         when(mFakeFeatureFlags.multipleSaProposals()).thenReturn(true);
         final String apnName = "ims";
 
