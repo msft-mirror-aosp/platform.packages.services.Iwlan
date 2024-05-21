@@ -166,7 +166,7 @@ public class IwlanCarrierConfig {
      * The default value for determining whether N1 mode shall be enabled or disabled depending on
      * 5G enabling status via the UI/UX.
      */
-    public static final boolean DEFAULT_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL = true;
+    public static final boolean DEFAULT_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL = false;
 
     /** This is the default value for {@link #KEY_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL}. */
     public static final boolean DEFAULT_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL = false;
