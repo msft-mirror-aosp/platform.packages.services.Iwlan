@@ -991,21 +991,12 @@ public class EpdgTunnelManager {
                 new TunnelModeChildSessionParams.Builder()
                         .setLifetimeSeconds(hardTimeSeconds, softTimeSeconds);
 
+        // Else block and it's related functionality can be removed once
+        // multipleSaProposals, highSecureTransformsPrioritized and aeadAlgosEnabled feature flags
+        // related functionality becomes stable and gets instruction to remove feature flags.
         if (mFeatureFlags.multipleSaProposals()
-                && IwlanCarrierConfig.getConfigBoolean(
-                        mContext,
-                        mSlotId,
-                        CarrierConfigManager.Iwlan
-                                .KEY_SUPPORTS_CHILD_SESSION_MULTIPLE_SA_PROPOSALS_BOOL)) {
+                || mFeatureFlags.highSecureTransformsPrioritized()) {
             EpdgChildSaProposal epdgChildSaProposal = createEpdgChildSaProposal();
-
-            if (mFeatureFlags.highSecureTransformsPrioritized()
-                    && IwlanCarrierConfig.getConfigBoolean(
-                            mContext,
-                            mSlotId,
-                            IwlanCarrierConfig.KEY_IKE_SA_TRANSFORMS_REORDER_BOOL)) {
-                epdgChildSaProposal.enableReorderingSaferProposals();
-            }
 
             if (IwlanCarrierConfig.getConfigBoolean(
                     mContext,
@@ -1013,19 +1004,32 @@ public class EpdgTunnelManager {
                     CarrierConfigManager.Iwlan.KEY_ADD_KE_TO_CHILD_SESSION_REKEY_BOOL)) {
                 epdgChildSaProposal.enableAddChildSessionRekeyKePayload();
             }
-
+            // Adds single SA proposal, priority is for AEAD if configured else non-AEAD proposal.
             if (isChildSessionAeadAlgosAvailable()) {
                 childSessionParamsBuilder.addChildSaProposal(
                         epdgChildSaProposal.buildProposedChildSaAeadProposal());
+            } else {
+                childSessionParamsBuilder.addChildSaProposal(
+                        epdgChildSaProposal.buildProposedChildSaProposal());
             }
-            childSessionParamsBuilder.addChildSaProposal(
-                    epdgChildSaProposal.buildProposedChildSaProposal());
-            childSessionParamsBuilder.addChildSaProposal(
-                    epdgChildSaProposal.buildSupportedChildSaAeadProposal());
-            childSessionParamsBuilder.addChildSaProposal(
-                    epdgChildSaProposal.buildSupportedChildSaProposal());
+            // Adds multiple proposals. If AEAD proposal already added then adds
+            // configured non-AEAD proposal followed by supported AEAD and non-AEAD proposals.
+            if (IwlanCarrierConfig.getConfigBoolean(
+                    mContext,
+                    mSlotId,
+                    CarrierConfigManager.Iwlan
+                            .KEY_SUPPORTS_CHILD_SESSION_MULTIPLE_SA_PROPOSALS_BOOL)) {
+                if (isChildSessionAeadAlgosAvailable() && isChildSessionNonAeadAlgosAvailable()) {
+                    childSessionParamsBuilder.addChildSaProposal(
+                            epdgChildSaProposal.buildProposedChildSaProposal());
+                }
+                childSessionParamsBuilder.addChildSaProposal(
+                        epdgChildSaProposal.buildSupportedChildSaAeadProposal());
+                childSessionParamsBuilder.addChildSaProposal(
+                        epdgChildSaProposal.buildSupportedChildSaProposal());
+            }
         } else {
-            if (mFeatureFlags.aeadAlgosEnabled() && isChildSessionAeadAlgosAvailable()) {
+            if (isChildSessionAeadAlgosAvailable()) {
                 childSessionParamsBuilder.addChildSaProposal(buildAeadChildSaProposal());
             } else {
                 childSessionParamsBuilder.addChildSaProposal(buildChildSaProposal());
@@ -1173,30 +1177,34 @@ public class EpdgTunnelManager {
                         .setRetransmissionTimeoutsMillis(getRetransmissionTimeoutsFromConfig())
                         .setDpdDelaySeconds(getDpdDelayFromConfig());
 
+        // Else block and it's related functionality can be removed once
+        // multipleSaProposals, highSecureTransformsPrioritized and aeadAlgosEnabled feature flags
+        // related functionality becomes stable and gets instruction to remove feature flags.
         if (mFeatureFlags.multipleSaProposals()
-                && IwlanCarrierConfig.getConfigBoolean(
-                        mContext,
-                        mSlotId,
-                        CarrierConfigManager.Iwlan
-                                .KEY_SUPPORTS_IKE_SESSION_MULTIPLE_SA_PROPOSALS_BOOL)) {
+                || mFeatureFlags.highSecureTransformsPrioritized()) {
             EpdgIkeSaProposal epdgIkeSaProposal = createEpdgIkeSaProposal();
 
-            if (mFeatureFlags.highSecureTransformsPrioritized()
-                    && IwlanCarrierConfig.getConfigBoolean(
-                            mContext,
-                            mSlotId,
-                            IwlanCarrierConfig.KEY_IKE_SA_TRANSFORMS_REORDER_BOOL)) {
-                epdgIkeSaProposal.enableReorderingSaferProposals();
-            }
-
+            // Adds single SA proposal, priority is for AEAD if configured else non-AEAD proposal.
             if (isIkeSessionAeadAlgosAvailable()) {
                 builder.addIkeSaProposal(epdgIkeSaProposal.buildProposedIkeSaAeadProposal());
+            } else {
+                builder.addIkeSaProposal(epdgIkeSaProposal.buildProposedIkeSaProposal());
             }
-            builder.addIkeSaProposal(epdgIkeSaProposal.buildProposedIkeSaProposal());
-            builder.addIkeSaProposal(epdgIkeSaProposal.buildSupportedIkeSaAeadProposal());
-            builder.addIkeSaProposal(epdgIkeSaProposal.buildSupportedIkeSaProposal());
+            // Adds multiple proposals. If AEAD proposal already added then adds
+            // configured non-AEAD proposal followed by supported AEAD and non-AEAD proposals.
+            if (IwlanCarrierConfig.getConfigBoolean(
+                    mContext,
+                    mSlotId,
+                    CarrierConfigManager.Iwlan
+                            .KEY_SUPPORTS_IKE_SESSION_MULTIPLE_SA_PROPOSALS_BOOL)) {
+                if (isIkeSessionAeadAlgosAvailable() && isIkeSessionNonAeadAlgosAvailable()) {
+                    builder.addIkeSaProposal(epdgIkeSaProposal.buildProposedIkeSaProposal());
+                }
+                builder.addIkeSaProposal(epdgIkeSaProposal.buildSupportedIkeSaAeadProposal());
+                builder.addIkeSaProposal(epdgIkeSaProposal.buildSupportedIkeSaProposal());
+            }
         } else {
-            if (mFeatureFlags.aeadAlgosEnabled() && isIkeSessionAeadAlgosAvailable()) {
+            if (isIkeSessionAeadAlgosAvailable()) {
                 builder.addIkeSaProposal(buildIkeSaAeadProposal());
             } else {
                 builder.addIkeSaProposal(buildIkeSaProposal());
@@ -1275,6 +1283,10 @@ public class EpdgTunnelManager {
     }
 
     private boolean isChildSessionAeadAlgosAvailable() {
+        if (!mFeatureFlags.aeadAlgosEnabled()) {
+            return false;
+        }
+
         int[] encryptionAlgos =
                 IwlanCarrierConfig.getConfigIntArray(
                         mContext,
@@ -1289,7 +1301,26 @@ public class EpdgTunnelManager {
         return false;
     }
 
+    private boolean isChildSessionNonAeadAlgosAvailable() {
+        int[] encryptionAlgos =
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan
+                                .KEY_SUPPORTED_CHILD_SESSION_ENCRYPTION_ALGORITHMS_INT_ARRAY);
+        for (int encryptionAlgo : encryptionAlgos) {
+            if (validateConfig(encryptionAlgo, VALID_ENCRYPTION_ALGOS, CONFIG_TYPE_ENCRYPT_ALGO)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private boolean isIkeSessionAeadAlgosAvailable() {
+        if (!mFeatureFlags.aeadAlgosEnabled()) {
+            return false;
+        }
+
         int[] encryptionAlgos =
                 IwlanCarrierConfig.getConfigIntArray(
                         mContext,
@@ -1298,6 +1329,21 @@ public class EpdgTunnelManager {
                                 .KEY_SUPPORTED_IKE_SESSION_AEAD_ALGORITHMS_INT_ARRAY);
         for (int encryptionAlgo : encryptionAlgos) {
             if (validateConfig(encryptionAlgo, VALID_AEAD_ALGOS, CONFIG_TYPE_ENCRYPT_ALGO)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isIkeSessionNonAeadAlgosAvailable() {
+        int[] encryptionAlgos =
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan
+                                .KEY_SUPPORTED_IKE_SESSION_ENCRYPTION_ALGORITHMS_INT_ARRAY);
+        for (int encryptionAlgo : encryptionAlgos) {
+            if (validateConfig(encryptionAlgo, VALID_ENCRYPTION_ALGOS, CONFIG_TYPE_ENCRYPT_ALGO)) {
                 return true;
             }
         }
@@ -1415,6 +1461,11 @@ public class EpdgTunnelManager {
                                                 .KEY_IKE_SESSION_AES_GCM_KEY_SIZE_INT_ARRAY);
                 epdgSaProposal.addProposedAeadAlgorithm(aeadAlgo, aesGcmKeyLens);
             }
+        }
+
+        if (IwlanCarrierConfig.getConfigBoolean(
+                mContext, mSlotId, IwlanCarrierConfig.KEY_IKE_SA_TRANSFORMS_REORDER_BOOL)) {
+            epdgSaProposal.enableReorderingSaferProposals();
         }
     }
 
