@@ -96,9 +96,9 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -163,7 +163,7 @@ public class EpdgTunnelManager {
     private static final Map<Integer, EpdgTunnelManager> mTunnelManagerInstances =
             new ConcurrentHashMap<>();
 
-    private Queue<TunnelRequestWrapper> mPendingBringUpRequests = new LinkedList<>();
+    private final Queue<TunnelRequestWrapper> mPendingBringUpRequests = new ArrayDeque<>();
 
     private final EpdgInfo mValidEpdgInfo = new EpdgInfo();
 
@@ -175,9 +175,9 @@ public class EpdgTunnelManager {
     private int mTransactionId = 0;
     private boolean mHasConnectedToEpdg;
     private final IkeSessionCreator mIkeSessionCreator;
-    private IpSecManager mIpSecManager;
+    private final IpSecManager mIpSecManager;
 
-    private Map<String, TunnelConfig> mApnNameToTunnelConfig = new ConcurrentHashMap<>();
+    private final Map<String, TunnelConfig> mApnNameToTunnelConfig = new ConcurrentHashMap<>();
     private final Map<String, Integer> mApnNameToCurrentToken = new ConcurrentHashMap<>();
 
     private final String TAG;
@@ -316,7 +316,7 @@ public class EpdgTunnelManager {
         @NonNull final IkeSession mIkeSession;
 
         IwlanError mError;
-        private IpSecManager.IpSecTunnelInterface mIface;
+        private final IpSecManager.IpSecTunnelInterface mIface;
         private IkeSessionState mIkeSessionState;
         private final boolean mIsEmergency;
         private final InetAddress mEpdgAddress;
@@ -973,10 +973,10 @@ public class EpdgTunnelManager {
                 softTimeSeconds = CHILD_HARD_LIFETIME_SEC_MAXIMUM - LIFETIME_MARGIN_SEC_MINIMUM;
             } else {
                 hardTimeSeconds =
-                        IwlanHelper.getDefaultConfig(
+                        IwlanCarrierConfig.getDefaultConfigInt(
                                 CarrierConfigManager.Iwlan.KEY_CHILD_SA_REKEY_HARD_TIMER_SEC_INT);
                 softTimeSeconds =
-                        IwlanHelper.getDefaultConfig(
+                        IwlanCarrierConfig.getDefaultConfigInt(
                                 CarrierConfigManager.Iwlan.KEY_CHILD_SA_REKEY_SOFT_TIMER_SEC_INT);
             }
             Log.d(
@@ -991,21 +991,12 @@ public class EpdgTunnelManager {
                 new TunnelModeChildSessionParams.Builder()
                         .setLifetimeSeconds(hardTimeSeconds, softTimeSeconds);
 
+        // Else block and it's related functionality can be removed once
+        // multipleSaProposals, highSecureTransformsPrioritized and aeadAlgosEnabled feature flags
+        // related functionality becomes stable and gets instruction to remove feature flags.
         if (mFeatureFlags.multipleSaProposals()
-                && IwlanCarrierConfig.getConfigBoolean(
-                        mContext,
-                        mSlotId,
-                        CarrierConfigManager.Iwlan
-                                .KEY_SUPPORTS_CHILD_SESSION_MULTIPLE_SA_PROPOSALS_BOOL)) {
+                || mFeatureFlags.highSecureTransformsPrioritized()) {
             EpdgChildSaProposal epdgChildSaProposal = createEpdgChildSaProposal();
-
-            if (mFeatureFlags.highSecureTransformsPrioritized()
-                    && IwlanCarrierConfig.getConfigBoolean(
-                            mContext,
-                            mSlotId,
-                            IwlanCarrierConfig.KEY_IKE_SA_TRANSFORMS_REORDER_BOOL)) {
-                epdgChildSaProposal.enableReorderingSaferProposals();
-            }
 
             if (IwlanCarrierConfig.getConfigBoolean(
                     mContext,
@@ -1013,19 +1004,32 @@ public class EpdgTunnelManager {
                     CarrierConfigManager.Iwlan.KEY_ADD_KE_TO_CHILD_SESSION_REKEY_BOOL)) {
                 epdgChildSaProposal.enableAddChildSessionRekeyKePayload();
             }
-
+            // Adds single SA proposal, priority is for AEAD if configured else non-AEAD proposal.
             if (isChildSessionAeadAlgosAvailable()) {
                 childSessionParamsBuilder.addChildSaProposal(
                         epdgChildSaProposal.buildProposedChildSaAeadProposal());
+            } else {
+                childSessionParamsBuilder.addChildSaProposal(
+                        epdgChildSaProposal.buildProposedChildSaProposal());
             }
-            childSessionParamsBuilder.addChildSaProposal(
-                    epdgChildSaProposal.buildProposedChildSaProposal());
-            childSessionParamsBuilder.addChildSaProposal(
-                    epdgChildSaProposal.buildSupportedChildSaAeadProposal());
-            childSessionParamsBuilder.addChildSaProposal(
-                    epdgChildSaProposal.buildSupportedChildSaProposal());
+            // Adds multiple proposals. If AEAD proposal already added then adds
+            // configured non-AEAD proposal followed by supported AEAD and non-AEAD proposals.
+            if (IwlanCarrierConfig.getConfigBoolean(
+                    mContext,
+                    mSlotId,
+                    CarrierConfigManager.Iwlan
+                            .KEY_SUPPORTS_CHILD_SESSION_MULTIPLE_SA_PROPOSALS_BOOL)) {
+                if (isChildSessionAeadAlgosAvailable() && isChildSessionNonAeadAlgosAvailable()) {
+                    childSessionParamsBuilder.addChildSaProposal(
+                            epdgChildSaProposal.buildProposedChildSaProposal());
+                }
+                childSessionParamsBuilder.addChildSaProposal(
+                        epdgChildSaProposal.buildSupportedChildSaAeadProposal());
+                childSessionParamsBuilder.addChildSaProposal(
+                        epdgChildSaProposal.buildSupportedChildSaProposal());
+            }
         } else {
-            if (mFeatureFlags.aeadAlgosEnabled() && isChildSessionAeadAlgosAvailable()) {
+            if (isChildSessionAeadAlgosAvailable()) {
                 childSessionParamsBuilder.addChildSaProposal(buildAeadChildSaProposal());
             } else {
                 childSessionParamsBuilder.addChildSaProposal(buildChildSaProposal());
@@ -1141,10 +1145,10 @@ public class EpdgTunnelManager {
                 softTimeSeconds = IKE_HARD_LIFETIME_SEC_MAXIMUM - LIFETIME_MARGIN_SEC_MINIMUM;
             } else {
                 hardTimeSeconds =
-                        IwlanHelper.getDefaultConfig(
+                        IwlanCarrierConfig.getDefaultConfigInt(
                                 CarrierConfigManager.Iwlan.KEY_IKE_REKEY_HARD_TIMER_SEC_INT);
                 softTimeSeconds =
-                        IwlanHelper.getDefaultConfig(
+                        IwlanCarrierConfig.getDefaultConfigInt(
                                 CarrierConfigManager.Iwlan.KEY_IKE_REKEY_SOFT_TIMER_SEC_INT);
             }
             Log.d(
@@ -1173,30 +1177,34 @@ public class EpdgTunnelManager {
                         .setRetransmissionTimeoutsMillis(getRetransmissionTimeoutsFromConfig())
                         .setDpdDelaySeconds(getDpdDelayFromConfig());
 
+        // Else block and it's related functionality can be removed once
+        // multipleSaProposals, highSecureTransformsPrioritized and aeadAlgosEnabled feature flags
+        // related functionality becomes stable and gets instruction to remove feature flags.
         if (mFeatureFlags.multipleSaProposals()
-                && IwlanCarrierConfig.getConfigBoolean(
-                        mContext,
-                        mSlotId,
-                        CarrierConfigManager.Iwlan
-                                .KEY_SUPPORTS_IKE_SESSION_MULTIPLE_SA_PROPOSALS_BOOL)) {
+                || mFeatureFlags.highSecureTransformsPrioritized()) {
             EpdgIkeSaProposal epdgIkeSaProposal = createEpdgIkeSaProposal();
 
-            if (mFeatureFlags.highSecureTransformsPrioritized()
-                    && IwlanCarrierConfig.getConfigBoolean(
-                            mContext,
-                            mSlotId,
-                            IwlanCarrierConfig.KEY_IKE_SA_TRANSFORMS_REORDER_BOOL)) {
-                epdgIkeSaProposal.enableReorderingSaferProposals();
-            }
-
+            // Adds single SA proposal, priority is for AEAD if configured else non-AEAD proposal.
             if (isIkeSessionAeadAlgosAvailable()) {
                 builder.addIkeSaProposal(epdgIkeSaProposal.buildProposedIkeSaAeadProposal());
+            } else {
+                builder.addIkeSaProposal(epdgIkeSaProposal.buildProposedIkeSaProposal());
             }
-            builder.addIkeSaProposal(epdgIkeSaProposal.buildProposedIkeSaProposal());
-            builder.addIkeSaProposal(epdgIkeSaProposal.buildSupportedIkeSaAeadProposal());
-            builder.addIkeSaProposal(epdgIkeSaProposal.buildSupportedIkeSaProposal());
+            // Adds multiple proposals. If AEAD proposal already added then adds
+            // configured non-AEAD proposal followed by supported AEAD and non-AEAD proposals.
+            if (IwlanCarrierConfig.getConfigBoolean(
+                    mContext,
+                    mSlotId,
+                    CarrierConfigManager.Iwlan
+                            .KEY_SUPPORTS_IKE_SESSION_MULTIPLE_SA_PROPOSALS_BOOL)) {
+                if (isIkeSessionAeadAlgosAvailable() && isIkeSessionNonAeadAlgosAvailable()) {
+                    builder.addIkeSaProposal(epdgIkeSaProposal.buildProposedIkeSaProposal());
+                }
+                builder.addIkeSaProposal(epdgIkeSaProposal.buildSupportedIkeSaAeadProposal());
+                builder.addIkeSaProposal(epdgIkeSaProposal.buildSupportedIkeSaProposal());
+            }
         } else {
-            if (mFeatureFlags.aeadAlgosEnabled() && isIkeSessionAeadAlgosAvailable()) {
+            if (isIkeSessionAeadAlgosAvailable()) {
                 builder.addIkeSaProposal(buildIkeSaAeadProposal());
             } else {
                 builder.addIkeSaProposal(buildIkeSaProposal());
@@ -1241,9 +1249,9 @@ public class EpdgTunnelManager {
                         CarrierConfigManager.Iwlan.KEY_NATT_KEEP_ALIVE_TIMER_SEC_INT);
         if (nattKeepAliveTimer < NATT_KEEPALIVE_DELAY_SEC_MIN
                 || nattKeepAliveTimer > NATT_KEEPALIVE_DELAY_SEC_MAX) {
-            Log.d(TAG, "Falling back to default natt keep alive timer");
+            Log.d(TAG, "Falling back to default natt keep alive timer" + nattKeepAliveTimer);
             nattKeepAliveTimer =
-                    IwlanHelper.getDefaultConfig(
+                    IwlanCarrierConfig.getDefaultConfigInt(
                             CarrierConfigManager.Iwlan.KEY_NATT_KEEP_ALIVE_TIMER_SEC_INT);
         }
         builder.setNattKeepAliveDelaySeconds(nattKeepAliveTimer);
@@ -1275,6 +1283,10 @@ public class EpdgTunnelManager {
     }
 
     private boolean isChildSessionAeadAlgosAvailable() {
+        if (!mFeatureFlags.aeadAlgosEnabled()) {
+            return false;
+        }
+
         int[] encryptionAlgos =
                 IwlanCarrierConfig.getConfigIntArray(
                         mContext,
@@ -1289,7 +1301,26 @@ public class EpdgTunnelManager {
         return false;
     }
 
+    private boolean isChildSessionNonAeadAlgosAvailable() {
+        int[] encryptionAlgos =
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan
+                                .KEY_SUPPORTED_CHILD_SESSION_ENCRYPTION_ALGORITHMS_INT_ARRAY);
+        for (int encryptionAlgo : encryptionAlgos) {
+            if (validateConfig(encryptionAlgo, VALID_ENCRYPTION_ALGOS, CONFIG_TYPE_ENCRYPT_ALGO)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private boolean isIkeSessionAeadAlgosAvailable() {
+        if (!mFeatureFlags.aeadAlgosEnabled()) {
+            return false;
+        }
+
         int[] encryptionAlgos =
                 IwlanCarrierConfig.getConfigIntArray(
                         mContext,
@@ -1298,6 +1329,21 @@ public class EpdgTunnelManager {
                                 .KEY_SUPPORTED_IKE_SESSION_AEAD_ALGORITHMS_INT_ARRAY);
         for (int encryptionAlgo : encryptionAlgos) {
             if (validateConfig(encryptionAlgo, VALID_AEAD_ALGOS, CONFIG_TYPE_ENCRYPT_ALGO)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isIkeSessionNonAeadAlgosAvailable() {
+        int[] encryptionAlgos =
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
+                        CarrierConfigManager.Iwlan
+                                .KEY_SUPPORTED_IKE_SESSION_ENCRYPTION_ALGORITHMS_INT_ARRAY);
+        for (int encryptionAlgo : encryptionAlgos) {
+            if (validateConfig(encryptionAlgo, VALID_ENCRYPTION_ALGOS, CONFIG_TYPE_ENCRYPT_ALGO)) {
                 return true;
             }
         }
@@ -1415,6 +1461,11 @@ public class EpdgTunnelManager {
                                                 .KEY_IKE_SESSION_AES_GCM_KEY_SIZE_INT_ARRAY);
                 epdgSaProposal.addProposedAeadAlgorithm(aeadAlgo, aesGcmKeyLens);
             }
+        }
+
+        if (IwlanCarrierConfig.getConfigBoolean(
+                mContext, mSlotId, IwlanCarrierConfig.KEY_IKE_SA_TRANSFORMS_REORDER_BOOL)) {
+            epdgSaProposal.enableReorderingSaferProposals();
         }
     }
 
@@ -1807,6 +1858,7 @@ public class EpdgTunnelManager {
             OnClosedMetrics.Builder onClosedMetricsBuilder;
             TunnelRequestWrapper tunnelRequestWrapper;
             ConnectivityManager connectivityManager;
+            NetworkCapabilities networkCapabilities;
             boolean isNetworkValidated;
             switch (msg.what) {
                 case EVENT_CHILD_SESSION_OPENED:
@@ -1902,10 +1954,12 @@ public class EpdgTunnelManager {
                             System.currentTimeMillis() - mIkeTunnelEstablishmentStartTime;
                     mIkeTunnelEstablishmentStartTime = 0;
                     connectivityManager = mContext.getSystemService(ConnectivityManager.class);
+                    networkCapabilities =
+                            connectivityManager.getNetworkCapabilities(mIkeSessionNetwork);
                     isNetworkValidated =
-                            connectivityManager
-                                    .getNetworkCapabilities(mDefaultNetwork)
-                                    .hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+                            (networkCapabilities != null)
+                                    && networkCapabilities.hasCapability(
+                                            NetworkCapabilities.NET_CAPABILITY_VALIDATED);
                     tunnelConfig
                             .getTunnelMetrics()
                             .onOpened(
@@ -1995,10 +2049,11 @@ public class EpdgTunnelManager {
                         mIkeTunnelEstablishmentStartTime = 0;
 
                         connectivityManager = mContext.getSystemService(ConnectivityManager.class);
+                        networkCapabilities =
+                                connectivityManager.getNetworkCapabilities(mIkeSessionNetwork);
                         isNetworkValidated =
-                                connectivityManager
-                                        .getNetworkCapabilities(mDefaultNetwork)
-                                        .hasCapability(
+                                (networkCapabilities != null)
+                                        && networkCapabilities.hasCapability(
                                                 NetworkCapabilities.NET_CAPABILITY_VALIDATED);
                         onClosedMetricsBuilder
                                 .setEpdgServerAddress(tunnelConfig.getEpdgAddress())
@@ -2804,7 +2859,7 @@ public class EpdgTunnelManager {
         }
         if (!isValid) {
             timeList =
-                    IwlanHelper.getDefaultConfig(
+                    IwlanCarrierConfig.getDefaultConfigIntArray(
                             CarrierConfigManager.Iwlan.KEY_RETRANSMIT_TIMER_MSEC_INT_ARRAY);
         }
         Log.d(TAG, "getRetransmissionTimeoutsFromConfig: " + Arrays.toString(timeList));
@@ -2817,7 +2872,8 @@ public class EpdgTunnelManager {
                         mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_DPD_TIMER_SEC_INT);
         if (dpdDelay < IKE_DPD_DELAY_SEC_MIN || dpdDelay > IKE_DPD_DELAY_SEC_MAX) {
             dpdDelay =
-                    IwlanHelper.getDefaultConfig(CarrierConfigManager.Iwlan.KEY_DPD_TIMER_SEC_INT);
+                    IwlanCarrierConfig.getDefaultConfigInt(
+                            CarrierConfigManager.Iwlan.KEY_DPD_TIMER_SEC_INT);
         }
         return dpdDelay;
     }

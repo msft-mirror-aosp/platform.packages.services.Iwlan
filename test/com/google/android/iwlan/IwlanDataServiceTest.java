@@ -35,6 +35,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -46,6 +47,7 @@ import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -156,9 +158,9 @@ public class IwlanDataServiceTest {
     private @DataServiceCallback.ResultCode int mResultCode;
     private IwlanDataService mIwlanDataService;
     private IwlanDataServiceProvider mSpyIwlanDataServiceProvider;
-    private TestLooper mTestLooper = new TestLooper();
+    private final TestLooper mTestLooper = new TestLooper();
     private long mMockedCalendarTime;
-    private ArgumentCaptor<NetworkCallback> mNetworkCallbackCaptor =
+    private final ArgumentCaptor<NetworkCallback> mNetworkCallbackCaptor =
             ArgumentCaptor.forClass(NetworkCallback.class);
 
     private final class IwlanDataServiceCallback extends IDataServiceCallback.Stub {
@@ -220,6 +222,16 @@ public class IwlanDataServiceTest {
                         .strictness(Strictness.LENIENT)
                         .startMocking();
 
+        lenient()
+                .when(SubscriptionManager.getDefaultDataSubscriptionId())
+                .thenReturn(DEFAULT_SUB_INDEX);
+        lenient()
+                .when(SubscriptionManager.getSlotIndex(eq(DEFAULT_SUB_INDEX)))
+                .thenReturn(DEFAULT_SUB_INDEX);
+        lenient()
+                .when(SubscriptionManager.getSlotIndex(eq(DEFAULT_SUB_INDEX + 1)))
+                .thenReturn(DEFAULT_SUB_INDEX + 1);
+
         when(mMockContext.getSystemService(eq(ConnectivityManager.class)))
                 .thenReturn(mMockConnectivityManager);
         when(mMockContext.getSystemService(eq(SubscriptionManager.class)))
@@ -231,13 +243,10 @@ public class IwlanDataServiceTest {
 
         when(EpdgTunnelManager.getInstance(mMockContext, DEFAULT_SLOT_INDEX))
                 .thenReturn(mMockEpdgTunnelManager);
+        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
+                .thenReturn(mMockErrorPolicyManager);
         when(mMockSubscriptionManager.getActiveSubscriptionInfoForSimSlotIndex(anyInt()))
                 .thenReturn(mMockSubscriptionInfo);
-        when(mMockSubscriptionManager.getDefaultDataSubscriptionId()).thenReturn(DEFAULT_SUB_INDEX);
-        when(mMockSubscriptionManager.getSlotIndex(DEFAULT_SUB_INDEX))
-                .thenReturn(DEFAULT_SLOT_INDEX);
-        when(mMockSubscriptionManager.getSlotIndex(DEFAULT_SUB_INDEX + 1))
-                .thenReturn(DEFAULT_SLOT_INDEX + 1);
 
         when(mMockSubscriptionInfo.getSubscriptionId()).thenReturn(DEFAULT_SUB_INDEX);
 
@@ -342,7 +351,7 @@ public class IwlanDataServiceTest {
     public void testWifiOnConnected() {
         onSystemDefaultNetworkConnected(TRANSPORT_WIFI);
         assertTrue(
-                mIwlanDataService.isNetworkConnected(
+                IwlanDataService.isNetworkConnected(
                         false /* isActiveDataOnOtherSub */, false /* isCstEnabled */));
     }
 
@@ -353,7 +362,7 @@ public class IwlanDataServiceTest {
 
         onSystemDefaultNetworkLost();
         assertFalse(
-                mIwlanDataService.isNetworkConnected(
+                IwlanDataService.isNetworkConnected(
                         false /* isActiveDataOnOtherSub */, false /* isCstEnabled */));
         verify(mMockIwlanDataServiceProvider).forceCloseTunnelsInDeactivatingState();
         mIwlanDataService.removeDataServiceProvider(mMockIwlanDataServiceProvider);
@@ -474,11 +483,11 @@ public class IwlanDataServiceTest {
         getNetworkMonitorCallback().onCapabilitiesChanged(mMockNetwork, nc);
 
         boolean isActiveDataOnOtherSub =
-                mIwlanDataService.isActiveDataOnOtherSub(DEFAULT_SLOT_INDEX);
+                IwlanDataService.isActiveDataOnOtherSub(DEFAULT_SLOT_INDEX);
 
         assertFalse(isActiveDataOnOtherSub);
         assertFalse(
-                mIwlanDataService.isNetworkConnected(
+                IwlanDataService.isNetworkConnected(
                         isActiveDataOnOtherSub, true /* isCstEnabled */));
     }
 
@@ -491,11 +500,11 @@ public class IwlanDataServiceTest {
         getNetworkMonitorCallback().onCapabilitiesChanged(mMockNetwork, nc);
 
         boolean isActiveDataOnOtherSub =
-                mIwlanDataService.isActiveDataOnOtherSub(DEFAULT_SLOT_INDEX);
+                IwlanDataService.isActiveDataOnOtherSub(DEFAULT_SLOT_INDEX);
 
         assertTrue(isActiveDataOnOtherSub);
         assertTrue(
-                mIwlanDataService.isNetworkConnected(
+                IwlanDataService.isNetworkConnected(
                         isActiveDataOnOtherSub, true /* isCstEnabled */));
     }
 
@@ -508,11 +517,11 @@ public class IwlanDataServiceTest {
         getNetworkMonitorCallback().onCapabilitiesChanged(mMockNetwork, nc);
 
         boolean isActiveDataOnOtherSub =
-                mIwlanDataService.isActiveDataOnOtherSub(DEFAULT_SLOT_INDEX);
+                IwlanDataService.isActiveDataOnOtherSub(DEFAULT_SLOT_INDEX);
 
         assertTrue(isActiveDataOnOtherSub);
         assertTrue(
-                mIwlanDataService.isNetworkConnected(
+                IwlanDataService.isNetworkConnected(
                         isActiveDataOnOtherSub, true /* isCstEnabled */));
     }
 
@@ -624,24 +633,24 @@ public class IwlanDataServiceTest {
         mSpyIwlanDataServiceProvider.requestDataCallList(new DataServiceCallback(callback));
         mTestLooper.dispatchAll();
 
-        assertEquals(mResultCode, DataServiceCallback.RESULT_SUCCESS);
-        assertEquals(mResultDataCallList.size(), 1);
+        assertEquals(DataServiceCallback.RESULT_SUCCESS, mResultCode);
+        assertEquals(1, mResultDataCallList.size());
         for (DataCallResponse dataCallInfo : mResultDataCallList) {
-            assertEquals(dataCallInfo.getId(), TEST_APN_NAME.hashCode());
-            assertEquals(dataCallInfo.getLinkStatus(), DataCallResponse.LINK_STATUS_ACTIVE);
-            assertEquals(dataCallInfo.getProtocolType(), ApnSetting.PROTOCOL_IP);
-            assertEquals(dataCallInfo.getInterfaceName(), INTERFACE_NAME);
+            assertEquals(TEST_APN_NAME.hashCode(), dataCallInfo.getId());
+            assertEquals(DataCallResponse.LINK_STATUS_ACTIVE, dataCallInfo.getLinkStatus());
+            assertEquals(ApnSetting.PROTOCOL_IP, dataCallInfo.getProtocolType());
+            assertEquals(INTERFACE_NAME, dataCallInfo.getInterfaceName());
 
             mInternalAddressList = dataCallInfo.getAddresses();
-            assertEquals(mInternalAddressList.size(), 1);
+            assertEquals(1, mInternalAddressList.size());
             for (LinkAddress mLinkAddress : mInternalAddressList) {
-                assertEquals(mLinkAddress, new LinkAddress(InetAddress.getByName(IP_ADDRESS), 3));
+                assertEquals(new LinkAddress(InetAddress.getByName(IP_ADDRESS), 3), mLinkAddress);
             }
 
             mDNSAddressList = dataCallInfo.getDnsAddresses();
-            assertEquals(mDNSAddressList.size(), 1);
+            assertEquals(1, mDNSAddressList.size());
             for (InetAddress mInetAddress : mDNSAddressList) {
-                assertEquals(mInetAddress, InetAddress.getByName(DNS_ADDRESS));
+                assertEquals(InetAddress.getByName(DNS_ADDRESS), mInetAddress);
             }
 
             mGatewayAddressList = dataCallInfo.getGatewayAddresses();
@@ -651,13 +660,13 @@ public class IwlanDataServiceTest {
             }
 
             mPCSFAddressList = dataCallInfo.getPcscfAddresses();
-            assertEquals(mPCSFAddressList.size(), 1);
+            assertEquals(1, mPCSFAddressList.size());
             for (InetAddress mInetAddress : mPCSFAddressList) {
-                assertEquals(mInetAddress, InetAddress.getByName(PSCF_ADDRESS));
+                assertEquals(InetAddress.getByName(PSCF_ADDRESS), mInetAddress);
             }
 
-            assertEquals(dataCallInfo.getMtuV4(), LINK_MTU);
-            assertEquals(dataCallInfo.getMtuV6(), LINK_MTU);
+            assertEquals(LINK_MTU, dataCallInfo.getMtuV4());
+            assertEquals(LINK_MTU, dataCallInfo.getMtuV6());
         }
     }
 
@@ -667,8 +676,8 @@ public class IwlanDataServiceTest {
         mSpyIwlanDataServiceProvider.requestDataCallList(new DataServiceCallback(callback));
         mTestLooper.dispatchAll();
 
-        assertEquals(mResultCode, DataServiceCallback.RESULT_SUCCESS);
-        assertEquals(mResultDataCallList.size(), 0);
+        assertEquals(DataServiceCallback.RESULT_SUCCESS, mResultCode);
+        assertEquals(0, mResultDataCallList.size());
     }
 
     @Test
@@ -838,7 +847,7 @@ public class IwlanDataServiceTest {
                 .onSetupDataCallComplete(
                         eq(DataServiceCallback.RESULT_SUCCESS), dataCallResponseCaptor.capture());
 
-        /* check that sliceinfo is filled up and matches */
+        /* check that slice info is filled up and matches */
         DataCallResponse dataCallResponse = dataCallResponseCaptor.getValue();
         assertNotNull(dataCallResponse.getSliceInfo());
         assertEquals(dataCallResponse.getSliceInfo(), tp.sliceInfo().get());
@@ -983,8 +992,6 @@ public class IwlanDataServiceTest {
 
         IwlanCarrierConfig.putTestConfigInt(
                 IwlanCarrierConfig.KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT, 3);
-        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockErrorPolicyManager);
         when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
                 .thenReturn(DataFailCause.NONE);
 
@@ -1050,10 +1057,7 @@ public class IwlanDataServiceTest {
     @Test
     public void testHandoverFailureModeDefault() {
         DataProfile dp = buildImsDataProfile();
-        int setupDataReason = DataService.REQUEST_REASON_NORMAL;
 
-        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockErrorPolicyManager);
         when(mMockErrorPolicyManager.getRemainingRetryTimeMs(eq(TEST_APN_NAME))).thenReturn(5L);
         when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
                 .thenReturn(DataFailCause.USER_AUTHENTICATION);
@@ -1063,7 +1067,7 @@ public class IwlanDataServiceTest {
                 mMockDataServiceCallback,
                 TunnelState.TUNNEL_IN_BRINGUP,
                 null, /* linkProperties */
-                (setupDataReason == DataService.REQUEST_REASON_HANDOVER),
+                false /* isHandover */,
                 1 /* pduSessionId */,
                 true /* isImsOrEmergency */,
                 true /* isDataCallSetupWithN1 */);
@@ -1092,19 +1096,16 @@ public class IwlanDataServiceTest {
 
         DataCallResponse dataCallResponse = dataCallResponseCaptor.getValue();
         assertEquals(
-                dataCallResponse.getHandoverFailureMode(),
-                DataCallResponse.HANDOVER_FAILURE_MODE_LEGACY);
-        assertEquals(dataCallResponse.getCause(), DataFailCause.USER_AUTHENTICATION);
-        assertEquals(dataCallResponse.getRetryDurationMillis(), 5L);
+                DataCallResponse.HANDOVER_FAILURE_MODE_LEGACY,
+                dataCallResponse.getHandoverFailureMode());
+        assertEquals(DataFailCause.USER_AUTHENTICATION, dataCallResponse.getCause());
+        assertEquals(5L, dataCallResponse.getRetryDurationMillis());
     }
 
     @Test
     public void testHandoverFailureModeHandover() {
         DataProfile dp = buildImsDataProfile();
-        int setupDataReason = DataService.REQUEST_REASON_HANDOVER;
 
-        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockErrorPolicyManager);
         when(mMockErrorPolicyManager.getRemainingRetryTimeMs(eq(TEST_APN_NAME))).thenReturn(-1L);
         when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
                 .thenReturn(DataFailCause.ERROR_UNSPECIFIED);
@@ -1116,7 +1117,7 @@ public class IwlanDataServiceTest {
                 mMockDataServiceCallback,
                 TunnelState.TUNNEL_IN_BRINGUP,
                 null, /* linkProperties */
-                (setupDataReason == DataService.REQUEST_REASON_HANDOVER),
+                true /* isHandover */,
                 1 /* pduSessionId */,
                 true /* isImsOrEmergency */,
                 true /* isDataCallSetupWithN1 */);
@@ -1145,19 +1146,16 @@ public class IwlanDataServiceTest {
 
         DataCallResponse dataCallResponse = dataCallResponseCaptor.getValue();
         assertEquals(
-                dataCallResponse.getHandoverFailureMode(),
-                DataCallResponse.HANDOVER_FAILURE_MODE_NO_FALLBACK_RETRY_HANDOVER);
-        assertEquals(dataCallResponse.getCause(), DataFailCause.ERROR_UNSPECIFIED);
-        assertEquals(dataCallResponse.getRetryDurationMillis(), -1L);
+                DataCallResponse.HANDOVER_FAILURE_MODE_NO_FALLBACK_RETRY_HANDOVER,
+                dataCallResponse.getHandoverFailureMode());
+        assertEquals(DataFailCause.ERROR_UNSPECIFIED, dataCallResponse.getCause());
+        assertEquals(-1L, dataCallResponse.getRetryDurationMillis());
     }
 
     @Test
     public void testSupportInitialAttachSuccessOnIms() {
         DataProfile dp = buildImsDataProfile();
-        int setupDataReason = DataService.REQUEST_REASON_HANDOVER;
 
-        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockErrorPolicyManager);
         when(mMockErrorPolicyManager.getRemainingRetryTimeMs(eq(TEST_APN_NAME))).thenReturn(-1L);
         when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
                 .thenReturn(DataFailCause.ERROR_UNSPECIFIED);
@@ -1178,7 +1176,7 @@ public class IwlanDataServiceTest {
                 mMockDataServiceCallback,
                 TunnelState.TUNNEL_IN_BRINGUP,
                 null, /* linkProperties */
-                (setupDataReason == DataService.REQUEST_REASON_HANDOVER),
+                true /* isHandover */,
                 1 /* pduSessionId */,
                 true /* isImsOrEmergency */,
                 true /* isDataCallSetupWithN1 */);
@@ -1213,10 +1211,7 @@ public class IwlanDataServiceTest {
     @Test
     public void testSupportInitialAttachSuccessOnEmergency() {
         DataProfile dp = buildDataProfile(ApnSetting.TYPE_EMERGENCY);
-        int setupDataReason = DataService.REQUEST_REASON_HANDOVER;
 
-        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockErrorPolicyManager);
         when(mMockErrorPolicyManager.getRemainingRetryTimeMs(eq(TEST_APN_NAME))).thenReturn(-1L);
         when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
                 .thenReturn(DataFailCause.ERROR_UNSPECIFIED);
@@ -1237,7 +1232,7 @@ public class IwlanDataServiceTest {
                 mMockDataServiceCallback,
                 TunnelState.TUNNEL_IN_BRINGUP,
                 null, /* linkProperties */
-                (setupDataReason == DataService.REQUEST_REASON_HANDOVER),
+                true /* isHandover */,
                 1 /* pduSessionId */,
                 true /* isImsOrEmergency */,
                 true /* isDataCallSetupWithN1 */);
@@ -1272,10 +1267,7 @@ public class IwlanDataServiceTest {
     @Test
     public void testSupportInitialAttachOnImsCall() {
         DataProfile dp = buildImsDataProfile();
-        int setupDataReason = DataService.REQUEST_REASON_HANDOVER;
 
-        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockErrorPolicyManager);
         when(mMockErrorPolicyManager.getRemainingRetryTimeMs(eq(TEST_APN_NAME))).thenReturn(-1L);
         when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
                 .thenReturn(DataFailCause.ERROR_UNSPECIFIED);
@@ -1296,7 +1288,7 @@ public class IwlanDataServiceTest {
                 mMockDataServiceCallback,
                 TunnelState.TUNNEL_IN_BRINGUP,
                 null /* linkProperties */,
-                (setupDataReason == DataService.REQUEST_REASON_HANDOVER),
+                true /* isHandover */,
                 1 /* pduSessionId */,
                 true /* isImsOrEmergency */,
                 true /* isDataCallSetupWithN1 */);
@@ -1331,10 +1323,7 @@ public class IwlanDataServiceTest {
     @Test
     public void testSupportInitialAttachOnEmergencyCall() {
         DataProfile dp = buildDataProfile(ApnSetting.TYPE_EMERGENCY);
-        int setupDataReason = DataService.REQUEST_REASON_HANDOVER;
 
-        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockErrorPolicyManager);
         when(mMockErrorPolicyManager.getRemainingRetryTimeMs(eq(TEST_APN_NAME))).thenReturn(-1L);
         when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
                 .thenReturn(DataFailCause.ERROR_UNSPECIFIED);
@@ -1355,7 +1344,7 @@ public class IwlanDataServiceTest {
                 mMockDataServiceCallback,
                 TunnelState.TUNNEL_IN_BRINGUP,
                 null /* linkProperties */,
-                (setupDataReason == DataService.REQUEST_REASON_HANDOVER),
+                true /* isHandover */,
                 1 /* pduSessionId */,
                 true /* isImsOrEmergency */,
                 true /* isDataCallSetupWithN1 */);
@@ -1614,9 +1603,6 @@ public class IwlanDataServiceTest {
         onSystemDefaultNetworkConnected(
                 mMockNetwork, mLinkProperties, TRANSPORT_WIFI, INVALID_SUB_INDEX);
 
-        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockErrorPolicyManager);
-
         long count = 3L;
         for (int i = 0; i < count; i++) {
             mockTunnelSetupFail(dp);
@@ -1626,15 +1612,13 @@ public class IwlanDataServiceTest {
         IwlanDataServiceProvider.IwlanDataTunnelStats stats =
                 mSpyIwlanDataServiceProvider.getTunnelStats();
         long result = stats.mTunnelSetupFailureCounts.get(TEST_APN_NAME);
-        assertEquals(result, count);
+        assertEquals(count, result);
     }
 
     @Test
     public void testIwlanTunnelStatsUnsolDownCounts() {
         DataProfile dp = buildImsDataProfile();
 
-        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockErrorPolicyManager);
         when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
                 .thenReturn(DataFailCause.ERROR_UNSPECIFIED);
 
@@ -1733,8 +1717,6 @@ public class IwlanDataServiceTest {
                 1 // Transport Wi-Fi
                 );
 
-        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockErrorPolicyManager);
         when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
                 .thenReturn(DataFailCause.ERROR_UNSPECIFIED);
 
@@ -1805,8 +1787,6 @@ public class IwlanDataServiceTest {
         };
         doReturn(stackTraceElements).when(mockException).getStackTrace();
 
-        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockErrorPolicyManager);
         when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
                 .thenReturn(DataFailCause.ERROR_UNSPECIFIED);
 
@@ -1860,8 +1840,6 @@ public class IwlanDataServiceTest {
         MetricsAtom metricsAtom = mSpyIwlanDataServiceProvider.getMetricsAtomByApn(TEST_APN_NAME);
         assertNotNull(metricsAtom);
 
-        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockErrorPolicyManager);
         when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
                 .thenReturn(DataFailCause.ERROR_UNSPECIFIED);
 
@@ -1873,8 +1851,8 @@ public class IwlanDataServiceTest {
 
         mTestLooper.dispatchAll();
 
-        assertEquals(null, metricsAtom.getIwlanErrorWrappedClassname());
-        assertEquals(null, metricsAtom.getIwlanErrorWrappedStackFirstFrame());
+        assertNull(metricsAtom.getIwlanErrorWrappedClassname());
+        assertNull(metricsAtom.getIwlanErrorWrappedStackFirstFrame());
     }
 
     @Test
@@ -1903,8 +1881,6 @@ public class IwlanDataServiceTest {
         MetricsAtom metricsAtom = mSpyIwlanDataServiceProvider.getMetricsAtomByApn(TEST_APN_NAME);
         assertNotNull(metricsAtom);
 
-        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockErrorPolicyManager);
         when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
                 .thenReturn(DataFailCause.ERROR_UNSPECIFIED);
 
@@ -2010,12 +1986,12 @@ public class IwlanDataServiceTest {
                 .onDeactivateDataCallComplete(eq(DataServiceCallback.RESULT_SUCCESS));
     }
 
-    private Object callUnsupportedAppUsageMethod(
+    private void callUnsupportedAppUsageMethod(
             Object target, String methodName, Class<?>[] parameterTypes, Object[] args)
             throws Exception {
         Method method = target.getClass().getDeclaredMethod(methodName, parameterTypes);
         method.setAccessible(true);
-        return method.invoke(target, args);
+        method.invoke(target, args);
     }
 
     @Test
@@ -2148,8 +2124,6 @@ public class IwlanDataServiceTest {
 
     @Test
     public void testAllowedNetworkTypeChangeFromLteToNrInIdle_enableN1Mode() throws Exception {
-        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockErrorPolicyManager);
         when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
                 .thenReturn(DataFailCause.NONE);
         mockCarrierConfigForN1Mode(true);
@@ -2189,8 +2163,6 @@ public class IwlanDataServiceTest {
 
     @Test
     public void testAllowedNetworkTypeChangeFromNrToLteInIdle_disableN1Mode() throws Exception {
-        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockErrorPolicyManager);
         when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
                 .thenReturn(DataFailCause.NONE);
         mockCarrierConfigForN1Mode(true);
@@ -2232,8 +2204,6 @@ public class IwlanDataServiceTest {
     @Test
     public void testMultipleAllowedNetworkTypeChangeInCall_preferenceChanged_updateAfterCallEnds()
             throws Exception {
-        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockErrorPolicyManager);
         when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
                 .thenReturn(DataFailCause.NONE);
         mockCarrierConfigForN1Mode(true);
@@ -2365,7 +2335,7 @@ public class IwlanDataServiceTest {
     }
 
     @Test
-    public void testN1ModeNotSupported_tunnelBringupWithNoN1ModeCapability() {
+    public void testN1ModeNotSupported_tunnelBringUpWithNoN1ModeCapability() {
         mockCarrierConfigForN1Mode(false);
         IwlanCarrierConfig.putTestConfigBoolean(
                 IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL, true);
@@ -2388,7 +2358,7 @@ public class IwlanDataServiceTest {
     }
 
     @Test
-    public void testNoN1ModeCapabilityInOngoingDataCall_newTunnelBringup_doNotIncludeN1() {
+    public void testNoN1ModeCapabilityInOngoingDataCall_newTunnelBringUp_doNotIncludeN1() {
         mockCarrierConfigForN1Mode(true);
         IwlanCarrierConfig.putTestConfigBoolean(
                 IwlanCarrierConfig.KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL, true);
@@ -2506,7 +2476,7 @@ public class IwlanDataServiceTest {
 
         mSpyIwlanDataServiceProvider
                 .getIwlanTunnelCallback()
-                .onOpened(dp.getApn(), mMockTunnelLinkProperties);
+                .onOpened(dp.getApnSetting().getApnName(), mMockTunnelLinkProperties);
         mTestLooper.dispatchAll();
     }
 
@@ -2540,7 +2510,7 @@ public class IwlanDataServiceTest {
 
         ArrayList<Integer> resultCodeCallback = new ArrayList<>();
         DataProfile dp = buildImsDataProfile();
-        String apnName = dp.getApn();
+        String apnName = dp.getApnSetting().getApnName();
         int cid = apnName.hashCode();
 
         verifySetupDataCallSuccess(dp);
@@ -2571,7 +2541,8 @@ public class IwlanDataServiceTest {
         mSpyIwlanDataServiceProvider
                 .getIwlanTunnelCallback()
                 .onNetworkValidationStatusChanged(
-                        dp.getApn(), PreciseDataConnectionState.NETWORK_VALIDATION_SUCCESS);
+                        dp.getApnSetting().getApnName(),
+                        PreciseDataConnectionState.NETWORK_VALIDATION_SUCCESS);
         mTestLooper.dispatchAll();
 
         dataCallList = verifyDataCallListChangeAndCaptureUpdatedList();
@@ -2589,7 +2560,7 @@ public class IwlanDataServiceTest {
         ArgumentCaptor<List<DataCallResponse>> dataCallListCaptor =
                 ArgumentCaptor.forClass((Class) List.class);
         DataProfile dp = buildImsDataProfile();
-        String apnName = dp.getApn();
+        String apnName = dp.getApnSetting().getApnName();
         int cid = apnName.hashCode();
         verifySetupDataCallSuccess(dp);
 
@@ -2617,8 +2588,6 @@ public class IwlanDataServiceTest {
     public void testSetupDataCallDuringDeactivateDataCallWithDelay_tunnelCloseWithOutOfSync() {
         IwlanCarrierConfig.putTestConfigInt(
                 IwlanCarrierConfig.KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT, 3);
-        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockErrorPolicyManager);
         when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
                 .thenReturn(DataFailCause.NONE);
 
@@ -2689,8 +2658,6 @@ public class IwlanDataServiceTest {
 
     @Test
     public void testUpdateNetworkDuringTunnelBringUp_TunnelCloseWithOnSetupDataCallComplete() {
-        when(ErrorPolicyManager.getInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockErrorPolicyManager);
         when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
                 .thenReturn(DataFailCause.NONE);
         // Wifi connected

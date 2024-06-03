@@ -108,6 +108,7 @@ public class IwlanDataService extends DataService {
     private static boolean sNetworkConnected = false;
     private static Network sNetwork = null;
     private static LinkProperties sLinkProperties = null;
+    private static NetworkCapabilities sNetworkCapabilities;
     @VisibleForTesting Handler mIwlanDataServiceHandler;
     private HandlerThread mIwlanDataServiceHandlerThread;
     private static final Map<Integer, IwlanDataServiceProvider> sIwlanDataServiceProviders =
@@ -157,6 +158,9 @@ public class IwlanDataService extends DataService {
     // networkservice
     // This callback runs in the same thread as IwlanDataServiceHandler
     static class IwlanNetworkMonitorCallback extends ConnectivityManager.NetworkCallback {
+        IwlanNetworkMonitorCallback() {
+            super(ConnectivityManager.NetworkCallback.FLAG_INCLUDE_LOCATION_INFO);
+        }
 
         /** Called when the framework connects and has declared a new network ready for use. */
         @Override
@@ -228,6 +232,7 @@ public class IwlanDataService extends DataService {
                 } else if (networkCapabilities.hasTransport(TRANSPORT_WIFI)) {
                     Log.d(TAG, "Network " + network + " connected using transport WIFI");
                     IwlanDataService.setConnectedDataSub(INVALID_SUB_ID);
+                    IwlanDataService.setNetworkCapabilities(networkCapabilities);
                     IwlanDataService.setNetworkConnected(true, network, Transport.WIFI);
                 } else {
                     Log.w(TAG, "Network does not have cellular or wifi capability");
@@ -739,7 +744,6 @@ public class IwlanDataService extends DataService {
                     .setPcscfAddresses(tunnelLinkProperties.pcscfAddresses())
                     .setInterfaceName(tunnelLinkProperties.ifaceName())
                     .setGatewayAddresses(gatewayList)
-                    .setMtu(tunnelState.getLinkMtu())
                     .setMtuV4(tunnelState.getLinkMtu())
                     .setMtuV6(tunnelState.getLinkMtu())
                     .setPduSessionId(tunnelState.getPduSessionId())
@@ -1107,7 +1111,7 @@ public class IwlanDataService extends DataService {
 
         private void updateNetwork(
                 @Nullable Network network, @Nullable LinkProperties linkProperties) {
-            if (mIwlanDataService.isNetworkConnected(
+            if (isNetworkConnected(
                     isActiveDataOnOtherSub(getSlotIndex()),
                     IwlanHelper.isCrossSimCallingEnabled(mContext, getSlotIndex()))) {
                 getTunnelManager().updateNetwork(network, linkProperties);
@@ -1152,7 +1156,7 @@ public class IwlanDataService extends DataService {
 
         private void dnsPrefetchCheck() {
             boolean networkConnected =
-                    mIwlanDataService.isNetworkConnected(
+                    isNetworkConnected(
                             isActiveDataOnOtherSub(getSlotIndex()),
                             IwlanHelper.isCrossSimCallingEnabled(mContext, getSlotIndex()));
             /* Check if we need to do prefecting */
@@ -1170,7 +1174,7 @@ public class IwlanDataService extends DataService {
                 boolean isRoaming = telephonyManager.isNetworkRoaming();
                 Log.d(TAG, "Trigger EPDG prefetch. Roaming=" + isRoaming);
 
-                prefetchEpdgServerList(mIwlanDataService.sNetwork, isRoaming);
+                prefetchEpdgServerList(sNetwork, isRoaming);
             }
         }
 
@@ -1479,13 +1483,9 @@ public class IwlanDataService extends DataService {
                         // Record setup result for the Metrics
                         metricsAtom.setSetupRequestResult(DataServiceCallback.RESULT_SUCCESS);
                         metricsAtom.setIwlanError(iwlanError.getErrorType());
-
                         metricsAtom.setIwlanErrorWrappedClassnameAndStack(iwlanError);
-
-                        metricsAtom.setTunnelState(tunnelState.getState());
                         metricsAtom.setMessageId(
                                 IwlanStatsLog.IWLAN_SETUP_DATA_CALL_RESULT_REPORTED);
-
                         metricsAtom.setErrorCountOfSameCause(
                                 ErrorPolicyManager.getInstance(
                                                 mContext, iwlanDataServiceProvider.getSlotIndex())
@@ -1541,7 +1541,7 @@ public class IwlanDataService extends DataService {
                         return;
                     }
 
-                    WifiInfo wifiInfo = wifiManager.getConnectionInfo();
+                    WifiInfo wifiInfo = getWifiInfo(sNetworkCapabilities);
                     if (wifiInfo == null) {
                         Log.e(TAG, "wifiInfo is null");
                         return;
@@ -1783,7 +1783,7 @@ public class IwlanDataService extends DataService {
                                     .setIsEmergency(isEmergency);
 
                     if (reason == DataService.REQUEST_REASON_HANDOVER) {
-                        // for now assume that, at max,  only one address of eachtype (v4/v6).
+                        // for now assume that, at max,  only one address of each type (v4/v6).
                         // TODO: Check if multiple ips can be sent in ike tunnel setup
                         for (LinkAddress lAddr : linkProperties.getLinkAddresses()) {
                             if (lAddr.isIpv4()) {
@@ -1876,11 +1876,9 @@ public class IwlanDataService extends DataService {
 
                     // Record setup result for the Metrics
                     metricsAtom = iwlanDataServiceProvider.mMetricsAtomForApn.get(apnName);
-                    tunnelState = iwlanDataServiceProvider.mTunnelStateForApn.get(apnName);
                     metricsAtom.setSetupRequestResult(DataServiceCallback.RESULT_SUCCESS);
                     metricsAtom.setIwlanError(IwlanError.NO_ERROR);
                     metricsAtom.setDataCallFailCause(DataFailCause.NONE);
-                    metricsAtom.setTunnelState(tunnelState.getState());
                     metricsAtom.setHandoverFailureMode(-1);
                     metricsAtom.setRetryDurationMillis(0);
                     metricsAtom.setMessageId(IwlanStatsLog.IWLAN_SETUP_DATA_CALL_RESULT_REPORTED);
@@ -1893,10 +1891,10 @@ public class IwlanDataService extends DataService {
                             openedMetricsData.getEpdgServerSelectionDuration());
                     metricsAtom.setIkeTunnelEstablishmentDurationMillis(
                             openedMetricsData.getIkeTunnelEstablishmentDuration());
-                    metricsAtom.setIsNetworkValidated(openedMetricsData.getIsNetworkValidated());
+                    metricsAtom.setIsNetworkValidated(openedMetricsData.isNetworkValidated());
 
                     metricsAtom.sendMetricsData();
-                    metricsAtom.setMessageId(metricsAtom.INVALID_MESSAGE_ID);
+                    metricsAtom.setMessageId(MetricsAtom.INVALID_MESSAGE_ID);
                     break;
 
                 case EVENT_TUNNEL_CLOSED_METRICS:
@@ -1920,10 +1918,10 @@ public class IwlanDataService extends DataService {
                             closedMetricsData.getEpdgServerSelectionDuration());
                     metricsAtom.setIkeTunnelEstablishmentDurationMillis(
                             closedMetricsData.getIkeTunnelEstablishmentDuration());
-                    metricsAtom.setIsNetworkValidated(closedMetricsData.getIsNetworkValidated());
+                    metricsAtom.setIsNetworkValidated(closedMetricsData.isNetworkValidated());
 
                     metricsAtom.sendMetricsData();
-                    metricsAtom.setMessageId(metricsAtom.INVALID_MESSAGE_ID);
+                    metricsAtom.setMessageId(MetricsAtom.INVALID_MESSAGE_ID);
                     iwlanDataServiceProvider.mMetricsAtomForApn.remove(apnName);
                     break;
 
@@ -2308,7 +2306,7 @@ public class IwlanDataService extends DataService {
             }
 
             if (transport == Transport.WIFI && hasNetworkConnectedChanged) {
-                IwlanEventListener.onWifiConnected(mContext);
+                IwlanEventListener.onWifiConnected(getWifiInfo(sNetworkCapabilities));
             }
             // only prefetch dns and updateNetwork if Network has changed
             if (hasNetworkChanged) {
@@ -2332,6 +2330,10 @@ public class IwlanDataService extends DataService {
             }
         }
         sNetwork = network;
+    }
+
+    private static void setNetworkCapabilities(NetworkCapabilities networkCapabilities) {
+        sNetworkCapabilities = networkCapabilities;
     }
 
     /**
@@ -2408,11 +2410,6 @@ public class IwlanDataService extends DataService {
     @VisibleForTesting
     void setAppContext(Context appContext) {
         mContext = appContext;
-    }
-
-    @VisibleForTesting
-    IwlanNetworkMonitorCallback getNetworkMonitorCallback() {
-        return mNetworkMonitorCallback;
     }
 
     @VisibleForTesting
@@ -2502,6 +2499,17 @@ public class IwlanDataService extends DataService {
                 iwlanDataServiceProvider.disconnectPdnForN1ModeUpdate();
             }
         }
+    }
+
+    @Nullable
+    private static WifiInfo getWifiInfo(@Nullable NetworkCapabilities networkCapabilities) {
+        if (networkCapabilities == null) {
+            Log.d(TAG, "Cannot obtain wifi info, networkCapabilities is null");
+            return null;
+        }
+        return networkCapabilities.getTransportInfo() instanceof WifiInfo wifiInfo
+                ? wifiInfo
+                : null;
     }
 
     @Override

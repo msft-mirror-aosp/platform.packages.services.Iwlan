@@ -22,6 +22,7 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.any;
@@ -145,7 +146,7 @@ public class EpdgTunnelManagerTest {
     }
 
     @Rule public final MockitoRule mockito = MockitoJUnit.rule();
-    private TestLooper mTestLooper = new TestLooper();
+    private final TestLooper mTestLooper = new TestLooper();
 
     @Mock private Context mMockContext;
     @Mock private Network mMockDefaultNetwork;
@@ -444,8 +445,11 @@ public class EpdgTunnelManagerTest {
                         any(ChildSessionCallback.class));
         IkeSessionParams ikeSessionParams = ikeSessionParamsCaptor.getValue();
         assertEquals(
-                ikeSessionParams.getIke3gppExtension().getIke3gppParams().getMobileDeviceIdentity(),
-                EXPECTED_IMEISV);
+                EXPECTED_IMEISV,
+                ikeSessionParams
+                        .getIke3gppExtension()
+                        .getIke3gppParams()
+                        .getMobileDeviceIdentity());
     }
 
     @Test
@@ -475,8 +479,11 @@ public class EpdgTunnelManagerTest {
                         any(ChildSessionCallback.class));
         IkeSessionParams ikeSessionParams = ikeSessionParamsCaptor.getValue();
         assertEquals(
-                ikeSessionParams.getIke3gppExtension().getIke3gppParams().getMobileDeviceIdentity(),
-                TEST_IMEI);
+                TEST_IMEI,
+                ikeSessionParams
+                        .getIke3gppExtension()
+                        .getIke3gppParams()
+                        .getMobileDeviceIdentity());
     }
 
     @Test
@@ -610,7 +617,7 @@ public class EpdgTunnelManagerTest {
         assertEquals(
                 "IKE AEAD algorithms mismatch",
                 (long) aeadAlgos.length * aeadAlgosKeyLens.length,
-                (long) ikeEncrAlgos.size());
+                ikeEncrAlgos.size());
 
         ChildSessionParams childTunnelParams =
                 tunnelArgumentCaptors.mChildSessionParamsCaptor.getValue();
@@ -622,11 +629,12 @@ public class EpdgTunnelManagerTest {
         assertEquals(
                 "Child AEAD algorithms mismatch",
                 (long) aeadAlgos.length * aeadAlgosKeyLens.length,
-                (long) childEncrAlgos.size());
+                childEncrAlgos.size());
     }
 
     @Test
     public void testMultipleSaProposals() throws Exception {
+        when(mFakeFeatureFlags.aeadAlgosEnabled()).thenReturn(true);
         when(mFakeFeatureFlags.multipleSaProposals()).thenReturn(true);
         final String apnName = "ims";
 
@@ -668,7 +676,7 @@ public class EpdgTunnelManagerTest {
                 ikeTunnelParams.getIkeSaProposals().get(0).getEncryptionAlgorithms();
         assertEquals(
                 "Reorder higher AEAD in  IKE SA mismatch",
-                (long) SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12,
+                SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12,
                 (long) ikeAeadAlgos.get(0).first);
 
         ChildSessionParams childTunnelParams =
@@ -680,9 +688,9 @@ public class EpdgTunnelManagerTest {
                 childTunnelParams.getChildSaProposals().get(0).getEncryptionAlgorithms();
         assertEquals(
                 "Reorder higher AEAD in  Child SA mismatch",
-                (long) SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12,
+                SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12,
                 (long) childAeadAlgos.get(0).first);
-        assertTrue(childTunnelParams.getChildSaProposals().get(0).getDhGroups().size() == 0);
+        assertEquals(0, childTunnelParams.getChildSaProposals().get(0).getDhGroups().size());
     }
 
     @Test
@@ -735,14 +743,14 @@ public class EpdgTunnelManagerTest {
 
         assertEquals(
                 "Reorder bigger key length in IKE SA mismatch",
-                (long) SaProposal.KEY_LEN_AES_256,
+                SaProposal.KEY_LEN_AES_256,
                 (long) ikeEncrAlgos.get(0).second);
 
         List<Pair<Integer, Integer>> ikeAeadAlgos =
                 ikeTunnelParams.getIkeSaProposals().get(1).getEncryptionAlgorithms();
         assertEquals(
                 "Reorder higher AEAD in  IKE SA mismatch",
-                (long) SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16,
+                SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16,
                 (long) ikeAeadAlgos.get(0).first);
 
         ChildSessionParams childTunnelParams =
@@ -755,14 +763,14 @@ public class EpdgTunnelManagerTest {
 
         assertEquals(
                 "Reorder bigger key length in Child SA mismatch",
-                (long) SaProposal.KEY_LEN_AES_256,
+                SaProposal.KEY_LEN_AES_256,
                 (long) childEncrAlgos.get(0).second);
 
         List<Pair<Integer, Integer>> childAeadAlgos =
                 childTunnelParams.getChildSaProposals().get(1).getEncryptionAlgorithms();
         assertEquals(
                 "Reorder higher AEAD in  Child SA mismatch",
-                (long) SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16,
+                SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16,
                 (long) childAeadAlgos.get(0).first);
     }
 
@@ -927,11 +935,11 @@ public class EpdgTunnelManagerTest {
         IkeSessionParams ikeSessionParams = ikeSessionParamsCaptor.getValue();
         ChildSessionParams childSessionParams = childSessionParamsCaptor.getValue();
 
-        assertEquals(ikeSessionParams.getHardLifetimeSeconds(), hardTime);
-        assertEquals(ikeSessionParams.getSoftLifetimeSeconds(), softTime);
-        assertEquals(childSessionParams.getHardLifetimeSeconds(), hardTimeChild);
-        assertEquals(childSessionParams.getSoftLifetimeSeconds(), softTimeChild);
-        assertEquals(ikeSessionParams.getNattKeepAliveDelaySeconds(), nattTimer);
+        assertEquals(hardTime, ikeSessionParams.getHardLifetimeSeconds());
+        assertEquals(softTime, ikeSessionParams.getSoftLifetimeSeconds());
+        assertEquals(hardTimeChild, childSessionParams.getHardLifetimeSeconds());
+        assertEquals(softTimeChild, childSessionParams.getSoftLifetimeSeconds());
+        assertEquals(nattTimer, ikeSessionParams.getNattKeepAliveDelaySeconds());
     }
 
     @Test
@@ -1026,7 +1034,7 @@ public class EpdgTunnelManagerTest {
                         any(ChildSessionCallback.class));
 
         IkeSessionParams ikeSessionParams = ikeSessionParamsCaptor.getValue();
-        assertEquals(ikeSessionParams.getDpdDelaySeconds(), testDpdDelay);
+        assertEquals(testDpdDelay, ikeSessionParams.getDpdDelaySeconds());
     }
 
     @Test
@@ -1194,7 +1202,7 @@ public class EpdgTunnelManagerTest {
                         ikeSessionCallbackCaptor.capture(),
                         any(ChildSessionCallback.class));
         IkeSessionParams ikeSessionParams = ikeSessionParamsCaptor.getValue();
-        assertEquals(ikeSessionParams.getServerHostname(), ip.getHostAddress());
+        assertEquals(ip.getHostAddress(), ikeSessionParams.getServerHostname());
         return ikeSessionCallbackCaptor.getValue();
     }
 
@@ -1296,8 +1304,8 @@ public class EpdgTunnelManagerTest {
                         any(ChildSessionCallback.class));
         IkeSessionParams ikeSessionParams = ikeSessionParamsCaptor.getValue();
         assertEquals(
-                ikeSessionParams.getServerHostname(),
-                EXPECTED_EPDG_ADDRESSES.get(0).getHostAddress());
+                EXPECTED_EPDG_ADDRESSES.get(0).getHostAddress(),
+                ikeSessionParams.getServerHostname());
 
         Ike3gppExtension.Ike3gppDataListener ike3gppCallback =
                 ikeSessionParams.getIke3gppExtension().getIke3gppDataListener();
@@ -1681,7 +1689,7 @@ public class EpdgTunnelManagerTest {
 
         EpdgTunnelManager.TunnelConfig testApnTunnelConfig =
                 mEpdgTunnelManager.getTunnelConfigForApn(testApnName);
-        assertEquals(testApnTunnelConfig.getPcscfAddrList(), EXPECTED_EPDG_ADDRESSES);
+        assertEquals(EXPECTED_EPDG_ADDRESSES, testApnTunnelConfig.getPcscfAddrList());
     }
 
     @Test
@@ -1827,47 +1835,41 @@ public class EpdgTunnelManagerTest {
 
         switch (apnProtocol) {
             case ApnSetting.PROTOCOL_IPV4V6:
-                assertEquals(childSessionParams.getInboundTrafficSelectors().size(), 2);
-                assertEquals(childSessionParams.getOutboundTrafficSelectors().size(), 2);
-                assertTrue(
-                        childSessionParams.getInboundTrafficSelectors().get(0).endingAddress
-                                != childSessionParams
-                                        .getInboundTrafficSelectors()
-                                        .get(1)
-                                        .endingAddress);
-                assertTrue(
-                        childSessionParams.getInboundTrafficSelectors().get(0).startingAddress
-                                != childSessionParams
-                                        .getInboundTrafficSelectors()
-                                        .get(1)
-                                        .startingAddress);
+                assertEquals(2, childSessionParams.getInboundTrafficSelectors().size());
+                assertEquals(2, childSessionParams.getOutboundTrafficSelectors().size());
+                assertNotSame(
+                        childSessionParams.getInboundTrafficSelectors().get(0).endingAddress,
+                        childSessionParams.getInboundTrafficSelectors().get(1).endingAddress);
+                assertNotSame(
+                        childSessionParams.getInboundTrafficSelectors().get(0).startingAddress,
+                        childSessionParams.getInboundTrafficSelectors().get(1).startingAddress);
                 break;
             case ApnSetting.PROTOCOL_IPV6:
-                assertEquals(childSessionParams.getInboundTrafficSelectors().size(), 1);
-                assertEquals(childSessionParams.getOutboundTrafficSelectors().size(), 1);
+                assertEquals(1, childSessionParams.getInboundTrafficSelectors().size());
+                assertEquals(1, childSessionParams.getOutboundTrafficSelectors().size());
                 assertEquals(
                         childSessionParams.getOutboundTrafficSelectors().get(0),
                         childSessionParams.getInboundTrafficSelectors().get(0));
                 assertEquals(
-                        childSessionParams.getInboundTrafficSelectors().get(0).endingAddress,
                         InetAddresses.parseNumericAddress(
-                                "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"));
+                                "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"),
+                        childSessionParams.getInboundTrafficSelectors().get(0).endingAddress);
                 assertEquals(
-                        childSessionParams.getInboundTrafficSelectors().get(0).startingAddress,
-                        InetAddresses.parseNumericAddress("::"));
+                        InetAddresses.parseNumericAddress("::"),
+                        childSessionParams.getInboundTrafficSelectors().get(0).startingAddress);
                 break;
             case ApnSetting.PROTOCOL_IP:
-                assertEquals(childSessionParams.getInboundTrafficSelectors().size(), 1);
-                assertEquals(childSessionParams.getOutboundTrafficSelectors().size(), 1);
+                assertEquals(1, childSessionParams.getInboundTrafficSelectors().size());
+                assertEquals(1, childSessionParams.getOutboundTrafficSelectors().size());
                 assertEquals(
                         childSessionParams.getOutboundTrafficSelectors().get(0),
                         childSessionParams.getInboundTrafficSelectors().get(0));
                 assertEquals(
-                        childSessionParams.getInboundTrafficSelectors().get(0).endingAddress,
-                        InetAddresses.parseNumericAddress("255.255.255.255"));
+                        InetAddresses.parseNumericAddress("255.255.255.255"),
+                        childSessionParams.getInboundTrafficSelectors().get(0).endingAddress);
                 assertEquals(
-                        childSessionParams.getInboundTrafficSelectors().get(0).startingAddress,
-                        InetAddresses.parseNumericAddress("0.0.0.0"));
+                        InetAddresses.parseNumericAddress("0.0.0.0"),
+                        childSessionParams.getInboundTrafficSelectors().get(0).startingAddress);
                 break;
         }
     }
@@ -2037,7 +2039,7 @@ public class EpdgTunnelManagerTest {
 
         byte pduSessionIdByte =
                 ikeSessionParams.getIke3gppExtension().getIke3gppParams().getPduSessionId();
-        assertEquals(pduSessionIdToByte, pduSessionIdByte);
+        assertEquals(pduSessionIdByte, pduSessionIdToByte);
     }
 
     @Test
@@ -2045,7 +2047,9 @@ public class EpdgTunnelManagerTest {
         String testApnName = "www.xyz.com";
 
         int nattTimer = 4500; // valid range for natt timer is 0-3600
-        int ikeDefaultNattTimerValue = 20; // default value for natt timer is 20 secs
+        int defaultNattTimer =
+                IwlanCarrierConfig.getDefaultConfigInt(
+                        CarrierConfigManager.Iwlan.KEY_NATT_KEEP_ALIVE_TIMER_SEC_INT);
 
         IwlanCarrierConfig.putTestConfigInt(
                 CarrierConfigManager.Iwlan.KEY_NATT_KEEP_ALIVE_TIMER_SEC_INT, nattTimer);
@@ -2086,7 +2090,7 @@ public class EpdgTunnelManagerTest {
                         any(ChildSessionCallback.class));
 
         IkeSessionParams ikeSessionParams = ikeSessionParamsCaptor.getValue();
-        assertEquals(ikeSessionParams.getNattKeepAliveDelaySeconds(), ikeDefaultNattTimerValue);
+        assertEquals(defaultNattTimer, ikeSessionParams.getNattKeepAliveDelaySeconds());
     }
 
     @Test
@@ -2165,10 +2169,10 @@ public class EpdgTunnelManagerTest {
         // apnName verification. By default remote identification is type fqdn
         IkeFqdnIdentification ikeId =
                 (IkeFqdnIdentification) ikeSessionParams.getRemoteIdentification();
-        assertEquals(ikeId.fqdn, testApnName);
+        assertEquals(testApnName, ikeId.fqdn);
 
         // verify Network
-        assertEquals(ikeSessionParams.getNetwork(), mMockDefaultNetwork);
+        assertEquals(mMockDefaultNetwork, ikeSessionParams.getNetwork());
 
         // verify requestPcscf (true) with Apn protocol IPV6
         // it should add the pcscf config requests of type ConfigRequestIpv6PcscfServer and
@@ -2182,8 +2186,8 @@ public class EpdgTunnelManagerTest {
 
         // verify pduSessionID
         assertEquals(
-                ikeSessionParams.getIke3gppExtension().getIke3gppParams().getPduSessionId(),
-                pduSessionId);
+                pduSessionId,
+                ikeSessionParams.getIke3gppExtension().getIke3gppParams().getPduSessionId());
 
         // verify src ipv6  and src ipv4 address
         List<TunnelModeChildSessionParams.TunnelModeChildConfigRequest> configRequests =
@@ -2195,20 +2199,20 @@ public class EpdgTunnelManagerTest {
             if (configRequest instanceof TunnelModeChildSessionParams.ConfigRequestIpv6Address) {
                 ipv6ConfigRequestPresent = true;
                 assertEquals(
+                        testAddressV6,
                         ((TunnelModeChildSessionParams.ConfigRequestIpv6Address) configRequest)
-                                .getAddress(),
-                        testAddressV6);
+                                .getAddress());
                 assertEquals(
+                        ipv6AddressLen,
                         ((TunnelModeChildSessionParams.ConfigRequestIpv6Address) configRequest)
-                                .getPrefixLength(),
-                        ipv6AddressLen);
+                                .getPrefixLength());
             }
             if (configRequest instanceof TunnelModeChildSessionParams.ConfigRequestIpv4Address) {
                 ipv4ConfigRequestPresent = true;
                 assertEquals(
+                        testAddressV4,
                         ((TunnelModeChildSessionParams.ConfigRequestIpv4Address) configRequest)
-                                .getAddress(),
-                        testAddressV4);
+                                .getAddress());
             }
         }
         assertTrue(ipv6ConfigRequestPresent);
@@ -2644,7 +2648,7 @@ public class EpdgTunnelManagerTest {
                         any(EpdgSelector.EpdgSelectorCallback.class));
         IkeSessionParams ikeSessionParams =
                 ikeSessionArgumentCaptors.mIkeSessionParamsCaptor.getValue();
-        assertEquals(ikeSessionParams.getNetwork(), newNetwork);
+        assertEquals(newNetwork, ikeSessionParams.getNetwork());
     }
 
     @Test
