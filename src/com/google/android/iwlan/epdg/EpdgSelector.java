@@ -45,15 +45,27 @@ import android.util.Log;
 import com.android.internal.annotations.VisibleForTesting;
 
 import com.google.android.iwlan.ErrorPolicyManager;
+import com.google.android.iwlan.IwlanCarrierConfig;
 import com.google.android.iwlan.IwlanError;
 import com.google.android.iwlan.IwlanHelper;
 import com.google.android.iwlan.epdg.NaptrDnsResolver.NaptrTarget;
+import com.google.android.iwlan.flags.FeatureFlags;
+import com.google.android.iwlan.flags.FeatureFlagsImpl;
 
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
@@ -66,9 +78,11 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class EpdgSelector {
+    private final FeatureFlags mFeatureFlags;
     private static final String TAG = "EpdgSelector";
     private final Context mContext;
     private final int mSlotId;
@@ -76,9 +90,13 @@ public class EpdgSelector {
             new ConcurrentHashMap<>();
     private int mV4PcoId = -1;
     private int mV6PcoId = -1;
-    private byte[] mV4PcoData = null;
-    private byte[] mV6PcoData = null;
+    private List<byte[]> mV4PcoData;
+    private List<byte[]> mV6PcoData;
     @NonNull private final ErrorPolicyManager mErrorPolicyManager;
+
+    // Temporary excluded IP addresses due to recent failures. Cleared after tunnel opened
+    // successfully or all resolved IP addresses are tried and excluded.
+    private final Set<InetAddress> mTemporaryExcludedAddresses;
 
     // The default DNS timeout in the DNS module is set to 5 seconds. To account for IPC overhead,
     // IWLAN applies an internal timeout of 6 seconds, slightly longer than the default timeout
@@ -87,37 +105,24 @@ public class EpdgSelector {
     private static final long PARALLEL_STATIC_RESOLUTION_TIMEOUT_DURATION_SEC = 6L;
     private static final long PARALLEL_PLMN_RESOLUTION_TIMEOUT_DURATION_SEC = 20L;
     private static final int NUM_EPDG_SELECTION_EXECUTORS = 2; // 1 each for normal selection, SOS.
-    private static final int MAX_EPDG_SELECTION_THREADS = 2; // 1 each for prefetch, tunnel bringup.
     private static final int MAX_DNS_RESOLVER_THREADS = 25; // Do not expect > 25 FQDNs per carrier.
+
+    private static final int PCO_MCC_MNC_LEN = 3; // 3 bytes for MCC and MNC in PCO data.
+    private static final int PCO_IPV4_LEN = 4; // 4 bytes for IPv4 address in PCO data.
+    private static final int PCO_IPV6_LEN = 16; // 16 bytes for IPv6 address in PCO data.
+
     private static final String NO_DOMAIN = "NO_DOMAIN";
+    private static final Pattern PLMN_PATTERN = Pattern.compile("\\d{5,6}");
 
-    BlockingQueue<Runnable> dnsResolutionQueue =
-            new ArrayBlockingQueue<>(
-                    MAX_DNS_RESOLVER_THREADS
-                            * MAX_EPDG_SELECTION_THREADS
-                            * NUM_EPDG_SELECTION_EXECUTORS);
+    BlockingQueue<Runnable> dnsResolutionQueue;
 
-    Executor mDnsResolutionExecutor =
-            new ThreadPoolExecutor(
-                    0, MAX_DNS_RESOLVER_THREADS, 60L, TimeUnit.SECONDS, dnsResolutionQueue);
+    Executor mDnsResolutionExecutor;
 
-    ExecutorService mEpdgSelectionExecutor =
-            new ThreadPoolExecutor(
-                    0,
-                    MAX_EPDG_SELECTION_THREADS,
-                    60L,
-                    TimeUnit.SECONDS,
-                    new SynchronousQueue<Runnable>());
-    Future mDnsPrefetchFuture;
+    ExecutorService mEpdgSelectionExecutor;
+    Future<?> mDnsPrefetchFuture;
 
-    ExecutorService mSosEpdgSelectionExecutor =
-            new ThreadPoolExecutor(
-                    0,
-                    MAX_EPDG_SELECTION_THREADS,
-                    60L,
-                    TimeUnit.SECONDS,
-                    new SynchronousQueue<Runnable>());
-    Future mSosDnsPrefetchFuture;
+    ExecutorService mSosEpdgSelectionExecutor;
+    Future<?> mSosDnsPrefetchFuture;
 
     final Comparator<InetAddress> inetAddressComparator =
             (ip1, ip2) -> {
@@ -152,19 +157,60 @@ public class EpdgSelector {
     }
 
     @VisibleForTesting
-    EpdgSelector(Context context, int slotId) {
+    EpdgSelector(Context context, int slotId, FeatureFlags featureFlags) {
         mContext = context;
         mSlotId = slotId;
+        mFeatureFlags = featureFlags;
+
+        mV4PcoData = new ArrayList<>();
+        mV6PcoData = new ArrayList<>();
+
+        mV4PcoData = new ArrayList<>();
+        mV6PcoData = new ArrayList<>();
 
         mErrorPolicyManager = ErrorPolicyManager.getInstance(mContext, mSlotId);
+
+        mTemporaryExcludedAddresses = new HashSet<>();
+        initializeExecutors();
+    }
+
+    private void initializeExecutors() {
+        int maxEpdgSelectionThreads = mFeatureFlags.preventEpdgSelectionThreadsExhausted() ? 3 : 2;
+
+        dnsResolutionQueue =
+                new ArrayBlockingQueue<>(
+                        MAX_DNS_RESOLVER_THREADS
+                                * maxEpdgSelectionThreads
+                                * NUM_EPDG_SELECTION_EXECUTORS);
+
+        mDnsResolutionExecutor =
+                new ThreadPoolExecutor(
+                        0, MAX_DNS_RESOLVER_THREADS, 60L, TimeUnit.SECONDS, dnsResolutionQueue);
+
+        mEpdgSelectionExecutor =
+                new ThreadPoolExecutor(
+                        0,
+                        maxEpdgSelectionThreads,
+                        60L,
+                        TimeUnit.SECONDS,
+                        new SynchronousQueue<>());
+
+        mSosEpdgSelectionExecutor =
+                new ThreadPoolExecutor(
+                        0,
+                        maxEpdgSelectionThreads,
+                        60L,
+                        TimeUnit.SECONDS,
+                        new SynchronousQueue<>());
     }
 
     public static EpdgSelector getSelectorInstance(Context context, int slotId) {
-        mSelectorInstances.computeIfAbsent(slotId, k -> new EpdgSelector(context, slotId));
+        mSelectorInstances.computeIfAbsent(
+                slotId, k -> new EpdgSelector(context, slotId, new FeatureFlagsImpl()));
         return mSelectorInstances.get(slotId);
     }
 
-    public boolean setPcoData(int pcoId, byte[] pcoData) {
+    public boolean setPcoData(int pcoId, @NonNull byte[] pcoData) {
         Log.d(
                 TAG,
                 "onReceive PcoId:"
@@ -173,11 +219,11 @@ public class EpdgSelector {
                         + Arrays.toString(pcoData));
 
         int PCO_ID_IPV6 =
-                IwlanHelper.getConfig(
-                        CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT, mContext, mSlotId);
+                IwlanCarrierConfig.getConfigInt(
+                        mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT);
         int PCO_ID_IPV4 =
-                IwlanHelper.getConfig(
-                        CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT, mContext, mSlotId);
+                IwlanCarrierConfig.getConfigInt(
+                        mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT);
 
         Log.d(
                 TAG,
@@ -188,11 +234,11 @@ public class EpdgSelector {
 
         if (pcoId == PCO_ID_IPV4) {
             mV4PcoId = pcoId;
-            mV4PcoData = pcoData;
+            mV4PcoData.add(pcoData);
             return true;
         } else if (pcoId == PCO_ID_IPV6) {
             mV6PcoId = pcoId;
-            mV6PcoData = pcoData;
+            mV6PcoData.add(pcoData);
             return true;
         }
 
@@ -203,8 +249,47 @@ public class EpdgSelector {
         Log.d(TAG, "Clear PCO data");
         mV4PcoId = -1;
         mV6PcoId = -1;
-        mV4PcoData = null;
-        mV6PcoData = null;
+        mV4PcoData.clear();
+        mV6PcoData.clear();
+    }
+
+    /**
+     * Notify {@link EpdgSelector} that ePDG is connected successfully. The excluded ip addresses
+     * will be cleared so that next ePDG selection will retry all ip addresses.
+     */
+    void onEpdgConnectedSuccessfully() {
+        clearExcludedIpAddresses();
+    }
+
+    /**
+     * Notify {@link EpdgSelector} that failed to connect to an ePDG. EpdgSelector will add the
+     * {@code ipAddress} into excluded list and will not retry until any ePDG connected successfully
+     * or all ip addresses candidates are tried.
+     *
+     * @param ipAddress the ePDG ip address that failed to connect
+     */
+    void onEpdgConnectionFailed(InetAddress ipAddress) {
+        excludeIpAddress(ipAddress);
+    }
+
+    private void excludeIpAddress(InetAddress ipAddress) {
+        if (!mFeatureFlags.epdgSelectionExcludeFailedIpAddress()) {
+            return;
+        }
+        Log.d(TAG, "Added " + ipAddress + " into temporary excluded addresses");
+        mTemporaryExcludedAddresses.add(ipAddress);
+    }
+
+    private void clearExcludedIpAddresses() {
+        if (!mFeatureFlags.epdgSelectionExcludeFailedIpAddress()) {
+            return;
+        }
+        Log.d(TAG, "Cleared temporary excluded addresses");
+        mTemporaryExcludedAddresses.clear();
+    }
+
+    private boolean isInExcludedIpAddresses(InetAddress ipAddress) {
+        return mTemporaryExcludedAddresses.contains(ipAddress);
     }
 
     private CompletableFuture<Map.Entry<String, List<InetAddress>>> submitDnsResolverQuery(
@@ -284,12 +369,12 @@ public class EpdgSelector {
 
     @VisibleForTesting
     protected boolean hasIpv4Address(Network network) {
-        return IwlanHelper.hasIpv4Address(IwlanHelper.getAllAddressesForNetwork(network, mContext));
+        return IwlanHelper.hasIpv4Address(IwlanHelper.getAllAddressesForNetwork(mContext, network));
     }
 
     @VisibleForTesting
     protected boolean hasIpv6Address(Network network) {
-        return IwlanHelper.hasIpv6Address(IwlanHelper.getAllAddressesForNetwork(network, mContext));
+        return IwlanHelper.hasIpv6Address(IwlanHelper.getAllAddressesForNetwork(mContext, network));
     }
 
     private void printParallelDnsResult(Map<String, List<InetAddress>> domainNameToIpAddresses) {
@@ -298,6 +383,36 @@ public class EpdgSelector {
             Log.d(TAG, domain + ": " + domainNameToIpAddresses.get(domain));
         }
     }
+
+    private List<InetAddress> filterExcludedAddresses(List<InetAddress> ipList) {
+        if (!mFeatureFlags.epdgSelectionExcludeFailedIpAddress()) {
+            return ipList;
+        }
+        if (mTemporaryExcludedAddresses.containsAll(ipList)) {
+            Log.d(
+                    TAG,
+                    "All valid ip are tried and excluded, clear all"
+                            + " excluded address and retry entire list again");
+            clearExcludedIpAddresses();
+        }
+
+        var filteredIpList =
+                ipList.stream().filter(ipAddress -> !isInExcludedIpAddresses(ipAddress)).toList();
+
+        int excludedIpNum = filteredIpList.size() - ipList.size();
+        if (excludedIpNum > 0) {
+            Log.d(
+                    TAG,
+                    "Excluded "
+                            + excludedIpNum
+                            + " out of "
+                            + ipList.size()
+                            + " addresses from the list due to recent failures");
+        }
+
+        return filteredIpList;
+    }
+
     /**
      * Returns a list of unique IP addresses corresponding to the given domain names, in the same
      * order of the input. Runs DNS resolution across parallel threads.
@@ -428,7 +543,7 @@ public class EpdgSelector {
                 Log.e(TAG, "Cause of ExecutionException: ", e.getCause());
             } catch (InterruptedException e) {
                 Thread thread = Thread.currentThread();
-                if (thread.interrupted()) {
+                if (Thread.interrupted()) {
                     thread.interrupt();
                 }
                 Log.e(TAG, "InterruptedException: ", e);
@@ -464,10 +579,10 @@ public class EpdgSelector {
         String plmnFromImsi = subInfo.getMccString() + subInfo.getMncString();
 
         int[] prioritizedPlmnTypes =
-                IwlanHelper.getConfig(
-                        CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
+                IwlanCarrierConfig.getConfigIntArray(
                         mContext,
-                        mSlotId);
+                        mSlotId,
+                        CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY);
 
         List<String> ehplmns = getEhplmns();
         String registeredPlmn = getRegisteredPlmn();
@@ -510,8 +625,8 @@ public class EpdgSelector {
 
     private List<String> getPlmnsFromCarrierConfig() {
         return Arrays.asList(
-                IwlanHelper.getConfig(
-                        CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY, mContext, mSlotId));
+                IwlanCarrierConfig.getConfigStringArray(
+                        mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY));
     }
 
     private boolean isInEpdgSelectionInfo(String plmn) {
@@ -534,19 +649,19 @@ public class EpdgSelector {
         return resultIpList;
     }
 
-    private void prioritizeIp(@NonNull List<InetAddress> validIpList, @EpdgAddressOrder int order) {
-        switch (order) {
-            case IPV4_PREFERRED:
-                validIpList.sort(inetAddressComparator);
-                break;
-            case IPV6_PREFERRED:
-                validIpList.sort(inetAddressComparator.reversed());
-                break;
-            case SYSTEM_PREFERRED:
-                break;
-            default:
+    private List<InetAddress> prioritizeIp(
+            @NonNull List<InetAddress> validIpList, @EpdgAddressOrder int order) {
+        return switch (order) {
+            case IPV4_PREFERRED -> validIpList.stream().sorted(inetAddressComparator).toList();
+            case IPV6_PREFERRED -> validIpList.stream()
+                    .sorted(inetAddressComparator.reversed())
+                    .toList();
+            case SYSTEM_PREFERRED -> validIpList;
+            default -> {
                 Log.w(TAG, "Invalid EpdgAddressOrder : " + order);
-        }
+                yield validIpList;
+            }
+        };
     }
 
     private String[] splitMccMnc(String plmn) {
@@ -623,7 +738,7 @@ public class EpdgSelector {
     }
 
     private String[] getDomainNames(String key) {
-        String configValue = (String) IwlanHelper.getConfig(key, mContext, mSlotId);
+        String configValue = IwlanCarrierConfig.getConfigString(mContext, mSlotId, key);
         if (configValue == null || configValue.isEmpty()) {
             Log.d(TAG, key + " string is null");
             return null;
@@ -857,15 +972,15 @@ public class EpdgSelector {
         }
     }
 
-    private void resolutionMethodPco(int filter, List<InetAddress> validIpList) {
+    private void resolutionMethodPco(int filter, @NonNull List<InetAddress> validIpList) {
         Log.d(TAG, "PCO Method");
 
         int PCO_ID_IPV6 =
-                IwlanHelper.getConfig(
-                        CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT, mContext, mSlotId);
+                IwlanCarrierConfig.getConfigInt(
+                        mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT);
         int PCO_ID_IPV4 =
-                IwlanHelper.getConfig(
-                        CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT, mContext, mSlotId);
+                IwlanCarrierConfig.getConfigInt(
+                        mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT);
 
         switch (filter) {
             case PROTO_FILTER_IPV4:
@@ -895,17 +1010,34 @@ public class EpdgSelector {
         }
     }
 
-    private void getInetAddressWithPcoData(byte[] pcoData, List<InetAddress> validIpList) {
-        InetAddress ipAddress;
-        if (pcoData != null && pcoData.length > 0) {
-            try {
-                ipAddress = InetAddress.getByAddress(pcoData);
-                validIpList.add(ipAddress);
-            } catch (Exception e) {
-                Log.e(TAG, "Exception when querying IP address : " + e);
+    private void getInetAddressWithPcoData(
+            List<byte[]> pcoData, @NonNull List<InetAddress> validIpList) {
+        for (byte[] data : pcoData) {
+            int ipAddressLen = 0;
+            /*
+             * The PCO container contents starts with the operator MCC and MNC of size 3 bytes
+             * combined followed by one IPv6 or IPv4 address.
+             * IPv6 address is encoded as a 128-bit address and
+             * IPv4 address is encoded as 32-bit address.
+             */
+            if (data.length > PCO_MCC_MNC_LEN) {
+                ipAddressLen = data.length - PCO_MCC_MNC_LEN;
             }
-        } else {
-            Log.d(TAG, "Empty PCO data");
+            if ((ipAddressLen == PCO_IPV4_LEN) || (ipAddressLen == PCO_IPV6_LEN)) {
+                byte[] ipAddressData = Arrays.copyOfRange(data, PCO_MCC_MNC_LEN, data.length);
+                try {
+                    validIpList.add(InetAddress.getByAddress(ipAddressData));
+                } catch (UnknownHostException e) {
+                    Log.e(
+                            TAG,
+                            "Exception when querying IP address("
+                                    + Arrays.toString(ipAddressData)
+                                    + "): "
+                                    + e);
+                }
+            } else {
+                Log.e(TAG, "Invalid PCO data:" + Arrays.toString(data));
+            }
         }
     }
 
@@ -1027,10 +1159,10 @@ public class EpdgSelector {
         final Set<String> plmnsFromCarrierConfig =
                 new LinkedHashSet<>(
                         Arrays.asList(
-                                IwlanHelper.getConfig(
-                                        CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY,
+                                IwlanCarrierConfig.getConfigStringArray(
                                         mContext,
-                                        mSlotId)));
+                                        mSlotId,
+                                        CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY)));
 
         final String cellMcc = telephonyManager.getNetworkOperator().substring(0, 3);
         final String cellMnc = telephonyManager.getNetworkOperator().substring(3);
@@ -1104,7 +1236,7 @@ public class EpdgSelector {
             Log.e(TAG, "Cause of ExecutionException: ", e.getCause());
         } catch (InterruptedException e) {
             Thread thread = Thread.currentThread();
-            if (thread.interrupted()) {
+            if (Thread.interrupted()) {
                 thread.interrupt();
             }
             Log.e(TAG, "InterruptedException: ", e);
@@ -1113,8 +1245,9 @@ public class EpdgSelector {
         }
     }
 
-    // Cancels duplicate prefetches a prefetch is already running. Always schedules tunnel bringup.
-    private void trySubmitEpdgSelectionExecutor(
+    // Cancels duplicate prefetches if a prefetch is already running. Always schedules tunnel
+    // bringup.
+    protected void trySubmitEpdgSelectionExecutor(
             Runnable runnable, boolean isPrefetch, boolean isEmergency) {
         if (isEmergency) {
             if (isPrefetch) {
@@ -1173,10 +1306,10 @@ public class EpdgSelector {
                                     + isEmergency);
 
                     int[] addrResolutionMethods =
-                            IwlanHelper.getConfig(
-                                    CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
+                            IwlanCarrierConfig.getConfigIntArray(
                                     mContext,
-                                    mSlotId);
+                                    mSlotId,
+                                    CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY);
 
                     final boolean isVisitedCountryMethodRequired =
                             Arrays.stream(addrResolutionMethods)
@@ -1244,9 +1377,10 @@ public class EpdgSelector {
                         }
 
                         if (!validIpList.isEmpty()) {
-                            prioritizeIp(validIpList, order);
-                            selectorCallback.onServerListChanged(
-                                    transactionId, removeDuplicateIp(validIpList));
+                            validIpList = removeDuplicateIp(validIpList);
+                            validIpList = filterExcludedAddresses(validIpList);
+                            validIpList = prioritizeIp(validIpList, order);
+                            selectorCallback.onServerListChanged(transactionId, validIpList);
                         } else {
                             selectorCallback.onError(
                                     transactionId,
@@ -1269,6 +1403,6 @@ public class EpdgSelector {
      * @return True if the PLMN identifier is valid, false otherwise.
      */
     private static boolean isValidPlmn(String plmn) {
-        return plmn != null && plmn.matches("\\d{5,6}");
+        return plmn != null && PLMN_PATTERN.matcher(plmn).matches();
     }
 }

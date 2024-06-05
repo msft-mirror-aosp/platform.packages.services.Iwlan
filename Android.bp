@@ -1,12 +1,13 @@
 package {
+    default_team: "trendy_team_pmw_telephony",
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
 genrule {
     name: "statslog-Iwlan-java-gen",
     tools: ["stats-log-api-gen"],
-    cmd: "$(location stats-log-api-gen) --java $(out) --module iwlan --javaPackage com.google.android.iwlan"
-        + " --javaClass IwlanStatsLog",
+    cmd: "$(location stats-log-api-gen) --java $(out) --module iwlan --javaPackage com.google.android.iwlan" +
+        " --javaClass IwlanStatsLog",
     out: ["com/google/android/iwlan/IwlanStatsLog.java"],
 }
 
@@ -24,15 +25,17 @@ android_app {
     static_libs: [
         "android-support-annotations",
         "net-utils-dnspacket-common",
+        "iwlan_telephony_flags_lib",
     ],
 
     libs: [
         "android.net.ipsec.ike.stubs.system",
+        "androidx.annotation_annotation",
         "auto_value_annotations",
         "framework-annotations-lib",
         "framework-connectivity",
         "framework-wifi",
-        "modules-utils-handlerexecutor"
+        "modules-utils-handlerexecutor",
     ],
 
     plugins: ["auto_value_plugin"],
@@ -87,6 +90,9 @@ android_test {
         "mockito-target-inline-minus-junit4",
         "mockito-target-extended-minus-junit4",
         "net-utils-dnspacket-common",
+        "iwlan_telephony_flags_lib",
+        "platform-test-annotations",
+        "flag-junit",
     ],
 
     jni_libs: [

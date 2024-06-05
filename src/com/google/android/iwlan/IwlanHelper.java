@@ -26,9 +26,7 @@ import android.net.IpPrefix;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.Network;
-import android.os.PersistableBundle;
 import android.os.SystemClock;
-import android.telephony.CarrierConfigManager;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
@@ -110,8 +108,15 @@ public class IwlanHelper {
         return info;
     }
 
-    // Retrieves all IP addresses for this Network, including stacked IPv4 link addresses.
-    public static List<InetAddress> getAllAddressesForNetwork(Network network, Context context) {
+    /**
+     * Retrieves all IP addresses of a Network, including stacked IPv4 addresses.
+     *
+     * @param context a valid {@link Context} instance.
+     * @param network the network for which IP addresses are to be retrieved.
+     * @return a list of all IP addresses for the specified network. Returns an empty list if none
+     *     are found.
+     */
+    public static List<InetAddress> getAllAddressesForNetwork(Context context, Network network) {
         ConnectivityManager connectivityManager =
                 context.getSystemService(ConnectivityManager.class);
         List<InetAddress> gatewayList = new ArrayList<>();
@@ -185,38 +190,12 @@ public class IwlanHelper {
         throw new IllegalStateException("Local address should not be null.");
     }
 
-    public static <T> T getConfig(String key, Context context, int slotId) {
-        CarrierConfigManager carrierConfigManager =
-                context.getSystemService(CarrierConfigManager.class);
-        if (carrierConfigManager == null) {
-            throw new IllegalStateException("Carrier config manager is null.");
-        }
-
-        PersistableBundle bundle =
-                carrierConfigManager.getConfigForSubId(getSubId(context, slotId));
-
-        if (bundle == null || bundle.get(key) == null) {
-            return getDefaultConfig(key);
-        } else {
-            return (T) bundle.get(key);
-        }
-    }
-
-    public static <T> T getDefaultConfig(String key) {
-        PersistableBundle bundle = CarrierConfigManager.getDefaultConfig();
-        if (bundle == null) {
-            throw new IllegalStateException("Default config is null for: " + key);
-        }
-        return (T) bundle.get(key);
-    }
-
     public static boolean isDefaultDataSlot(Context context, int slotId) {
-        SubscriptionManager sm = context.getSystemService(SubscriptionManager.class);
-        int ddsSlotId = sm.getSlotIndex(sm.getDefaultDataSubscriptionId());
-        if (ddsSlotId != sm.INVALID_SIM_SLOT_INDEX) {
-            if (ddsSlotId == slotId) {
-                return true;
-            }
+        int ddsSlotId =
+                SubscriptionManager.getSlotIndex(
+                        SubscriptionManager.getDefaultDataSubscriptionId());
+        if (ddsSlotId != SubscriptionManager.INVALID_SIM_SLOT_INDEX) {
+            return ddsSlotId == slotId;
         }
         return false;
     }
