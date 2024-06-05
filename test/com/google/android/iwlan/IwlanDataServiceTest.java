@@ -2701,4 +2701,150 @@ public class IwlanDataServiceTest {
                         eq(DataServiceCallback.RESULT_SUCCESS), any(DataCallResponse.class));
         verify(mMockDataServiceCallback, never()).onDeactivateDataCallComplete(anyInt());
     }
+
+    @Test
+    public void testNormalRetryTimer() {
+        // Wifi connected
+        onSystemDefaultNetworkConnected(TRANSPORT_WIFI);
+
+        DataProfile dp = buildImsDataProfile();
+        when(mMockErrorPolicyManager.getRemainingRetryTimeMs(eq(TEST_APN_NAME))).thenReturn(5L);
+        when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
+                .thenReturn(DataFailCause.USER_AUTHENTICATION);
+
+        mSpyIwlanDataServiceProvider.setupDataCall(
+                AccessNetworkType.IWLAN, /* AccessNetworkType */
+                dp, /* dataProfile */
+                false, /* isRoaming */
+                true, /* allowRoaming */
+                DataService.REQUEST_REASON_NORMAL, /* DataService.REQUEST_REASON_NORMAL */
+                null, /* LinkProperties */
+                1, /* pduSessionId */
+                null, /* sliceInfo */
+                null, /* trafficDescriptor */
+                true, /* matchAllRuleAllowed */
+                mMockDataServiceCallback);
+        mTestLooper.dispatchAll();
+
+        mSpyIwlanDataServiceProvider.setMetricsAtom(
+                TEST_APN_NAME,
+                64, /* type IMS */
+                true,
+                13, /* LTE */
+                false,
+                true,
+                1 /* Transport Wi-Fi */);
+
+        mSpyIwlanDataServiceProvider
+                .getIwlanTunnelCallback()
+                .onClosed(TEST_APN_NAME, new IwlanError(IwlanError.NO_ERROR));
+        mTestLooper.dispatchAll();
+
+        ArgumentCaptor<DataCallResponse> dataCallResponseCaptor =
+                ArgumentCaptor.forClass(DataCallResponse.class);
+
+        verify(mMockDataServiceCallback, times(1))
+                .onSetupDataCallComplete(
+                        eq(DataServiceCallback.RESULT_SUCCESS), dataCallResponseCaptor.capture());
+        DataCallResponse dataCallResponse = dataCallResponseCaptor.getValue();
+        assertEquals(5L, dataCallResponse.getRetryDurationMillis());
+    }
+
+    @Test
+    public void testEmergencyRetryTimerWithHandover() {
+        // Wifi connected
+        onSystemDefaultNetworkConnected(TRANSPORT_WIFI);
+
+        DataProfile dp = buildDataProfile(ApnSetting.TYPE_EMERGENCY);
+        when(mMockErrorPolicyManager.getRemainingRetryTimeMs(eq(TEST_APN_NAME))).thenReturn(5L);
+        when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
+                .thenReturn(DataFailCause.USER_AUTHENTICATION);
+
+        mSpyIwlanDataServiceProvider.setupDataCall(
+                AccessNetworkType.IWLAN, /* AccessNetworkType */
+                dp, /* dataProfile */
+                false, /* isRoaming */
+                true, /* allowRoaming */
+                DataService.REQUEST_REASON_HANDOVER, /* DataService.REQUEST_REASON_HANDOVER */
+                mLinkProperties, /* LinkProperties */
+                1, /* pduSessionId */
+                null, /* sliceInfo */
+                null, /* trafficDescriptor */
+                true, /* matchAllRuleAllowed */
+                mMockDataServiceCallback);
+        mTestLooper.dispatchAll();
+
+        mSpyIwlanDataServiceProvider.setMetricsAtom(
+                TEST_APN_NAME,
+                64, /* type IMS */
+                true,
+                13, /* LTE */
+                false,
+                true,
+                1 /* Transport Wi-Fi */);
+
+        mSpyIwlanDataServiceProvider
+                .getIwlanTunnelCallback()
+                .onClosed(TEST_APN_NAME, new IwlanError(IwlanError.NO_ERROR));
+        mTestLooper.dispatchAll();
+
+        ArgumentCaptor<DataCallResponse> dataCallResponseCaptor =
+                ArgumentCaptor.forClass(DataCallResponse.class);
+
+        verify(mMockDataServiceCallback, times(1))
+                .onSetupDataCallComplete(
+                        eq(DataServiceCallback.RESULT_SUCCESS), dataCallResponseCaptor.capture());
+        DataCallResponse dataCallResponse = dataCallResponseCaptor.getValue();
+        assertEquals(5L, dataCallResponse.getRetryDurationMillis());
+    }
+
+    @Test
+    public void testEmergencyRetryTimerWithNoHandover() {
+        // Wifi connected
+        onSystemDefaultNetworkConnected(TRANSPORT_WIFI);
+
+        DataProfile dp = buildDataProfile(ApnSetting.TYPE_EMERGENCY);
+        when(mMockErrorPolicyManager.getRemainingRetryTimeMs(eq(TEST_APN_NAME))).thenReturn(5L);
+        when(mMockErrorPolicyManager.getDataFailCause(eq(TEST_APN_NAME)))
+                .thenReturn(DataFailCause.USER_AUTHENTICATION);
+
+        mSpyIwlanDataServiceProvider.setupDataCall(
+                AccessNetworkType.IWLAN, /* AccessNetworkType */
+                dp, /* dataProfile */
+                false, /* isRoaming */
+                true, /* allowRoaming */
+                DataService.REQUEST_REASON_NORMAL, /* DataService.REQUEST_REASON_NORMAL */
+                null, /* LinkProperties */
+                1, /* pduSessionId */
+                null, /* sliceInfo */
+                null, /* trafficDescriptor */
+                true, /* matchAllRuleAllowed */
+                mMockDataServiceCallback);
+        mTestLooper.dispatchAll();
+
+        mSpyIwlanDataServiceProvider.setMetricsAtom(
+                TEST_APN_NAME,
+                64, /* type IMS */
+                true,
+                13, /* LTE */
+                false,
+                true,
+                1 /* Transport Wi-Fi */);
+
+        mSpyIwlanDataServiceProvider
+                .getIwlanTunnelCallback()
+                .onClosed(TEST_APN_NAME, new IwlanError(IwlanError.NO_ERROR));
+        mTestLooper.dispatchAll();
+
+        ArgumentCaptor<DataCallResponse> dataCallResponseCaptor =
+                ArgumentCaptor.forClass(DataCallResponse.class);
+
+        verify(mMockDataServiceCallback, times(1))
+                .onSetupDataCallComplete(
+                        eq(DataServiceCallback.RESULT_SUCCESS), dataCallResponseCaptor.capture());
+        DataCallResponse dataCallResponse = dataCallResponseCaptor.getValue();
+        assertEquals(
+                DataCallResponse.RETRY_DURATION_UNDEFINED,
+                dataCallResponse.getRetryDurationMillis());
+    }
 }
