@@ -72,14 +72,6 @@ public class IwlanCarrierConfig {
             PREFIX + "ike_sa_transforms_reorder_bool";
 
     /**
-     * Boolean indicating if underlying network validation check when no response on network is
-     * enabled. By default, this value is {@link
-     * #DEFAULT_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL}.
-     */
-    public static final String KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL =
-            PREFIX + "validate_underlying_network_on_no_response_bool";
-
-    /**
      * IWLAN error policy configs that determine the behavior when error happens during ePDG tunnel
      * setup. Refer to {@link #DEFAULT_ERROR_POLICY_CONFIG_STRING} for the default value.
      *
@@ -189,12 +181,6 @@ public class IwlanCarrierConfig {
     public static final boolean DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL = false;
 
     /**
-     * The default value for determining whether underlying network validation check when no
-     * response on network shall be enabled or disabled.
-     */
-    public static final boolean DEFAULT_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL = true;
-
-    /**
      * The default value for determining IWLAN's behavior when error happens during ePDG tunnel
      * setup. This is the default value for {@link #KEY_ERROR_POLICY_CONFIG_STRING}.
      */
@@ -260,9 +246,6 @@ public class IwlanCarrierConfig {
                 KEY_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL, DEFAULT_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL);
         bundle.putBoolean(
                 KEY_IKE_SA_TRANSFORMS_REORDER_BOOL, DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL);
-        bundle.putBoolean(
-                KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL,
-                DEFAULT_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL);
         bundle.putString(KEY_ERROR_POLICY_CONFIG_STRING, DEFAULT_ERROR_POLICY_CONFIG_STRING);
         return bundle;
     }
