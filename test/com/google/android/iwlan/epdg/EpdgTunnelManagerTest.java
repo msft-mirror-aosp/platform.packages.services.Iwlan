@@ -16,6 +16,8 @@
 
 package com.google.android.iwlan.epdg;
 
+import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
+
 import static com.google.android.iwlan.epdg.EpdgTunnelManager.BRINGDOWN_REASON_UNKNOWN;
 
 import static org.junit.Assert.assertArrayEquals;
@@ -82,6 +84,7 @@ import android.util.Pair;
 import com.google.android.iwlan.ErrorPolicyManager;
 import com.google.android.iwlan.IwlanCarrierConfig;
 import com.google.android.iwlan.IwlanError;
+import com.google.android.iwlan.IwlanHelper;
 import com.google.android.iwlan.IwlanTunnelMetricsImpl;
 import com.google.android.iwlan.TunnelMetricsInterface.OnClosedMetrics;
 import com.google.android.iwlan.TunnelMetricsInterface.OnOpenedMetrics;
@@ -89,15 +92,15 @@ import com.google.android.iwlan.flags.FeatureFlags;
 
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.mockito.MockitoSession;
 import org.mockito.internal.util.reflection.FieldSetter;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
+import org.mockito.quality.Strictness;
 
 import java.io.IOException;
 import java.net.Inet4Address;
@@ -147,7 +150,6 @@ public class EpdgTunnelManagerTest {
         public void onNetworkValidationStatusChanged(String apnName, int status) {}
     }
 
-    @Rule public final MockitoRule mockito = MockitoJUnit.rule();
     private final TestLooper mTestLooper = new TestLooper();
 
     @Mock private Context mMockContext;
@@ -173,6 +175,8 @@ public class EpdgTunnelManagerTest {
     @Mock IpSecTransform mMockedIpSecTransformOut;
     @Mock LinkProperties mMockLinkProperties;
     @Mock NetworkCapabilities mMockNetworkCapabilities;
+    MockitoSession mStaticMockSession;
+    private long mMockedClockTime = 0;
 
     static class IkeSessionArgumentCaptors {
         ArgumentCaptor<IkeSessionParams> mIkeSessionParamsCaptor =
@@ -187,6 +191,15 @@ public class EpdgTunnelManagerTest {
 
     @Before
     public void setUp() throws Exception {
+        // TODO: replace with ExtendedMockitoRule?
+        MockitoAnnotations.initMocks(this);
+        mStaticMockSession =
+                mockitoSession()
+                        .spyStatic(IwlanHelper.class)
+                        .strictness(Strictness.LENIENT)
+                        .startMocking();
+        mMockedClockTime = 0;
+        when(IwlanHelper.elapsedRealtime()).thenAnswer(i -> mMockedClockTime);
         EpdgTunnelManager.resetAllInstances();
         ErrorPolicyManager.resetAllInstances();
         when(mMockContext.getSystemService(eq(ConnectivityManager.class)))
@@ -249,6 +262,7 @@ public class EpdgTunnelManagerTest {
 
     @After
     public void cleanUp() {
+        mStaticMockSession.finishMocking();
         IwlanCarrierConfig.resetTestConfig();
     }
 
@@ -380,6 +394,11 @@ public class EpdgTunnelManagerTest {
                         eq(false),
                         eq(mMockDefaultNetwork),
                         any());
+    }
+
+    private void advanceClockByTimeMs(long time) {
+        mMockedClockTime += time;
+        mTestLooper.dispatchAll();
     }
 
     private void setupTunnelBringup(
@@ -3294,6 +3313,74 @@ public class EpdgTunnelManagerTest {
         mTestLooper.dispatchAll();
 
         verify(mMockConnectivityManager, never())
+                .reportNetworkConnectivity(eq(mMockDefaultNetwork), eq(false));
+    }
+
+    @Test
+    public void testMakingCallNetworkValidation_shouldValidate_ifInEventsConfig() {
+        when(mMockNetworkCapabilities.hasCapability(
+                        eq(NetworkCapabilities.NET_CAPABILITY_VALIDATED)))
+                .thenReturn(true);
+        IwlanCarrierConfig.putTestConfigIntArray(
+                IwlanCarrierConfig.KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY,
+                new int[] {IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_MAKING_CALL});
+
+        advanceClockByTimeMs(100000);
+        mEpdgTunnelManager.validateUnderlyingNetwork(
+                IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_MAKING_CALL);
+        mTestLooper.dispatchAll();
+
+        verify(mMockConnectivityManager, times(1))
+                .reportNetworkConnectivity(eq(mMockDefaultNetwork), eq(false));
+    }
+
+    @Test
+    public void testMakingCallNetworkValidation_shouldNotValidate_ifNotInEventsConfig() {
+        when(mMockNetworkCapabilities.hasCapability(
+                        eq(NetworkCapabilities.NET_CAPABILITY_VALIDATED)))
+                .thenReturn(true);
+        IwlanCarrierConfig.putTestConfigIntArray(
+                IwlanCarrierConfig.KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY,
+                new int[] {});
+
+        advanceClockByTimeMs(100000);
+        mEpdgTunnelManager.validateUnderlyingNetwork(
+                IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_MAKING_CALL);
+        mTestLooper.dispatchAll();
+
+        verify(mMockConnectivityManager, never()).reportNetworkConnectivity(any(), eq(false));
+    }
+
+    @Test
+    public void testNetworkValidation_shouldNotValidate_ifWithinInterval() {
+        when(mMockNetworkCapabilities.hasCapability(
+                        eq(NetworkCapabilities.NET_CAPABILITY_VALIDATED)))
+                .thenReturn(true);
+        IwlanCarrierConfig.putTestConfigIntArray(
+                IwlanCarrierConfig.KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY,
+                new int[] {IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_MAKING_CALL});
+
+        advanceClockByTimeMs(100000);
+        mEpdgTunnelManager.validateUnderlyingNetwork(
+                IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_MAKING_CALL);
+        mTestLooper.dispatchAll();
+        verify(mMockConnectivityManager, times(1))
+                .reportNetworkConnectivity(eq(mMockDefaultNetwork), eq(false));
+
+        advanceClockByTimeMs(1000);
+        // Since last validation passed 1s, but interval is 10s, should not trigger validation
+        mEpdgTunnelManager.validateUnderlyingNetwork(
+                IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_MAKING_CALL);
+        mTestLooper.dispatchAll();
+        verify(mMockConnectivityManager, times(1))
+                .reportNetworkConnectivity(eq(mMockDefaultNetwork), eq(false));
+
+        advanceClockByTimeMs(20000);
+        // Since last validation passed 20s, >= interval 10s, should trigger validation
+        mEpdgTunnelManager.validateUnderlyingNetwork(
+                IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_MAKING_CALL);
+        mTestLooper.dispatchAll();
+        verify(mMockConnectivityManager, times(2))
                 .reportNetworkConnectivity(eq(mMockDefaultNetwork), eq(false));
     }
 }

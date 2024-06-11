@@ -1608,6 +1608,16 @@ public class IwlanDataService extends DataService {
 
                     int previousCallState = iwlanDataServiceProvider.mCallState;
                     int currentCallState = iwlanDataServiceProvider.mCallState = msg.arg2;
+                    boolean isCallInitiating =
+                            previousCallState == TelephonyManager.CALL_STATE_IDLE
+                                    && currentCallState == TelephonyManager.CALL_STATE_OFFHOOK;
+
+                    if (isCallInitiating) {
+                        int slotIndex = msg.arg1;
+                        EpdgTunnelManager.getInstance(mContext, slotIndex)
+                                .validateUnderlyingNetwork(
+                                        IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_MAKING_CALL);
+                    }
 
                     if (!IwlanCarrierConfig.getConfigBoolean(
                             mContext,

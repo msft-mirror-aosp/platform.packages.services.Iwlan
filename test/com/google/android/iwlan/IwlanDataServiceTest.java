@@ -21,6 +21,7 @@ import static android.net.NetworkCapabilities.TRANSPORT_ETHERNET;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 import static android.net.ipsec.ike.ike3gpp.Ike3gppParams.PDU_SESSION_ID_UNSET;
 import static android.telephony.TelephonyManager.CALL_STATE_IDLE;
+import static android.telephony.TelephonyManager.CALL_STATE_OFFHOOK;
 import static android.telephony.TelephonyManager.CALL_STATE_RINGING;
 import static android.telephony.TelephonyManager.NETWORK_TYPE_BITMASK_LTE;
 import static android.telephony.TelephonyManager.NETWORK_TYPE_BITMASK_NR;
@@ -2065,14 +2066,21 @@ public class IwlanDataServiceTest {
         IwlanCarrierConfig.putTestConfigBundle(bundle);
     }
 
+    private void sendCallStateChangedEvent(int callState, int slotIndex) {
+        mIwlanDataService
+                .mIwlanDataServiceHandler
+                .obtainMessage(IwlanEventListener.CALL_STATE_CHANGED_EVENT, slotIndex, callState)
+                .sendToTarget();
+    }
+
+    private void sendCallStateChangedEvent(int callState) {
+        sendCallStateChangedEvent(callState, DEFAULT_SLOT_INDEX);
+    }
+
     private void mockCallState(int callState) {
         onSystemDefaultNetworkConnected(TRANSPORT_CELLULAR);
 
-        mIwlanDataService
-                .mIwlanDataServiceHandler
-                .obtainMessage(
-                        IwlanEventListener.CALL_STATE_CHANGED_EVENT, DEFAULT_SLOT_INDEX, callState)
-                .sendToTarget();
+        sendCallStateChangedEvent(callState);
 
         mSpyIwlanDataServiceProvider.setMetricsAtom(
                 TEST_APN_NAME, 64, true, TelephonyManager.NETWORK_TYPE_LTE, false, true, 1);
@@ -2785,6 +2793,42 @@ public class IwlanDataServiceTest {
                         eq(DataServiceCallback.RESULT_SUCCESS), dataCallResponseCaptor.capture());
         DataCallResponse dataCallResponse = dataCallResponseCaptor.getValue();
         assertEquals(5L, dataCallResponse.getRetryDurationMillis());
+    }
+
+    @Test
+    public void testTriggerNetworkValidationByEvent_shouldTrigger_ifMakingCall() {
+        // Wifi connected
+        onSystemDefaultNetworkConnected(
+                mMockNetwork, mLinkProperties, TRANSPORT_WIFI, DEFAULT_SUB_INDEX);
+
+        mTestLooper.dispatchAll();
+        sendCallStateChangedEvent(CALL_STATE_IDLE);
+        mTestLooper.dispatchAll();
+        sendCallStateChangedEvent(CALL_STATE_OFFHOOK);
+        mTestLooper.dispatchAll();
+        sendCallStateChangedEvent(CALL_STATE_IDLE);
+        mTestLooper.dispatchAll();
+        verify(mMockEpdgTunnelManager, times(1))
+                .validateUnderlyingNetwork(
+                        eq(IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_MAKING_CALL));
+    }
+
+    @Test
+    public void testTriggerNetworkValidationByEvent_shouldNotTrigger_ifAnsweringCall() {
+        // Wifi connected
+        onSystemDefaultNetworkConnected(
+                mMockNetwork, mLinkProperties, TRANSPORT_WIFI, DEFAULT_SUB_INDEX);
+
+        mTestLooper.dispatchAll();
+        sendCallStateChangedEvent(CALL_STATE_IDLE);
+        mTestLooper.dispatchAll();
+        sendCallStateChangedEvent(CALL_STATE_RINGING);
+        mTestLooper.dispatchAll();
+        sendCallStateChangedEvent(CALL_STATE_OFFHOOK);
+        mTestLooper.dispatchAll();
+        sendCallStateChangedEvent(CALL_STATE_IDLE);
+        mTestLooper.dispatchAll();
+        verify(mMockEpdgTunnelManager, never()).validateUnderlyingNetwork(anyInt());
     }
 
     @Test
