@@ -291,6 +291,7 @@ public class IwlanDataService extends DataService {
             private boolean mIsDataCallWithN1;
             private int mNetworkValidationStatus =
                     PreciseDataConnectionState.NETWORK_VALIDATION_SUCCESS;
+            private int mApnTypeBitmask;
 
             public boolean getIsDataCallWithN1() {
                 return mIsDataCallWithN1;
@@ -411,6 +412,14 @@ public class IwlanDataService extends DataService {
 
             public int getNetworkValidationStatus() {
                 return mNetworkValidationStatus;
+            }
+
+            public void setApnTypeBitmask(int apnTypeBitmask) {
+                mApnTypeBitmask = apnTypeBitmask;
+            }
+
+            public boolean hasApnType(int apnType) {
+                return (mApnTypeBitmask & apnType) != 0;
             }
 
             @Override
@@ -1067,6 +1076,7 @@ public class IwlanDataService extends DataService {
             tunnelState.setIsImsOrEmergency(isImsOrEmergency);
             tunnelState.setIsDataCallWithN1(isDataCallSetupWithN1);
             mTunnelStateForApn.put(dataProfile.getApnSetting().getApnName(), tunnelState);
+            tunnelState.setApnTypeBitmask(dataProfile.getApnSetting().getApnTypeBitmask());
         }
 
         @VisibleForTesting
@@ -1469,6 +1479,11 @@ public class IwlanDataService extends DataService {
                                                             mContext,
                                                             iwlanDataServiceProvider.getSlotIndex())
                                                     .getRemainingRetryTimeMs(apnName);
+                            // TODO(b/343962773): Need to refactor into ErrorPolicyManager
+                            if (!tunnelState.getIsHandover()
+                                    && tunnelState.hasApnType(ApnSetting.TYPE_EMERGENCY)) {
+                                retryTimeMillis = DataCallResponse.RETRY_DURATION_UNDEFINED;
+                            }
                             respBuilder.setRetryDurationMillis(retryTimeMillis);
                             metricsAtom.setRetryDurationMillis(retryTimeMillis);
                         } else {
