@@ -51,6 +51,27 @@ public class IwlanCarrierConfig {
             PREFIX + "update_n1_mode_on_ui_change_bool";
 
     /**
+     * Boolean indicating if distinct ePDG selection for emergency sessions is enabled. Refer to
+     * {@link #DEFAULT_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL} for the default value.
+     */
+    public static final String KEY_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL =
+            PREFIX + "distinct_epdg_for_emergency_allowed_bool";
+
+    /**
+     * Key to control whether the UE includes the IKE DEVICE_IDENTITY Notify payload when receiving
+     * a request. See {@link #DEFAULT_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL} for the default value.
+     */
+    public static final String KEY_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL =
+            PREFIX + "ike_device_identity_supported_bool";
+
+    /**
+     * Boolean indicating if reordering ike SA transforms enabled. Refer to
+     * {@link #DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL} for the default value.
+     */
+    public static final String KEY_IKE_SA_TRANSFORMS_REORDER_BOOL =
+            PREFIX + "ike_sa_transforms_reorder_bool";
+
+    /**
      * Default delay in seconds for releasing the IWLAN connection after a WWAN handover. This is
      * the default value for {@link #KEY_HANDOVER_TO_WWAN_RELEASE_DELAY_SECOND_INT}.
      */
@@ -67,6 +88,18 @@ public class IwlanCarrierConfig {
      * 5G enabling status via the UI/UX.
      */
     public static final boolean DEFAULT_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL = true;
+
+    /** This is the default value for {@link #KEY_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL}. */
+    public static final boolean DEFAULT_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL = false;
+    /**
+     * Default value indicating whether the UE includes the IKE DEVICE_IDENTITY Notify payload upon
+     * receiving a request. This is the default setting for {@link
+     * #KEY_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL}.
+     */
+    public static final boolean DEFAULT_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL = false;
+
+    /** This is the default value for {@link #KEY_IKE_SA_TRANSFORMS_REORDER_BOOL}. */
+    public static final boolean DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL = false;
 
     private static PersistableBundle sTestBundle = new PersistableBundle();
 
@@ -91,6 +124,13 @@ public class IwlanCarrierConfig {
                 DEFAULT_N1_MODE_EXCLUSION_FOR_EMERGENCY_SESSION_BOOL);
         bundle.putBoolean(
                 KEY_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL, DEFAULT_UPDATE_N1_MODE_ON_UI_CHANGE_BOOL);
+        bundle.putBoolean(
+                KEY_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL,
+                DEFAULT_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL);
+        bundle.putBoolean(
+                KEY_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL, DEFAULT_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL);
+        bundle.putBoolean(
+                KEY_IKE_SA_TRANSFORMS_REORDER_BOOL, DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL);
         return bundle;
     }
 
@@ -354,62 +394,62 @@ public class IwlanCarrierConfig {
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    static void putTestConfigBundle(PersistableBundle bundle) {
+    public static void putTestConfigBundle(PersistableBundle bundle) {
         sTestBundle.putAll(bundle);
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    static void putTestConfigInt(@NonNull String key, int value) {
+    public static void putTestConfigInt(@NonNull String key, int value) {
         sTestBundle.putInt(key, value);
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    static void putTestConfigLong(@NonNull String key, long value) {
+    public static void putTestConfigLong(@NonNull String key, long value) {
         sTestBundle.putLong(key, value);
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    static void putTestConfigDouble(@NonNull String key, double value) {
+    public static void putTestConfigDouble(@NonNull String key, double value) {
         sTestBundle.putDouble(key, value);
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    static void putTestConfigBoolean(@NonNull String key, boolean value) {
+    public static void putTestConfigBoolean(@NonNull String key, boolean value) {
         sTestBundle.putBoolean(key, value);
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    static void putTestConfigString(@NonNull String key, String value) {
+    public static void putTestConfigString(@NonNull String key, String value) {
         sTestBundle.putString(key, value);
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    static void putTestConfigIntArray(@NonNull String key, @NonNull int[] value) {
+    public static void putTestConfigIntArray(@NonNull String key, @NonNull int[] value) {
         sTestBundle.putIntArray(key, value);
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    static void putTestConfigLongArray(@NonNull String key, @NonNull long[] value) {
+    public static void putTestConfigLongArray(@NonNull String key, @NonNull long[] value) {
         sTestBundle.putLongArray(key, value);
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    static void putTestConfigDoubleArray(@NonNull String key, @NonNull double[] value) {
+    public static void putTestConfigDoubleArray(@NonNull String key, @NonNull double[] value) {
         sTestBundle.putDoubleArray(key, value);
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    static void putTestConfigBooleanArray(@NonNull String key, @NonNull boolean[] value) {
+    public static void putTestConfigBooleanArray(@NonNull String key, @NonNull boolean[] value) {
         sTestBundle.putBooleanArray(key, value);
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    static void putTestConfigStringArray(@NonNull String key, @NonNull String[] value) {
+    public static void putTestConfigStringArray(@NonNull String key, @NonNull String[] value) {
         sTestBundle.putStringArray(key, value);
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    static void resetTestConfig() {
+    public static void resetTestConfig() {
         sTestBundle.clear();
     }
 }

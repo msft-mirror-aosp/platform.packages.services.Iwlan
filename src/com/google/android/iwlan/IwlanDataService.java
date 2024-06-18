@@ -19,6 +19,7 @@ package com.google.android.iwlan;
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 import static android.net.ipsec.ike.ike3gpp.Ike3gppParams.PDU_SESSION_ID_UNSET;
+import static android.telephony.PreciseDataConnectionState.NetworkValidationStatus;
 
 import static com.google.android.iwlan.epdg.EpdgTunnelManager.BRINGDOWN_REASON_DEACTIVATE_DATA_CALL;
 import static com.google.android.iwlan.epdg.EpdgTunnelManager.BRINGDOWN_REASON_IN_DEACTIVATING_STATE;
@@ -54,6 +55,7 @@ import android.telephony.CellInfoLte;
 import android.telephony.CellInfoNr;
 import android.telephony.CellInfoWcdma;
 import android.telephony.DataFailCause;
+import android.telephony.PreciseDataConnectionState;
 import android.telephony.TelephonyManager;
 import android.telephony.data.ApnSetting;
 import android.telephony.data.DataCallResponse;
@@ -92,6 +94,8 @@ import java.util.LongSummaryStatistics;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 
 public class IwlanDataService extends DataService {
 
@@ -126,6 +130,8 @@ public class IwlanDataService extends DataService {
     private static final int EVENT_TUNNEL_OPENED_METRICS = EVENT_BASE + 8;
     private static final int EVENT_TUNNEL_CLOSED_METRICS = EVENT_BASE + 9;
     private static final int EVENT_DEACTIVATE_DATA_CALL_WITH_DELAY = EVENT_BASE + 10;
+    private static final int EVENT_ON_LIVENESS_STATUS_CHANGED = EVENT_BASE + 11;
+    private static final int EVENT_REQUEST_NETWORK_VALIDATION = EVENT_BASE + 12;
 
     @VisibleForTesting
     enum Transport {
@@ -278,6 +284,8 @@ public class IwlanDataService extends DataService {
             private boolean mIsImsOrEmergency;
             private DeactivateDataCallData mPendingDeactivateDataCallData;
             private boolean mIsDataCallWithN1;
+            private int mNetworkValidationStatus =
+                    PreciseDataConnectionState.NETWORK_VALIDATION_SUCCESS;
 
             public boolean getIsDataCallWithN1() {
                 return mIsDataCallWithN1;
@@ -392,6 +400,14 @@ public class IwlanDataService extends DataService {
                 mPendingDeactivateDataCallData = deactivateDataCallData;
             }
 
+            public void setNetworkValidationStatus(int networkValidationStatus) {
+                mNetworkValidationStatus = networkValidationStatus;
+            }
+
+            public int getNetworkValidationStatus() {
+                return mNetworkValidationStatus;
+            }
+
             @Override
             public String toString() {
                 StringBuilder sb = new StringBuilder();
@@ -431,6 +447,8 @@ public class IwlanDataService extends DataService {
                     sb.append("\n\tTime taken for the tunnel to come up in ms: ")
                             .append(tunnelUpTime);
                 }
+                sb.append("\n\tCurrent network validation status: ")
+                        .append(mNetworkValidationStatus);
                 return sb.toString();
             }
         }
@@ -475,6 +493,23 @@ public class IwlanDataService extends DataService {
                                                         error,
                                                         mIwlanDataServiceProvider)));
             }
+
+            public void onNetworkValidationStatusChanged(
+                    String apnName, @NetworkValidationStatus int status) {
+                Log.d(
+                        SUB_TAG,
+                        "Liveness status changed. APN: "
+                                + apnName
+                                + ", status: "
+                                + PreciseDataConnectionState.networkValidationStatusToString(
+                                        status));
+                getIwlanDataServiceHandler()
+                        .obtainMessage(
+                                EVENT_ON_LIVENESS_STATUS_CHANGED,
+                                new TunnelValidationStatusData(
+                                        apnName, status, mIwlanDataServiceProvider))
+                        .sendToTarget();
+            }
         }
 
         /** Holds all tunnel related time and count statistics for this IwlanDataServiceProvider */
@@ -488,6 +523,7 @@ public class IwlanDataService extends DataService {
             @VisibleForTesting
             Map<String, LongSummaryStatistics> mTunnelSetupSuccessStats =
                     new HashMap<String, LongSummaryStatistics>();
+
             // Count for Tunnel Setup failures onClosed when in BRING_UP
             @VisibleForTesting
             Map<String, Long> mTunnelSetupFailureCounts = new HashMap<String, Long>();
@@ -707,6 +743,7 @@ public class IwlanDataService extends DataService {
                     .setMtuV4(tunnelState.getLinkMtu())
                     .setMtuV6(tunnelState.getLinkMtu())
                     .setPduSessionId(tunnelState.getPduSessionId())
+                    .setNetworkValidationStatus(tunnelState.getNetworkValidationStatus())
                     .build(); // underlying n/w is same
         }
 
@@ -916,6 +953,45 @@ public class IwlanDataService extends DataService {
 
             getIwlanDataServiceHandler()
                     .obtainMessage(event, deactivateDataCallData)
+                    .sendToTarget();
+        }
+
+        /**
+         * Requests validation check to see if the network is working properly for a given data
+         * call.
+         *
+         * <p>This request is completed immediately after submitting the request to the data service
+         * provider and receiving {@link DataServiceCallback.ResultCode}, and progress status or
+         * validation results are notified through {@link
+         * DataCallResponse#getNetworkValidationStatus}.
+         *
+         * <p>If the network validation request is submitted successfully, {@link
+         * DataServiceCallback#RESULT_SUCCESS} is passed to {@code resultCodeCallback}. If the
+         * network validation feature is not supported by the data service provider itself, {@link
+         * DataServiceCallback#RESULT_ERROR_UNSUPPORTED} is passed to {@code resultCodeCallback}.
+         * See {@link DataServiceCallback.ResultCode} for the type of response that indicates
+         * whether the request was successfully submitted or had an error.
+         *
+         * <p>In response to this network validation request, providers can validate the data call
+         * in their own way. For example, in IWLAN, the DPD (Dead Peer Detection) can be used as a
+         * tool to check whether a data call is alive.
+         *
+         * @param cid The identifier of the data call which is provided in {@link DataCallResponse}
+         * @param executor The callback executor for the response.
+         * @param resultCodeCallback Listener for the {@link DataServiceCallback.ResultCode} that
+         *     request validation to the DataService and checks if the request has been submitted.
+         */
+        @Override
+        public void requestNetworkValidation(
+                int cid, Executor executor, Consumer<Integer> resultCodeCallback) {
+            Objects.requireNonNull(executor, "executor cannot be null");
+            Objects.requireNonNull(resultCodeCallback, "resultCodeCallback cannot be null");
+            Log.d(TAG, "request Network Validation: " + cid);
+
+            getIwlanDataServiceHandler()
+                    .obtainMessage(
+                            EVENT_REQUEST_NETWORK_VALIDATION,
+                            new NetworkValidationInfo(cid, executor, resultCodeCallback, this))
                     .sendToTarget();
         }
 
@@ -1218,6 +1294,7 @@ public class IwlanDataService extends DataService {
 
         private void disconnectPdnForN1ModeUpdate() {
             if (hasActiveOrInitiatingDataCall()) {
+                Log.d(TAG, "Disconnect PDNs for N1 mode update");
                 forceCloseTunnels(
                         mIs5GEnabledOnUi
                                 ? EpdgTunnelManager.BRINGDOWN_REASON_ENABLE_N1_MODE
@@ -1848,6 +1925,14 @@ public class IwlanDataService extends DataService {
                     iwlanDataServiceProvider.mMetricsAtomForApn.remove(apnName);
                     break;
 
+                case EVENT_ON_LIVENESS_STATUS_CHANGED:
+                    handleLivenessStatusChange((TunnelValidationStatusData) msg.obj);
+                    break;
+
+                case EVENT_REQUEST_NETWORK_VALIDATION:
+                    handleNetworkValidationRequest((NetworkValidationInfo) msg.obj);
+                    break;
+
                 default:
                     throw new IllegalStateException("Unexpected value: " + msg.what);
             }
@@ -1877,6 +1962,49 @@ public class IwlanDataService extends DataService {
             }
             Log.d(TAG, "Processing deactivation for APN: " + matchingApn);
             processDeactivateDataCall(serviceProvider, data, matchingApn);
+        }
+
+        private void handleNetworkValidationRequest(NetworkValidationInfo networkValidationInfo) {
+            IwlanDataServiceProvider iwlanDataServiceProvider =
+                    networkValidationInfo.mIwlanDataServiceProvider;
+            int cid = networkValidationInfo.mCid;
+            Executor executor = networkValidationInfo.mExecutor;
+            Consumer<Integer> resultCodeCallback = networkValidationInfo.mResultCodeCallback;
+            IwlanDataServiceProvider.TunnelState tunnelState;
+
+            String apnName = findMatchingApn(iwlanDataServiceProvider, cid);
+            int resultCode;
+            if (apnName == null) {
+                Log.w(TAG, "no matching APN name found for network validation.");
+                resultCode = DataServiceCallback.RESULT_ERROR_UNSUPPORTED;
+            } else {
+                EpdgTunnelManager epdgTunnelManager = iwlanDataServiceProvider.getTunnelManager();
+                epdgTunnelManager.requestNetworkValidationForApn(apnName);
+                resultCode = DataServiceCallback.RESULT_SUCCESS;
+                tunnelState = iwlanDataServiceProvider.mTunnelStateForApn.get(apnName);
+                if (tunnelState == null) {
+                    Log.w(TAG, "EVENT_REQUEST_NETWORK_VALIDATION: tunnel state is null.");
+                } else {
+                    tunnelState.setNetworkValidationStatus(
+                            PreciseDataConnectionState.NETWORK_VALIDATION_IN_PROGRESS);
+                }
+            }
+            executor.execute(() -> resultCodeCallback.accept(resultCode));
+        }
+
+        private void handleLivenessStatusChange(TunnelValidationStatusData validationStatusData) {
+            IwlanDataServiceProvider iwlanDataServiceProvider =
+                    validationStatusData.mIwlanDataServiceProvider;
+            String apnName = validationStatusData.mApnName;
+            IwlanDataServiceProvider.TunnelState tunnelState =
+                    iwlanDataServiceProvider.mTunnelStateForApn.get(apnName);
+            if (tunnelState == null) {
+                Log.w(TAG, "EVENT_ON_LIVENESS_STATUS_CHANGED: tunnel state is null.");
+                return;
+            }
+            tunnelState.setNetworkValidationStatus(validationStatusData.mStatus);
+            iwlanDataServiceProvider.notifyDataCallListChanged(
+                    iwlanDataServiceProvider.getCallList());
         }
 
         private String findMatchingApn(IwlanDataServiceProvider serviceProvider, int cid) {
@@ -1974,6 +2102,34 @@ public class IwlanDataService extends DataService {
                 String apnName, IwlanError iwlanError, IwlanDataServiceProvider dsp) {
             mApnName = apnName;
             mIwlanError = iwlanError;
+            mIwlanDataServiceProvider = dsp;
+        }
+    }
+
+    private static final class TunnelValidationStatusData {
+        final String mApnName;
+        final int mStatus;
+        final IwlanDataServiceProvider mIwlanDataServiceProvider;
+
+        private TunnelValidationStatusData(
+                String apnName, int status, IwlanDataServiceProvider dsp) {
+            mApnName = apnName;
+            mStatus = status;
+            mIwlanDataServiceProvider = dsp;
+        }
+    }
+
+    private static final class NetworkValidationInfo {
+        final int mCid;
+        final Executor mExecutor;
+        final Consumer<Integer> mResultCodeCallback;
+        final IwlanDataServiceProvider mIwlanDataServiceProvider;
+
+        private NetworkValidationInfo(
+                int cid, Executor executor, Consumer<Integer> r, IwlanDataServiceProvider dsp) {
+            mCid = cid;
+            mExecutor = executor;
+            mResultCodeCallback = r;
             mIwlanDataServiceProvider = dsp;
         }
     }
@@ -2314,6 +2470,10 @@ public class IwlanDataService extends DataService {
                 return "CALL_STATE_CHANGED_EVENT";
             case IwlanEventListener.PREFERRED_NETWORK_TYPE_CHANGED_EVENT:
                 return "PREFERRED_NETWORK_TYPE_CHANGED_EVENT";
+            case EVENT_ON_LIVENESS_STATUS_CHANGED:
+                return "EVENT_ON_LIVENESS_STATUS_CHANGED";
+            case EVENT_REQUEST_NETWORK_VALIDATION:
+                return "EVENT_REQUEST_NETWORK_VALIDATION";
             default:
                 return "Unknown(" + event + ")";
         }
