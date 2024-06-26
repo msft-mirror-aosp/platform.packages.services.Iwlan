@@ -22,7 +22,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import android.content.Context;
@@ -110,7 +110,7 @@ public class IwlanBroadcastReceiverTest {
         onReceiveMethodWithArgs(ApnSetting.TYPE_IMS, TEST_PCO_ID_I_PV_6, null);
 
         // Verify the called times of setPcoData method
-        verify(mMockEpdgSelector, times(0)).setPcoData(anyInt(), any(byte[].class));
+        verify(mMockEpdgSelector, never()).setPcoData(anyInt(), any(byte[].class));
     }
 
     @Test
@@ -118,7 +118,7 @@ public class IwlanBroadcastReceiverTest {
         onReceiveMethodWithArgs(ApnSetting.TYPE_IMS, TEST_PCO_ID_I_PV_6);
 
         // Verify the called times of setPcoData method
-        verify(mMockEpdgSelector, times(1)).setPcoData(TEST_PCO_ID_I_PV_6, pcoData);
+        verify(mMockEpdgSelector).setPcoData(TEST_PCO_ID_I_PV_6, pcoData);
     }
 
     @Test
@@ -126,7 +126,7 @@ public class IwlanBroadcastReceiverTest {
         onReceiveMethodWithArgs(ApnSetting.TYPE_IMS, TEST_PCO_ID_I_PV_4);
 
         // Verify the called times of setPcoData method
-        verify(mMockEpdgSelector, times(1)).setPcoData(TEST_PCO_ID_I_PV_4, pcoData);
+        verify(mMockEpdgSelector).setPcoData(TEST_PCO_ID_I_PV_4, pcoData);
     }
 
     @Test
@@ -134,7 +134,7 @@ public class IwlanBroadcastReceiverTest {
         onReceiveMethodWithArgs(ApnSetting.TYPE_DEFAULT, TEST_PCO_ID_I_PV_6);
 
         // Verify the called times of setPcoData method
-        verify(mMockEpdgSelector, times(0)).setPcoData(TEST_PCO_ID_I_PV_6, pcoData);
+        verify(mMockEpdgSelector, never()).setPcoData(TEST_PCO_ID_I_PV_6, pcoData);
     }
 
     @Test
@@ -142,7 +142,7 @@ public class IwlanBroadcastReceiverTest {
         onReceiveMethodWithArgs(ApnSetting.TYPE_IMS, 0xFF00);
 
         // Verify the called times of setPcoData method
-        verify(mMockEpdgSelector, times(0)).setPcoData(0xFF00, pcoData);
+        verify(mMockEpdgSelector, never()).setPcoData(0xFF00, pcoData);
     }
 
     @Test

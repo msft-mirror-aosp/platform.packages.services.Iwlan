@@ -24,7 +24,6 @@ import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -149,11 +148,11 @@ public class IwlanEventListenerTest {
         // First Wifi connected should not trigger WIFI_AP_CHANGED_EVENT
         when(mMockWifiInfo.getSSID()).thenReturn(WIFI_SSID_1);
         IwlanEventListener.onWifiConnected(mMockWifiInfo);
-        verify(mMockMessage, times(0)).sendToTarget();
+        verify(mMockMessage, never()).sendToTarget();
 
         when(mMockWifiInfo.getSSID()).thenReturn(WIFI_SSID_2);
         IwlanEventListener.onWifiConnected(mMockWifiInfo);
-        verify(mMockMessage, times(1)).sendToTarget();
+        verify(mMockMessage).sendToTarget();
     }
 
     @Test
@@ -177,7 +176,7 @@ public class IwlanEventListenerTest {
 
         // Trigger CROSS_SIM_CALLING_ENABLE_EVENT when cross sim calling setting is enabled
         mIwlanEventListener.notifyCurrentSetting(CROSS_SIM_URI);
-        verify(mMockMessage, times(1)).sendToTarget();
+        verify(mMockMessage).sendToTarget();
     }
 
     @Test
@@ -201,7 +200,7 @@ public class IwlanEventListenerTest {
 
         // Trigger CROSS_SIM_CALLING_DISABLE_EVENT when cross sim calling setting is disabled
         mIwlanEventListener.notifyCurrentSetting(CROSS_SIM_URI);
-        verify(mMockMessage, times(1)).sendToTarget();
+        verify(mMockMessage).sendToTarget();
     }
 
     @Test
@@ -226,7 +225,7 @@ public class IwlanEventListenerTest {
         IwlanEventListener.onCarrierConfigChanged(
                 mMockContext, DEFAULT_SLOT_INDEX, DEFAULT_SUB_ID, DEFAULT_CARRIER_INDEX);
 
-        verify(mMockMessage, times(1)).sendToTarget();
+        verify(mMockMessage).sendToTarget();
 
         // onCarrierConfigChanged with invalid Carrier id
         IwlanEventListener.onCarrierConfigChanged(
@@ -235,7 +234,7 @@ public class IwlanEventListenerTest {
                 DEFAULT_SUB_ID,
                 TelephonyManager.UNKNOWN_CARRIER_ID);
 
-        verify(mMockMessage_2, times(1)).sendToTarget();
+        verify(mMockMessage_2).sendToTarget();
     }
 
     @Test
@@ -258,10 +257,10 @@ public class IwlanEventListenerTest {
         mIwlanEventListener.setWfcEnabledUri(WFC_ENABLED_URI);
 
         mIwlanEventListener.notifyCurrentSetting(WFC_ENABLED_URI);
-        verify(mMockMessage, times(1)).sendToTarget();
+        verify(mMockMessage).sendToTarget();
 
         mIwlanEventListener.notifyCurrentSetting(WFC_ENABLED_URI);
-        verify(mMockMessage_2, times(1)).sendToTarget();
+        verify(mMockMessage_2).sendToTarget();
     }
 
     @Test
@@ -288,7 +287,7 @@ public class IwlanEventListenerTest {
                 mIwlanEventListener.getTelephonyCallback();
         mTelephonyCallback.onCellInfoChanged(arrayCi);
 
-        verify(mMockMessage, times(1)).sendToTarget();
+        verify(mMockMessage).sendToTarget();
     }
 
     @Test
@@ -309,7 +308,7 @@ public class IwlanEventListenerTest {
                 mIwlanEventListener.getTelephonyCallback();
         mTelephonyCallback.onCallStateChanged(TelephonyManager.CALL_STATE_OFFHOOK);
 
-        verify(mMockMessage, times(1)).sendToTarget();
+        verify(mMockMessage).sendToTarget();
     }
 
     @Test
@@ -340,7 +339,7 @@ public class IwlanEventListenerTest {
                 mIwlanEventListener.getTelephonyCallback();
         mTelephonyCallback.onCallStateChanged(TelephonyManager.CALL_STATE_OFFHOOK);
 
-        verify(mMockMessage, times(1)).sendToTarget();
+        verify(mMockMessage).sendToTarget();
         verify(mMockMessage_2, never()).sendToTarget();
     }
 
@@ -362,7 +361,7 @@ public class IwlanEventListenerTest {
                 .isVoWiFiSettingEnabled();
 
         mIwlanEventListener.notifyCurrentSetting(WFC_ENABLED_URI);
-        verify(mMockMessage, times(1)).sendToTarget();
+        verify(mMockMessage).sendToTarget();
     }
 
     @SuppressLint("MissingPermission")
@@ -385,7 +384,7 @@ public class IwlanEventListenerTest {
         mTelephonyCallback.onAllowedNetworkTypesChanged(
                 TelephonyManager.ALLOWED_NETWORK_TYPES_REASON_USER,
                 TelephonyManager.NETWORK_TYPE_BITMASK_LTE);
-        verify(mMockMessage, times(1)).sendToTarget();
+        verify(mMockMessage).sendToTarget();
     }
 
     @SuppressLint("MissingPermission")
@@ -408,6 +407,6 @@ public class IwlanEventListenerTest {
         mTelephonyCallback.onAllowedNetworkTypesChanged(
                 TelephonyManager.ALLOWED_NETWORK_TYPES_REASON_USER,
                 TelephonyManager.NETWORK_TYPE_BITMASK_NR);
-        verify(mMockMessage, times(1)).sendToTarget();
+        verify(mMockMessage).sendToTarget();
     }
 }
