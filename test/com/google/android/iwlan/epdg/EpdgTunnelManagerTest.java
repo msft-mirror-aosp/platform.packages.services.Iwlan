@@ -1559,7 +1559,7 @@ public class EpdgTunnelManagerTest {
         ChildSessionCallback childSessionCallback =
                 ikeSessionArgumentCaptors.mChildSessionCallbackCaptor.getValue();
         verifyTunnelOnOpened(toBeOpenedApnName, childSessionCallback);
-        verify(mMockEpdgSelector, never()).onEpdgConnectionFailed(any());
+        verify(mMockEpdgSelector, never()).onEpdgConnectionFailed(any(), any());
         verify(mMockEpdgSelector).onEpdgConnectedSuccessfully();
     }
 
@@ -2519,7 +2519,9 @@ public class EpdgTunnelManagerTest {
         mTestLooper.dispatchAll();
 
         verify(mEpdgTunnelManager).reportIwlanError(eq(testApnName), eq(error));
-        verify(mMockEpdgSelector).onEpdgConnectionFailed(eq(EXPECTED_EPDG_ADDRESSES.get(0)));
+        verify(mMockEpdgSelector)
+                .onEpdgConnectionFailed(
+                        eq(EXPECTED_EPDG_ADDRESSES.get(0)), any(IkeIOException.class));
         verify(mMockEpdgSelector, never()).onEpdgConnectedSuccessfully();
         verify(mMockIwlanTunnelCallback, atLeastOnce()).onClosed(eq(testApnName), eq(error));
     }
