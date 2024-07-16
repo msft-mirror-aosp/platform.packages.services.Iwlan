@@ -1049,10 +1049,13 @@ public class ErrorPolicyManager {
     }
 
     /** RetryAction with retry time defined by retry index and error policy */
-    @AutoValue
-    abstract static class PolicyDerivedRetryAction implements RetryAction {
-        abstract int currentRetryIndex();
-
+    record PolicyDerivedRetryAction(
+            @Override IwlanError error,
+            @Override ErrorPolicy errorPolicy,
+            @Override long lastErrorTime,
+            @Override int errorCountOfSameCause,
+            int currentRetryIndex)
+            implements RetryAction {
         @Override
         public long totalRetryTimeMs() {
             return TimeUnit.SECONDS.toMillis(errorPolicy().getRetryTime(currentRetryIndex()));
@@ -1074,27 +1077,16 @@ public class ErrorPolicyManager {
             return errorPolicy.getErrorType() == IKE_PROTOCOL_ERROR_TYPE
                     && currentRetryIndex() + 1 >= errorPolicy.getHandoverAttemptCount();
         }
-
-        /** Create a new PolicyDerivedRetryAction */
-        static PolicyDerivedRetryAction create(
-                IwlanError error,
-                ErrorPolicy errorPolicy,
-                int errorCountOfSameCause,
-                int currentRetryIndex) {
-            return new AutoValue_ErrorPolicyManager_PolicyDerivedRetryAction(
-                    error,
-                    errorPolicy,
-                    IwlanHelper.elapsedRealtime(),
-                    errorCountOfSameCause,
-                    currentRetryIndex);
-        }
     }
 
     /** RetryAction with retry time defined by backoff time in tunnel config */
-    @AutoValue
-    abstract static class IkeBackoffNotifyRetryAction implements RetryAction {
-        abstract long backoffTime();
-
+    record IkeBackoffNotifyRetryAction(
+            @Override IwlanError error,
+            @Override ErrorPolicy errorPolicy,
+            @Override long lastErrorTime,
+            @Override int errorCountOfSameCause,
+            long backoffTime)
+            implements RetryAction {
         @Override
         public long totalRetryTimeMs() {
             return TimeUnit.SECONDS.toMillis(backoffTime());
@@ -1112,19 +1104,6 @@ public class ErrorPolicyManager {
             ErrorPolicy errorPolicy = errorPolicy();
             return errorPolicy.getErrorType() == IKE_PROTOCOL_ERROR_TYPE
                     && errorPolicy.getHandoverAttemptCount() == 0;
-        }
-
-        static IkeBackoffNotifyRetryAction create(
-                IwlanError error,
-                ErrorPolicy errorPolicy,
-                int errorCountOfSameCause,
-                long backoffTime) {
-            return new AutoValue_ErrorPolicyManager_IkeBackoffNotifyRetryAction(
-                    error,
-                    errorPolicy,
-                    IwlanHelper.elapsedRealtime(),
-                    errorCountOfSameCause,
-                    backoffTime);
         }
     }
 
@@ -1224,8 +1203,12 @@ public class ErrorPolicyManager {
 
             ErrorPolicy policy = findErrorPolicy(mApn, iwlanError);
             PolicyDerivedRetryAction newRetryAction =
-                    PolicyDerivedRetryAction.create(
-                            iwlanError, policy, newErrorCount, newRetryIndex);
+                    new PolicyDerivedRetryAction(
+                            iwlanError,
+                            policy,
+                            IwlanHelper.elapsedRealtime(),
+                            newErrorCount,
+                            newRetryIndex);
             mLastRetryActionByCause.put(errorCause, newRetryAction);
             mLastRetryAction = newRetryAction;
 
@@ -1242,8 +1225,12 @@ public class ErrorPolicyManager {
             // For configured back off time case, simply create new RetryAction, nothing need to
             // keep
             IkeBackoffNotifyRetryAction newRetryAction =
-                    IkeBackoffNotifyRetryAction.create(
-                            iwlanError, policy, newErrorCount, backoffTime);
+                    new IkeBackoffNotifyRetryAction(
+                            iwlanError,
+                            policy,
+                            IwlanHelper.elapsedRealtime(),
+                            newErrorCount,
+                            backoffTime);
             mLastRetryActionByCause.put(errorCause, newRetryAction);
             mLastRetryAction = newRetryAction;
 

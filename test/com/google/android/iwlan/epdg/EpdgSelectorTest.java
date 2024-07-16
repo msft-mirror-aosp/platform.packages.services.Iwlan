@@ -43,6 +43,9 @@ import android.content.SharedPreferences;
 import android.net.DnsResolver;
 import android.net.InetAddresses;
 import android.net.Network;
+import android.net.ipsec.ike.exceptions.IkeIOException;
+import android.net.ipsec.ike.exceptions.IkeNetworkLostException;
+import android.net.ipsec.ike.exceptions.IkeProtocolException;
 import android.os.Handler;
 import android.os.Looper;
 import android.telephony.CarrierConfigManager;
@@ -764,6 +767,8 @@ public class EpdgSelectorTest {
         doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
         doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
 
+        final IkeIOException mockIkeIOException = mock(IkeIOException.class);
+
         String fqdnFromRplmn = "epdg.epc.mnc122.mcc300.pub.3gppnetwork.org";
         final String staticAddr = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
 
@@ -796,7 +801,8 @@ public class EpdgSelectorTest {
                         .toArray(),
                 testInetAddresses.toArray());
 
-        mEpdgSelector.onEpdgConnectionFailed(InetAddress.getByName(TEST_IP_ADDRESS));
+        mEpdgSelector.onEpdgConnectionFailed(
+                InetAddress.getByName(TEST_IP_ADDRESS), mockIkeIOException);
         // Flag disabled should not affect the result
         testInetAddresses = getValidatedServerListWithDefaultParams(false);
         assertArrayEquals(
@@ -829,6 +835,9 @@ public class EpdgSelectorTest {
         final String fqdnFromRplmn = "epdg.epc.mnc122.mcc300.pub.3gppnetwork.org";
         final String staticAddr = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
 
+        final IkeIOException mockIkeIOException = mock(IkeIOException.class);
+        final IkeProtocolException mockIkeProtocolException = mock(IkeProtocolException.class);
+
         when(mMockTelephonyManager.getNetworkOperator()).thenReturn("300122");
         IwlanCarrierConfig.putTestConfigStringArray(
                 CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY, new String[] {"300-122"});
@@ -858,13 +867,21 @@ public class EpdgSelectorTest {
                         .toArray(),
                 testInetAddresses.toArray());
 
-        mEpdgSelector.onEpdgConnectionFailed(InetAddress.getByName(TEST_IP_ADDRESS));
+        mEpdgSelector.onEpdgConnectionFailed(
+                InetAddress.getByName(TEST_IP_ADDRESS), mockIkeIOException);
         testInetAddresses = getValidatedServerListWithDefaultParams(false);
         assertArrayEquals(
                 List.of(
                                 InetAddress.getByName(TEST_IP_ADDRESS_1),
                                 InetAddress.getByName(TEST_IPV6_ADDRESS))
                         .toArray(),
+                testInetAddresses.toArray());
+
+        mEpdgSelector.onEpdgConnectionFailed(
+                InetAddress.getByName(TEST_IP_ADDRESS_1), mockIkeProtocolException);
+        testInetAddresses = getValidatedServerListWithDefaultParams(false);
+        assertArrayEquals(
+                List.of(InetAddress.getByName(TEST_IPV6_ADDRESS)).toArray(),
                 testInetAddresses.toArray());
 
         // Reset temporary excluded ip addresses
@@ -878,7 +895,8 @@ public class EpdgSelectorTest {
                         .toArray(),
                 testInetAddresses.toArray());
 
-        mEpdgSelector.onEpdgConnectionFailed(InetAddress.getByName(TEST_IP_ADDRESS));
+        mEpdgSelector.onEpdgConnectionFailed(
+                InetAddress.getByName(TEST_IP_ADDRESS), mockIkeProtocolException);
         testInetAddresses = getValidatedServerListWithDefaultParams(false);
         assertArrayEquals(
                 List.of(
@@ -887,13 +905,15 @@ public class EpdgSelectorTest {
                         .toArray(),
                 testInetAddresses.toArray());
 
-        mEpdgSelector.onEpdgConnectionFailed(InetAddress.getByName(TEST_IPV6_ADDRESS));
+        mEpdgSelector.onEpdgConnectionFailed(
+                InetAddress.getByName(TEST_IPV6_ADDRESS), mockIkeIOException);
         testInetAddresses = getValidatedServerListWithDefaultParams(false);
         assertArrayEquals(
                 List.of(InetAddress.getByName(TEST_IP_ADDRESS_1)).toArray(),
                 testInetAddresses.toArray());
 
-        mEpdgSelector.onEpdgConnectionFailed(InetAddress.getByName(TEST_IP_ADDRESS_1));
+        mEpdgSelector.onEpdgConnectionFailed(
+                InetAddress.getByName(TEST_IP_ADDRESS_1), mockIkeIOException);
         // All ip addresses removed, should reset excluded address
         testInetAddresses = getValidatedServerListWithDefaultParams(false);
         assertArrayEquals(
@@ -904,7 +924,8 @@ public class EpdgSelectorTest {
                         .toArray(),
                 testInetAddresses.toArray());
 
-        mEpdgSelector.onEpdgConnectionFailed(InetAddress.getByName(TEST_IP_ADDRESS_1));
+        mEpdgSelector.onEpdgConnectionFailed(
+                InetAddress.getByName(TEST_IP_ADDRESS_1), mockIkeIOException);
         testInetAddresses = getValidatedServerListWithDefaultParams(false);
         assertArrayEquals(
                 List.of(
@@ -921,7 +942,8 @@ public class EpdgSelectorTest {
                 List.of(InetAddress.getByName(TEST_IP_ADDRESS_3)).toArray(),
                 testInetAddresses.toArray());
 
-        mEpdgSelector.onEpdgConnectionFailed(InetAddress.getByName(TEST_IP_ADDRESS_3));
+        mEpdgSelector.onEpdgConnectionFailed(
+                InetAddress.getByName(TEST_IP_ADDRESS_3), mockIkeIOException);
         // It should also reset the excluded list once all ip addresses are excluded
         testInetAddresses = getValidatedServerListWithDefaultParams(false);
         assertArrayEquals(
@@ -966,6 +988,60 @@ public class EpdgSelectorTest {
         mFakeDns.setAnswer(expectedFqdn1, new String[] {TEST_IP_ADDRESS}, TYPE_A);
         mFakeDns.setAnswer(expectedFqdn2, new String[] {TEST_IP_ADDRESS_1}, TYPE_A);
         mFakeDns.setAnswer(expectedFqdn3, new String[] {TEST_IP_ADDRESS_2}, TYPE_A);
+    }
+
+    @Test
+    public void testShouldNotTemporaryExcludedIpAddressWhenInternalError() throws Exception {
+        doReturn(true).when(mfakeFeatureFlags).epdgSelectionExcludeFailedIpAddress();
+        when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
+        doReturn(true).when(mEpdgSelector).hasIpv4Address(mMockNetwork);
+        doReturn(true).when(mEpdgSelector).hasIpv6Address(mMockNetwork);
+
+        final String fqdnFromRplmn = "epdg.epc.mnc122.mcc300.pub.3gppnetwork.org";
+        final String staticAddr = "epdg.epc.mnc120.mcc300.pub.3gppnetwork.org";
+
+        final IkeNetworkLostException mockIkeNetworkLostException =
+                mock(IkeNetworkLostException.class);
+
+        when(mMockTelephonyManager.getNetworkOperator()).thenReturn("300122");
+        IwlanCarrierConfig.putTestConfigStringArray(
+                CarrierConfigManager.Iwlan.KEY_MCC_MNCS_STRING_ARRAY, new String[] {"300-122"});
+
+        IwlanCarrierConfig.putTestConfigIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
+                new int[] {
+                    CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN,
+                    CarrierConfigManager.Iwlan.EPDG_ADDRESS_STATIC
+                });
+        IwlanCarrierConfig.putTestConfigIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_PLMN_PRIORITY_INT_ARRAY,
+                new int[] {CarrierConfigManager.Iwlan.EPDG_PLMN_RPLMN});
+
+        IwlanCarrierConfig.putTestConfigString(
+                CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, staticAddr);
+
+        mFakeDns.setAnswer(fqdnFromRplmn, new String[] {TEST_IP_ADDRESS}, TYPE_A);
+        mFakeDns.setAnswer(staticAddr, new String[] {TEST_IP_ADDRESS_1, TEST_IPV6_ADDRESS}, TYPE_A);
+
+        ArrayList<InetAddress> testInetAddresses = getValidatedServerListWithDefaultParams(false);
+        assertArrayEquals(
+                List.of(
+                                InetAddress.getByName(TEST_IP_ADDRESS),
+                                InetAddress.getByName(TEST_IP_ADDRESS_1),
+                                InetAddress.getByName(TEST_IPV6_ADDRESS))
+                        .toArray(),
+                testInetAddresses.toArray());
+
+        mEpdgSelector.onEpdgConnectionFailed(
+                InetAddress.getByName(TEST_IP_ADDRESS), mockIkeNetworkLostException);
+        testInetAddresses = getValidatedServerListWithDefaultParams(false);
+        assertArrayEquals(
+                List.of(
+                                InetAddress.getByName(TEST_IP_ADDRESS),
+                                InetAddress.getByName(TEST_IP_ADDRESS_1),
+                                InetAddress.getByName(TEST_IPV6_ADDRESS))
+                        .toArray(),
+                testInetAddresses.toArray());
     }
 
     @Test
