@@ -2225,8 +2225,8 @@ public class EpdgTunnelManager {
 
                     if (enabledFastReauth) {
                         EapInfo eapInfo = sessionConfiguration.getEapInfo();
-                        if (eapInfo instanceof EapAkaInfo) {
-                            mNextReauthId = ((EapAkaInfo) eapInfo).getReauthId();
+                        if (eapInfo instanceof EapAkaInfo eapAkaInfo) {
+                            mNextReauthId = eapAkaInfo.getReauthId();
                             Log.d(TAG, "Update ReauthId: " + Arrays.toString(mNextReauthId));
                         } else {
                             mNextReauthId = null;

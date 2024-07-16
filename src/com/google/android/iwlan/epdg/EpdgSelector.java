@@ -843,18 +843,18 @@ public class EpdgSelector {
                 continue;
             }
 
-            if (cellInfo instanceof CellInfoGsm) {
-                CellIdentityGsm gsmCellId = ((CellInfoGsm) cellInfo).getCellIdentity();
+            if (cellInfo instanceof CellInfoGsm cellInfoGsm) {
+                CellIdentityGsm gsmCellId = cellInfoGsm.getCellIdentity();
                 String lacString = String.format("%04x", gsmCellId.getLac());
 
                 lacDomainNameResolution(filter, validIpList, lacString, isEmergency, network);
-            } else if (cellInfo instanceof CellInfoWcdma) {
-                CellIdentityWcdma wcdmaCellId = ((CellInfoWcdma) cellInfo).getCellIdentity();
+            } else if (cellInfo instanceof CellInfoWcdma cellInfoWcdma) {
+                CellIdentityWcdma wcdmaCellId = cellInfoWcdma.getCellIdentity();
                 String lacString = String.format("%04x", wcdmaCellId.getLac());
 
                 lacDomainNameResolution(filter, validIpList, lacString, isEmergency, network);
-            } else if (cellInfo instanceof CellInfoLte) {
-                CellIdentityLte lteCellId = ((CellInfoLte) cellInfo).getCellIdentity();
+            } else if (cellInfo instanceof CellInfoLte cellInfoLte) {
+                CellIdentityLte lteCellId = cellInfoLte.getCellIdentity();
                 String tacString = String.format("%04x", lteCellId.getTac());
                 String[] tacSubString = new String[2];
                 tacSubString[0] = tacString.substring(0, 2);
@@ -890,8 +890,8 @@ public class EpdgSelector {
                     getIP(domainName.toString(), filter, validIpList, network);
                     domainName.setLength(0);
                 }
-            } else if (cellInfo instanceof CellInfoNr) {
-                CellIdentityNr nrCellId = (CellIdentityNr) cellInfo.getCellIdentity();
+            } else if (cellInfo instanceof CellInfoNr cellInfoNr) {
+                CellIdentityNr nrCellId = (CellIdentityNr) cellInfoNr.getCellIdentity();
                 String tacString = String.format("%06x", nrCellId.getTac());
                 String[] tacSubString = new String[3];
                 tacSubString[0] = tacString.substring(0, 2);
