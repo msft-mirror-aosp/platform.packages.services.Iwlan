@@ -21,6 +21,9 @@ import android.net.DnsResolver;
 import android.net.DnsResolver.DnsException;
 import android.net.InetAddresses;
 import android.net.Network;
+import android.net.ipsec.ike.exceptions.IkeException;
+import android.net.ipsec.ike.exceptions.IkeIOException;
+import android.net.ipsec.ike.exceptions.IkeProtocolException;
 import android.support.annotation.IntDef;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
@@ -262,14 +265,17 @@ public class EpdgSelector {
     }
 
     /**
-     * Notify {@link EpdgSelector} that failed to connect to an ePDG. EpdgSelector will add the
-     * {@code ipAddress} into excluded list and will not retry until any ePDG connected successfully
-     * or all ip addresses candidates are tried.
+     * Notify {@link EpdgSelector} that failed to connect to an ePDG due to IKE exception.
+     * EpdgSelector will add the {@code ipAddress} into excluded list and will not retry until any
+     * ePDG connected successfully or all ip addresses candidates are tried.
      *
      * @param ipAddress the ePDG ip address that failed to connect
+     * @param cause the failure cause {@link IkeException} of the connection
      */
-    void onEpdgConnectionFailed(InetAddress ipAddress) {
-        excludeIpAddress(ipAddress);
+    void onEpdgConnectionFailed(InetAddress ipAddress, IkeException cause) {
+        if (cause instanceof IkeProtocolException || cause instanceof IkeIOException) {
+            excludeIpAddress(ipAddress);
+        }
     }
 
     private void excludeIpAddress(InetAddress ipAddress) {
