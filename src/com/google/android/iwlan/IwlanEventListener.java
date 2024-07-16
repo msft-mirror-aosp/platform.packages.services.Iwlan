@@ -355,46 +355,21 @@ public class IwlanEventListener {
      * @param event String form of the event.
      */
     public static int getUnthrottlingEvent(String event) {
-        int ret = UNKNOWN_EVENT;
-        switch (event) {
-            case "CARRIER_CONFIG_CHANGED_EVENT":
-                ret = CARRIER_CONFIG_CHANGED_EVENT;
-                break;
-            case "WIFI_DISABLE_EVENT":
-                ret = WIFI_DISABLE_EVENT;
-                break;
-            case "APM_DISABLE_EVENT":
-                ret = APM_DISABLE_EVENT;
-                break;
-            case "APM_ENABLE_EVENT":
-                ret = APM_ENABLE_EVENT;
-                break;
-            case "WIFI_AP_CHANGED_EVENT":
-                ret = WIFI_AP_CHANGED_EVENT;
-                break;
-            case "WIFI_CALLING_ENABLE_EVENT":
-                ret = WIFI_CALLING_ENABLE_EVENT;
-                break;
-            case "WIFI_CALLING_DISABLE_EVENT":
-                ret = WIFI_CALLING_DISABLE_EVENT;
-                break;
-            case "CROSS_SIM_CALLING_ENABLE_EVENT":
-                ret = CROSS_SIM_CALLING_ENABLE_EVENT;
-                break;
-            case "CROSS_SIM_CALLING_DISABLE_EVENT":
-                ret = CROSS_SIM_CALLING_DISABLE_EVENT;
-                break;
-            case "CARRIER_CONFIG_UNKNOWN_CARRIER_EVENT":
-                ret = CARRIER_CONFIG_UNKNOWN_CARRIER_EVENT;
-                break;
-            case "CELLINFO_CHANGED_EVENT":
-                ret = CELLINFO_CHANGED_EVENT;
-                break;
-            case "PREFERRED_NETWORK_TYPE_CHANGED_EVENT":
-                ret = PREFERRED_NETWORK_TYPE_CHANGED_EVENT;
-                break;
-        }
-        return ret;
+        return switch (event) {
+            case "CARRIER_CONFIG_CHANGED_EVENT" -> CARRIER_CONFIG_CHANGED_EVENT;
+            case "WIFI_DISABLE_EVENT" -> WIFI_DISABLE_EVENT;
+            case "APM_DISABLE_EVENT" -> APM_DISABLE_EVENT;
+            case "APM_ENABLE_EVENT" -> APM_ENABLE_EVENT;
+            case "WIFI_AP_CHANGED_EVENT" -> WIFI_AP_CHANGED_EVENT;
+            case "WIFI_CALLING_ENABLE_EVENT" -> WIFI_CALLING_ENABLE_EVENT;
+            case "WIFI_CALLING_DISABLE_EVENT" -> WIFI_CALLING_DISABLE_EVENT;
+            case "CROSS_SIM_CALLING_ENABLE_EVENT" -> CROSS_SIM_CALLING_ENABLE_EVENT;
+            case "CROSS_SIM_CALLING_DISABLE_EVENT" -> CROSS_SIM_CALLING_DISABLE_EVENT;
+            case "CARRIER_CONFIG_UNKNOWN_CARRIER_EVENT" -> CARRIER_CONFIG_UNKNOWN_CARRIER_EVENT;
+            case "CELLINFO_CHANGED_EVENT" -> CELLINFO_CHANGED_EVENT;
+            case "PREFERRED_NETWORK_TYPE_CHANGED_EVENT" -> PREFERRED_NETWORK_TYPE_CHANGED_EVENT;
+            default -> UNKNOWN_EVENT;
+        };
     }
 
     IwlanEventListener(Context context, int slotId, FeatureFlags featureFlags) {
@@ -574,15 +549,11 @@ public class IwlanEventListener {
     }
 
     private String callStateToString(int state) {
-        switch (state) {
-            case TelephonyManager.CALL_STATE_IDLE:
-                return "CALL_STATE_IDLE";
-            case TelephonyManager.CALL_STATE_RINGING:
-                return "CALL_STATE_RINGING";
-            case TelephonyManager.CALL_STATE_OFFHOOK:
-                return "CALL_STATE_OFFHOOK";
-            default:
-                return "Unknown Call State (" + state + ")";
-        }
+        return switch (state) {
+            case TelephonyManager.CALL_STATE_IDLE -> "CALL_STATE_IDLE";
+            case TelephonyManager.CALL_STATE_RINGING -> "CALL_STATE_RINGING";
+            case TelephonyManager.CALL_STATE_OFFHOOK -> "CALL_STATE_OFFHOOK";
+            default -> "Unknown Call State (" + state + ")";
+        };
     }
 }

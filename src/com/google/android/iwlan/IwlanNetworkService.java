@@ -500,20 +500,17 @@ public class IwlanNetworkService extends NetworkService {
     }
 
     private static String eventToString(int event) {
-        switch (event) {
-            case IwlanEventListener.CROSS_SIM_CALLING_ENABLE_EVENT:
-                return "CROSS_SIM_CALLING_ENABLE_EVENT";
-            case IwlanEventListener.CROSS_SIM_CALLING_DISABLE_EVENT:
-                return "CROSS_SIM_CALLING_DISABLE_EVENT";
-            case EVENT_NETWORK_REGISTRATION_INFO_REQUEST:
-                return "EVENT_NETWORK_REGISTRATION_INFO_REQUEST";
-            case EVENT_CREATE_NETWORK_SERVICE_PROVIDER:
-                return "EVENT_CREATE_NETWORK_SERVICE_PROVIDER";
-            case EVENT_REMOVE_NETWORK_SERVICE_PROVIDER:
-                return "EVENT_REMOVE_NETWORK_SERVICE_PROVIDER";
-            default:
-                return "Unknown(" + event + ")";
-        }
+        return switch (event) {
+            case IwlanEventListener.CROSS_SIM_CALLING_ENABLE_EVENT ->
+                    "CROSS_SIM_CALLING_ENABLE_EVENT";
+            case IwlanEventListener.CROSS_SIM_CALLING_DISABLE_EVENT ->
+                    "CROSS_SIM_CALLING_DISABLE_EVENT";
+            case EVENT_NETWORK_REGISTRATION_INFO_REQUEST ->
+                    "EVENT_NETWORK_REGISTRATION_INFO_REQUEST";
+            case EVENT_CREATE_NETWORK_SERVICE_PROVIDER -> "EVENT_CREATE_NETWORK_SERVICE_PROVIDER";
+            case EVENT_REMOVE_NETWORK_SERVICE_PROVIDER -> "EVENT_REMOVE_NETWORK_SERVICE_PROVIDER";
+            default -> "Unknown(" + event + ")";
+        };
     }
 
     @Override

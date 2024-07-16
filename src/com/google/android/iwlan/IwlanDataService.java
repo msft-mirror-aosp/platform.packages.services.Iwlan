@@ -2444,52 +2444,33 @@ public class IwlanDataService extends DataService {
     }
 
     private static String eventToString(int event) {
-        switch (event) {
-            case EVENT_TUNNEL_OPENED:
-                return "EVENT_TUNNEL_OPENED";
-            case EVENT_TUNNEL_CLOSED:
-                return "EVENT_TUNNEL_CLOSED";
-            case EVENT_SETUP_DATA_CALL:
-                return "EVENT_SETUP_DATA_CALL";
-            case EVENT_DEACTIVATE_DATA_CALL:
-                return "EVENT_DEACTIVATE_DATA_CALL";
-            case EVENT_DATA_CALL_LIST_REQUEST:
-                return "EVENT_DATA_CALL_LIST_REQUEST";
-            case EVENT_FORCE_CLOSE_TUNNEL:
-                return "EVENT_FORCE_CLOSE_TUNNEL";
-            case EVENT_ADD_DATA_SERVICE_PROVIDER:
-                return "EVENT_ADD_DATA_SERVICE_PROVIDER";
-            case EVENT_REMOVE_DATA_SERVICE_PROVIDER:
-                return "EVENT_REMOVE_DATA_SERVICE_PROVIDER";
-            case IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT:
-                return "CARRIER_CONFIG_CHANGED_EVENT";
-            case IwlanEventListener.CARRIER_CONFIG_UNKNOWN_CARRIER_EVENT:
-                return "CARRIER_CONFIG_UNKNOWN_CARRIER_EVENT";
-            case IwlanEventListener.WIFI_CALLING_ENABLE_EVENT:
-                return "WIFI_CALLING_ENABLE_EVENT";
-            case IwlanEventListener.WIFI_CALLING_DISABLE_EVENT:
-                return "WIFI_CALLING_DISABLE_EVENT";
-            case IwlanEventListener.CROSS_SIM_CALLING_ENABLE_EVENT:
-                return "CROSS_SIM_CALLING_ENABLE_EVENT";
-            case IwlanEventListener.CELLINFO_CHANGED_EVENT:
-                return "CELLINFO_CHANGED_EVENT";
-            case EVENT_TUNNEL_OPENED_METRICS:
-                return "EVENT_TUNNEL_OPENED_METRICS";
-            case EVENT_TUNNEL_CLOSED_METRICS:
-                return "EVENT_TUNNEL_CLOSED_METRICS";
-            case EVENT_DEACTIVATE_DATA_CALL_WITH_DELAY:
-                return "EVENT_DEACTIVATE_DATA_CALL_WITH_DELAY";
-            case IwlanEventListener.CALL_STATE_CHANGED_EVENT:
-                return "CALL_STATE_CHANGED_EVENT";
-            case IwlanEventListener.PREFERRED_NETWORK_TYPE_CHANGED_EVENT:
-                return "PREFERRED_NETWORK_TYPE_CHANGED_EVENT";
-            case EVENT_ON_LIVENESS_STATUS_CHANGED:
-                return "EVENT_ON_LIVENESS_STATUS_CHANGED";
-            case EVENT_REQUEST_NETWORK_VALIDATION:
-                return "EVENT_REQUEST_NETWORK_VALIDATION";
-            default:
-                return "Unknown(" + event + ")";
-        }
+        return switch (event) {
+            case EVENT_TUNNEL_OPENED -> "EVENT_TUNNEL_OPENED";
+            case EVENT_TUNNEL_CLOSED -> "EVENT_TUNNEL_CLOSED";
+            case EVENT_SETUP_DATA_CALL -> "EVENT_SETUP_DATA_CALL";
+            case EVENT_DEACTIVATE_DATA_CALL -> "EVENT_DEACTIVATE_DATA_CALL";
+            case EVENT_DATA_CALL_LIST_REQUEST -> "EVENT_DATA_CALL_LIST_REQUEST";
+            case EVENT_FORCE_CLOSE_TUNNEL -> "EVENT_FORCE_CLOSE_TUNNEL";
+            case EVENT_ADD_DATA_SERVICE_PROVIDER -> "EVENT_ADD_DATA_SERVICE_PROVIDER";
+            case EVENT_REMOVE_DATA_SERVICE_PROVIDER -> "EVENT_REMOVE_DATA_SERVICE_PROVIDER";
+            case IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT -> "CARRIER_CONFIG_CHANGED_EVENT";
+            case IwlanEventListener.CARRIER_CONFIG_UNKNOWN_CARRIER_EVENT ->
+                    "CARRIER_CONFIG_UNKNOWN_CARRIER_EVENT";
+            case IwlanEventListener.WIFI_CALLING_ENABLE_EVENT -> "WIFI_CALLING_ENABLE_EVENT";
+            case IwlanEventListener.WIFI_CALLING_DISABLE_EVENT -> "WIFI_CALLING_DISABLE_EVENT";
+            case IwlanEventListener.CROSS_SIM_CALLING_ENABLE_EVENT ->
+                    "CROSS_SIM_CALLING_ENABLE_EVENT";
+            case IwlanEventListener.CELLINFO_CHANGED_EVENT -> "CELLINFO_CHANGED_EVENT";
+            case EVENT_TUNNEL_OPENED_METRICS -> "EVENT_TUNNEL_OPENED_METRICS";
+            case EVENT_TUNNEL_CLOSED_METRICS -> "EVENT_TUNNEL_CLOSED_METRICS";
+            case EVENT_DEACTIVATE_DATA_CALL_WITH_DELAY -> "EVENT_DEACTIVATE_DATA_CALL_WITH_DELAY";
+            case IwlanEventListener.CALL_STATE_CHANGED_EVENT -> "CALL_STATE_CHANGED_EVENT";
+            case IwlanEventListener.PREFERRED_NETWORK_TYPE_CHANGED_EVENT ->
+                    "PREFERRED_NETWORK_TYPE_CHANGED_EVENT";
+            case EVENT_ON_LIVENESS_STATUS_CHANGED -> "EVENT_ON_LIVENESS_STATUS_CHANGED";
+            case EVENT_REQUEST_NETWORK_VALIDATION -> "EVENT_REQUEST_NETWORK_VALIDATION";
+            default -> "Unknown(" + event + ")";
+        };
     }
 
     private void initAllowedNetworkType() {
@@ -2558,18 +2539,13 @@ public class IwlanDataService extends DataService {
     }
 
     private String requestReasonToString(int reason) {
-        switch (reason) {
-            case DataService.REQUEST_REASON_UNKNOWN:
-                return "UNKNOWN";
-            case DataService.REQUEST_REASON_NORMAL:
-                return "NORMAL";
-            case DataService.REQUEST_REASON_SHUTDOWN:
-                return "SHUTDOWN";
-            case DataService.REQUEST_REASON_HANDOVER:
-                return "HANDOVER";
-            default:
-                return "UNKNOWN(" + reason + ")";
-        }
+        return switch (reason) {
+            case DataService.REQUEST_REASON_UNKNOWN -> "UNKNOWN";
+            case DataService.REQUEST_REASON_NORMAL -> "NORMAL";
+            case DataService.REQUEST_REASON_SHUTDOWN -> "SHUTDOWN";
+            case DataService.REQUEST_REASON_HANDOVER -> "HANDOVER";
+            default -> "UNKNOWN(" + reason + ")";
+        };
     }
 
     @Override
