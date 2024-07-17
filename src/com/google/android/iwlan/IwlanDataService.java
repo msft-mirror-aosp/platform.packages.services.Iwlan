@@ -2229,10 +2229,10 @@ public class IwlanDataService extends DataService {
         NetworkSpecifier specifier = networkCapabilities.getNetworkSpecifier();
         TransportInfo transportInfo = networkCapabilities.getTransportInfo();
 
-        if (specifier instanceof TelephonyNetworkSpecifier) {
-            connectedDataSub = ((TelephonyNetworkSpecifier) specifier).getSubscriptionId();
-        } else if (transportInfo instanceof VcnTransportInfo) {
-            connectedDataSub = ((VcnTransportInfo) transportInfo).getSubId();
+        if (specifier instanceof TelephonyNetworkSpecifier telephonyNetworkSpecifier) {
+            connectedDataSub = telephonyNetworkSpecifier.getSubscriptionId();
+        } else if (transportInfo instanceof VcnTransportInfo vcnTransportInfo) {
+            connectedDataSub = vcnTransportInfo.getSubId();
         }
         return connectedDataSub;
     }

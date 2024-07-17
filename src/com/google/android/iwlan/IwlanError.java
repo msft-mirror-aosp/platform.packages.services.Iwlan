@@ -111,14 +111,14 @@ public class IwlanError {
      */
     public IwlanError(@NonNull Exception exception) {
         // resolve into specific types if possible
-        if (exception instanceof IkeProtocolException) {
-            IwlanErrorIkeProtocolException((IkeProtocolException) exception);
-        } else if (exception instanceof IkeIOException) {
-            IwlanErrorIkeIOException((IkeIOException) exception);
-        } else if (exception instanceof IkeInternalException) {
-            IwlanErrorIkeInternalException((IkeInternalException) exception);
-        } else if (exception instanceof IkeNetworkLostException) {
-            IwlanErrorIkeNetworkLostException((IkeNetworkLostException) exception);
+        if (exception instanceof IkeProtocolException ikeProtocolException) {
+            IwlanErrorIkeProtocolException(ikeProtocolException);
+        } else if (exception instanceof IkeIOException ikeIOException) {
+            IwlanErrorIkeIOException(ikeIOException);
+        } else if (exception instanceof IkeInternalException ikeInternalException) {
+            IwlanErrorIkeInternalException(ikeInternalException);
+        } else if (exception instanceof IkeNetworkLostException ikeNetworkLostException) {
+            IwlanErrorIkeNetworkLostException(ikeNetworkLostException);
         } else {
             mErrorType = IKE_GENERIC_EXCEPTION;
             mException = exception;
