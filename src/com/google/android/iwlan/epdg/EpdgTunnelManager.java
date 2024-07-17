@@ -129,6 +129,7 @@ public class EpdgTunnelManager {
     private static final int EVENT_IKE_3GPP_DATA_RECEIVED = 12;
     private static final int EVENT_IKE_LIVENESS_STATUS_CHANGED = 13;
     private static final int EVENT_REQUEST_NETWORK_VALIDATION_CHECK = 14;
+    private static final int EVENT_TRIGGER_UNDERLYING_NETWORK_VALIDATION = 15;
     private static final int IKE_HARD_LIFETIME_SEC_MINIMUM = 300;
     private static final int IKE_HARD_LIFETIME_SEC_MAXIMUM = 86400;
     private static final int IKE_SOFT_LIFETIME_SEC_MINIMUM = 120;
@@ -1952,13 +1953,7 @@ public class EpdgTunnelManager {
                     mIkeTunnelEstablishmentDuration =
                             System.currentTimeMillis() - mIkeTunnelEstablishmentStartTime;
                     mIkeTunnelEstablishmentStartTime = 0;
-                    connectivityManager = mContext.getSystemService(ConnectivityManager.class);
-                    networkCapabilities =
-                            connectivityManager.getNetworkCapabilities(mIkeSessionNetwork);
-                    isNetworkValidated =
-                            (networkCapabilities != null)
-                                    && networkCapabilities.hasCapability(
-                                            NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+                    isNetworkValidated = isUnderlyingNetworkValidated(mIkeSessionNetwork);
                     tunnelConfig
                             .getTunnelMetrics()
                             .onOpened(
@@ -2028,7 +2023,15 @@ public class EpdgTunnelManager {
                         }
                         mEpdgMonitor.onEpdgConnectionFailed(
                                 tunnelConfig.isEmergency(), tunnelConfig.getEpdgAddress());
-                        getEpdgSelector().onEpdgConnectionFailed(tunnelConfig.getEpdgAddress());
+                        if (sessionClosedData.mIkeException != null) {
+                            getEpdgSelector()
+                                    .onEpdgConnectionFailed(
+                                            tunnelConfig.getEpdgAddress(),
+                                            sessionClosedData.mIkeException);
+                        }
+                    } else {
+                        /* PDN disconnected case */
+                        triggerUnderlyingNetworkValidationIfNeeded(iwlanError);
                     }
 
                     Log.d(TAG, "Tunnel Closed: " + iwlanError);
@@ -2047,13 +2050,7 @@ public class EpdgTunnelManager {
                                         : 0;
                         mIkeTunnelEstablishmentStartTime = 0;
 
-                        connectivityManager = mContext.getSystemService(ConnectivityManager.class);
-                        networkCapabilities =
-                                connectivityManager.getNetworkCapabilities(mIkeSessionNetwork);
-                        isNetworkValidated =
-                                (networkCapabilities != null)
-                                        && networkCapabilities.hasCapability(
-                                                NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+                        isNetworkValidated = isUnderlyingNetworkValidated(mIkeSessionNetwork);
                         onClosedMetricsBuilder
                                 .setEpdgServerAddress(tunnelConfig.getEpdgAddress())
                                 .setEpdgServerSelectionDuration((int) mEpdgServerSelectionDuration)
@@ -2233,8 +2230,8 @@ public class EpdgTunnelManager {
 
                     if (enabledFastReauth) {
                         EapInfo eapInfo = sessionConfiguration.getEapInfo();
-                        if (eapInfo instanceof EapAkaInfo) {
-                            mNextReauthId = ((EapAkaInfo) eapInfo).getReauthId();
+                        if (eapInfo instanceof EapAkaInfo eapAkaInfo) {
+                            mNextReauthId = eapAkaInfo.getReauthId();
                             Log.d(TAG, "Update ReauthId: " + Arrays.toString(mNextReauthId));
                         } else {
                             mNextReauthId = null;
@@ -2325,6 +2322,10 @@ public class EpdgTunnelManager {
                         return;
                     }
                     tunnelConfig.getIkeSession().requestLivenessCheck();
+                    break;
+
+                case EVENT_TRIGGER_UNDERLYING_NETWORK_VALIDATION:
+                    onTriggerUnderlyingNetworkValidation();
                     break;
 
                 default:
@@ -3039,11 +3040,13 @@ public class EpdgTunnelManager {
 
     @VisibleForTesting
     long reportIwlanError(String apnName, IwlanError error) {
+        triggerUnderlyingNetworkValidationIfNeeded(error);
         return ErrorPolicyManager.getInstance(mContext, mSlotId).reportIwlanError(apnName, error);
     }
 
     @VisibleForTesting
     long reportIwlanError(String apnName, IwlanError error, long backOffTime) {
+        triggerUnderlyingNetworkValidationIfNeeded(error);
         return ErrorPolicyManager.getInstance(mContext, mSlotId)
                 .reportIwlanError(apnName, error, backOffTime);
     }
@@ -3106,6 +3109,58 @@ public class EpdgTunnelManager {
             return new IpPreferenceConflict(true, IwlanError.EPDG_ADDRESS_ONLY_IPV4_ALLOWED);
         }
         return new IpPreferenceConflict();
+    }
+
+    private boolean isUnderlyingNetworkValidated(Network network) {
+        ConnectivityManager connectivityManager =
+                Objects.requireNonNull(mContext).getSystemService(ConnectivityManager.class);
+        NetworkCapabilities networkCapabilities =
+                connectivityManager.getNetworkCapabilities(network);
+        return (networkCapabilities != null)
+                && networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+    }
+
+    /**
+     * Trigger network validation on the underlying network if needed to possibly update validation
+     * status and cause system switch default network.
+     */
+    void triggerUnderlyingNetworkValidationIfNeeded(IwlanError error) {
+        boolean underlyingNetworkValidationCheckEnabled =
+                IwlanCarrierConfig.getConfigBoolean(
+                        mContext,
+                        mSlotId,
+                        IwlanCarrierConfig.KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL);
+        if (!mFeatureFlags.validateUnderlyingNetworkOnNoResponse()
+                || !underlyingNetworkValidationCheckEnabled
+                || !isUnderlyingNetworkValidationRequired(error.getErrorType())) {
+            return;
+        }
+
+        Log.d(TAG, "On triggering underlying network validation. Cause: " + error);
+        mHandler.obtainMessage(EVENT_TRIGGER_UNDERLYING_NETWORK_VALIDATION).sendToTarget();
+    }
+
+    void onTriggerUnderlyingNetworkValidation() {
+        if (!isUnderlyingNetworkValidated(mDefaultNetwork)) {
+            Log.d(TAG, "Network " + mDefaultNetwork + " is already not validated.");
+            return;
+        }
+        ConnectivityManager connectivityManager =
+                Objects.requireNonNull(mContext).getSystemService(ConnectivityManager.class);
+        Log.d(TAG, "Trigger underlying network validation on network: " + mDefaultNetwork);
+        connectivityManager.reportNetworkConnectivity(mDefaultNetwork, false);
+    }
+
+    boolean isUnderlyingNetworkValidationRequired(int error) {
+        return switch (error) {
+            case IwlanError.EPDG_SELECTOR_SERVER_SELECTION_FAILED,
+                            IwlanError.IKE_NETWORK_LOST_EXCEPTION,
+                            IwlanError.IKE_INIT_TIMEOUT,
+                            IwlanError.IKE_MOBILITY_TIMEOUT,
+                            IwlanError.IKE_DPD_TIMEOUT ->
+                    true;
+            default -> false;
+        };
     }
 
     /**
