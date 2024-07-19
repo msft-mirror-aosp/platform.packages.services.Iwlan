@@ -51,7 +51,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class IwlanEventListener {
 
-    private final FeatureFlags mFeatureFlags;
     public static final int UNKNOWN_EVENT = -1;
 
     /** On {@link IwlanCarrierConfigChangeListener#onCarrierConfigChanged} is called. */
@@ -62,6 +61,7 @@ public class IwlanEventListener {
 
     /** Airplane mode turned off or disabled. */
     public static final int APM_DISABLE_EVENT = 3;
+
     /** Airplane mode turned on or enabled */
     public static final int APM_ENABLE_EVENT = 4;
 
@@ -198,9 +198,7 @@ public class IwlanEventListener {
         }
     }
 
-    /**
-     * Returns IwlanEventListener instance
-     */
+    /** Returns IwlanEventListener instance */
     public static IwlanEventListener getInstance(@NonNull Context context, int slotId) {
         return mInstances.computeIfAbsent(
                 slotId, k -> new IwlanEventListener(context, slotId, new FeatureFlagsImpl()));
@@ -377,8 +375,6 @@ public class IwlanEventListener {
         mSlotId = slotId;
         mSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
         SUB_TAG = IwlanEventListener.class.getSimpleName() + "[" + slotId + "]";
-        sIsAirplaneModeOn = null;
-        mFeatureFlags = featureFlags;
     }
 
     private void onCarrierConfigChanged(int subId, int carrierId) {

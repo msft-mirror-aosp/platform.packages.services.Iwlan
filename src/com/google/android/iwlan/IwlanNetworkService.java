@@ -83,7 +83,7 @@ public class IwlanNetworkService extends NetworkService {
     private static Transport sDefaultDataTransport = Transport.UNSPECIFIED_NETWORK;
 
     // This callback runs in the same thread as IwlanNetworkServiceHandler
-    final class IwlanNetworkMonitorCallback extends ConnectivityManager.NetworkCallback {
+    static final class IwlanNetworkMonitorCallback extends ConnectivityManager.NetworkCallback {
         /** Called when the framework connects and has declared a new network ready for use. */
         @Override
         public void onAvailable(Network network) {
@@ -150,7 +150,7 @@ public class IwlanNetworkService extends NetworkService {
         }
     }
 
-    final class IwlanOnSubscriptionsChangedListener
+    static final class IwlanOnSubscriptionsChangedListener
             extends SubscriptionManager.OnSubscriptionsChangedListener {
         /**
          * Callback invoked when there is any change to any SubscriptionInfo. Typically, this method

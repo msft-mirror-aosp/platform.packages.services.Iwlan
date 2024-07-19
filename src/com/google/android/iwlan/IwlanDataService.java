@@ -74,8 +74,6 @@ import com.google.android.iwlan.epdg.EpdgSelector;
 import com.google.android.iwlan.epdg.EpdgTunnelManager;
 import com.google.android.iwlan.epdg.TunnelLinkProperties;
 import com.google.android.iwlan.epdg.TunnelSetupRequest;
-import com.google.android.iwlan.flags.FeatureFlags;
-import com.google.android.iwlan.flags.FeatureFlagsImpl;
 import com.google.android.iwlan.proto.MetricsAtom;
 
 import java.io.FileDescriptor;
@@ -99,7 +97,6 @@ import java.util.function.Consumer;
 
 public class IwlanDataService extends DataService {
 
-    private final FeatureFlags mFeatureFlags;
     private static final String TAG = IwlanDataService.class.getSimpleName();
 
     private static final String CONTEXT_ATTRIBUTION_TAG = "IWLAN";
@@ -145,14 +142,7 @@ public class IwlanDataService extends DataService {
 
     private boolean mIs5GEnabledOnUi;
 
-    public IwlanDataService() {
-        mFeatureFlags = new FeatureFlagsImpl();
-    }
-
-    @VisibleForTesting
-    IwlanDataService(FeatureFlags featureFlags) {
-        mFeatureFlags = featureFlags;
-    }
+    public IwlanDataService() {}
 
     // TODO: see if network monitor callback impl can be shared between dataservice and
     // networkservice
@@ -866,13 +856,9 @@ public class IwlanDataService extends DataService {
                             accessNetworkType,
                             dataProfile,
                             isRoaming,
-                            allowRoaming,
                             reason,
                             linkProperties,
                             pduSessionId,
-                            sliceInfo,
-                            trafficDescriptor,
-                            matchAllRuleAllowed,
                             callback,
                             this);
 
@@ -1147,7 +1133,7 @@ public class IwlanDataService extends DataService {
                     continue;
                 }
 
-                if (mCellInfo == null || mCellInfo != cellInfo) {
+                if (mCellInfo == null || !mCellInfo.equals(cellInfo)) {
                     mCellInfo = cellInfo;
                     Log.d(TAG, " Update cached cellinfo");
                     return true;
@@ -2144,16 +2130,12 @@ public class IwlanDataService extends DataService {
         final int mAccessNetworkType;
         @NonNull final DataProfile mDataProfile;
         final boolean mIsRoaming;
-        final boolean mAllowRoaming;
         final int mReason;
         @Nullable final LinkProperties mLinkProperties;
 
         @IntRange(from = 0, to = 15)
         final int mPduSessionId;
 
-        @Nullable final NetworkSliceInfo mSliceInfo;
-        @Nullable final TrafficDescriptor mTrafficDescriptor;
-        final boolean mMatchAllRuleAllowed;
         @NonNull final DataServiceCallback mCallback;
         final IwlanDataServiceProvider mIwlanDataServiceProvider;
 
@@ -2161,25 +2143,17 @@ public class IwlanDataService extends DataService {
                 int accessNetworkType,
                 DataProfile dataProfile,
                 boolean isRoaming,
-                boolean allowRoaming,
                 int reason,
                 LinkProperties linkProperties,
                 int pduSessionId,
-                NetworkSliceInfo sliceInfo,
-                TrafficDescriptor trafficDescriptor,
-                boolean matchAllRuleAllowed,
                 DataServiceCallback callback,
                 IwlanDataServiceProvider dsp) {
             mAccessNetworkType = accessNetworkType;
             mDataProfile = dataProfile;
             mIsRoaming = isRoaming;
-            mAllowRoaming = allowRoaming;
             mReason = reason;
             mLinkProperties = linkProperties;
             mPduSessionId = pduSessionId;
-            mSliceInfo = sliceInfo;
-            mTrafficDescriptor = trafficDescriptor;
-            mMatchAllRuleAllowed = matchAllRuleAllowed;
             mCallback = callback;
             mIwlanDataServiceProvider = dsp;
         }
@@ -2221,10 +2195,10 @@ public class IwlanDataService extends DataService {
         NetworkSpecifier specifier = networkCapabilities.getNetworkSpecifier();
         TransportInfo transportInfo = networkCapabilities.getTransportInfo();
 
-        if (specifier instanceof TelephonyNetworkSpecifier telephonyNetworkSpecifier) {
-            connectedDataSub = telephonyNetworkSpecifier.getSubscriptionId();
-        } else if (transportInfo instanceof VcnTransportInfo vcnTransportInfo) {
-            connectedDataSub = vcnTransportInfo.getSubId();
+        if (specifier instanceof TelephonyNetworkSpecifier) {
+            connectedDataSub = ((TelephonyNetworkSpecifier) specifier).getSubscriptionId();
+        } else if (transportInfo instanceof VcnTransportInfo) {
+            connectedDataSub = ((VcnTransportInfo) transportInfo).getSubId();
         }
         return connectedDataSub;
     }

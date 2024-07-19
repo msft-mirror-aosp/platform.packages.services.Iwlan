@@ -171,8 +171,8 @@ public class ErrorPolicyManager {
     /**
      * Returns ErrorPolicyManager instance for the subId
      *
-     * @param context
-     * @param slotId
+     * @param context the context to be used by the ErrorPolicyManager
+     * @param slotId the slot ID for which the ErrorPolicyManager instance is required
      */
     public static ErrorPolicyManager getInstance(@NonNull Context context, int slotId) {
         return mInstances.computeIfAbsent(slotId, k -> new ErrorPolicyManager(context, slotId));
@@ -183,9 +183,7 @@ public class ErrorPolicyManager {
         mInstances.clear();
     }
 
-    /**
-     * Release or reset the instance.
-     */
+    /** Release or reset the instance. */
     public void releaseInstance() {
         Log.d(LOG_TAG, "Release Instance with slotId: " + mSlotId);
         IwlanEventListener.getInstance(mContext, mSlotId).removeEventListener(mHandler);
@@ -976,8 +974,8 @@ public class ErrorPolicyManager {
                 case IwlanError.IKE_NETWORK_LOST_EXCEPTION -> "IKE_NETWORK_LOST_EXCEPTION";
                 case IwlanError.EPDG_ADDRESS_ONLY_IPV4_ALLOWED -> "EPDG_ADDRESS_ONLY_IPV4_ALLOWED";
                 case IwlanError.EPDG_ADDRESS_ONLY_IPV6_ALLOWED -> "EPDG_ADDRESS_ONLY_IPV6_ALLOWED";
-                    // TODO: Add TIMEOUT_EXCEPTION processing
-                    // TODO: Add all the missing error detail string
+                // TODO: Add TIMEOUT_EXCEPTION processing
+                // TODO: Add all the missing error detail string
                 case IwlanError.IKE_INIT_TIMEOUT -> "IKE_INIT_TIMEOUT";
                 case IwlanError.IKE_MOBILITY_TIMEOUT -> "IKE_MOBILITY_TIMEOUT";
                 case IwlanError.IKE_DPD_TIMEOUT -> "IKE_DPD_TIMEOUT";

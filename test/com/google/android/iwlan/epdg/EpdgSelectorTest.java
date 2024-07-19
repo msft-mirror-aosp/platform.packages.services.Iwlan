@@ -21,7 +21,6 @@ import static android.net.DnsResolver.TYPE_AAAA;
 
 import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
 
-import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
@@ -82,11 +81,14 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 public class EpdgSelectorTest {
 
@@ -196,6 +198,21 @@ public class EpdgSelectorTest {
         mFakeDns.clearAll();
     }
 
+    private List<InetAddress> getInetAddresses(String... hostnames) throws UnknownHostException {
+        return Arrays.stream(hostnames)
+                .map(
+                        hostname -> {
+                            try {
+                                return InetAddress.getAllByName(hostname);
+                            } catch (UnknownHostException e) {
+                                throw new RuntimeException(e);
+                            }
+                        })
+                .flatMap(Arrays::stream)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
     @Test
     public void testStaticMethodPass() throws Exception {
         when(DnsResolver.getInstance()).thenReturn(mMockDnsResolver);
@@ -213,13 +230,11 @@ public class EpdgSelectorTest {
         IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, testStaticAddress);
 
-        ArrayList<InetAddress> testInetAddresses =
+        List<InetAddress> expectedAddresses =
+                Arrays.asList(InetAddress.getAllByName(TEST_IP_ADDRESS));
+        List<InetAddress> actualAddresses =
                 getValidatedServerListWithDefaultParams(false /*isEmergency*/);
-
-        InetAddress expectedAddress = InetAddress.getByName(TEST_IP_ADDRESS);
-
-        assertEquals(1, testInetAddresses.size());
-        assertEquals(expectedAddress, testInetAddresses.get(0));
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
     @Test
@@ -231,11 +246,9 @@ public class EpdgSelectorTest {
         IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, TEST_IP_ADDRESS);
 
-        ArrayList<InetAddress> testInetAddresses =
+        List<InetAddress> actualAddresses =
                 getValidatedServerListWithDefaultParams(false /*isEmergency*/);
-
-        assertEquals(1, testInetAddresses.size());
-        assertEquals(InetAddresses.parseNumericAddress(TEST_IP_ADDRESS), testInetAddresses.get(0));
+        assertEquals(InetAddresses.parseNumericAddress(TEST_IP_ADDRESS), actualAddresses.get(0));
     }
 
     @Test
@@ -256,13 +269,10 @@ public class EpdgSelectorTest {
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_ROAMING_STRING,
                 testRoamStaticAddress);
 
-        ArrayList<InetAddress> testInetAddresses =
+        List<InetAddress> actualAddresses =
                 getValidatedServerListWithDefaultParams(false /*isEmergency*/);
-
-        InetAddress expectedAddress = InetAddress.getByName(TEST_IP_ADDRESS);
-
-        assertEquals(1, testInetAddresses.size());
-        assertEquals(expectedAddress, testInetAddresses.get(0));
+        List<InetAddress> expectedAddresses = getInetAddresses(new String[] {TEST_IP_ADDRESS});
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
     @Test
@@ -288,12 +298,11 @@ public class EpdgSelectorTest {
         mFakeDns.setAnswer(expectedFqdnFromImsi, new String[] {TEST_IP_ADDRESS_1}, TYPE_A);
         mFakeDns.setAnswer(expectedFqdnFromEhplmn, new String[] {TEST_IP_ADDRESS_2}, TYPE_A);
 
-        ArrayList<InetAddress> testInetAddresses =
+        List<InetAddress> actualAddresses =
                 getValidatedServerListWithDefaultParams(false /*isEmergency*/);
-
-        assertEquals(2, testInetAddresses.size());
-        assertTrue(testInetAddresses.contains(InetAddress.getByName(TEST_IP_ADDRESS_1)));
-        assertTrue(testInetAddresses.contains(InetAddress.getByName(TEST_IP_ADDRESS_2)));
+        List<InetAddress> expectedAddresses =
+                getInetAddresses(new String[] {TEST_IP_ADDRESS_1, TEST_IP_ADDRESS_2});
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
     private void testPlmnResolutionMethod(boolean isEmergency) throws Exception {
@@ -327,23 +336,25 @@ public class EpdgSelectorTest {
         mFakeDns.setAnswer(
                 "sos." + expectedFqdnFromRplmn, new String[] {TEST_IP_ADDRESS_7}, TYPE_A);
 
-        ArrayList<InetAddress> testInetAddresses =
-                getValidatedServerListWithDefaultParams(isEmergency);
+        List<InetAddress> actualAddresses = getValidatedServerListWithDefaultParams(isEmergency);
 
+        String[] testIpAddresses;
         if (isEmergency) {
-            assertEquals(6, testInetAddresses.size());
-            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_7), testInetAddresses.get(0));
-            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_6), testInetAddresses.get(1));
-            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_3), testInetAddresses.get(2));
-            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS), testInetAddresses.get(3));
-            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_4), testInetAddresses.get(4));
-            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_1), testInetAddresses.get(5));
+            testIpAddresses =
+                    new String[] {
+                        TEST_IP_ADDRESS_7,
+                        TEST_IP_ADDRESS_6,
+                        TEST_IP_ADDRESS_3,
+                        TEST_IP_ADDRESS,
+                        TEST_IP_ADDRESS_4,
+                        TEST_IP_ADDRESS_1
+                    };
         } else {
-            assertEquals(3, testInetAddresses.size());
-            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_6), testInetAddresses.get(0));
-            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS), testInetAddresses.get(1));
-            assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_1), testInetAddresses.get(2));
+            testIpAddresses = new String[] {TEST_IP_ADDRESS_6, TEST_IP_ADDRESS, TEST_IP_ADDRESS_1};
         }
+        List<InetAddress> expectedAddresses = getInetAddresses(testIpAddresses);
+
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
     @Test
@@ -376,13 +387,12 @@ public class EpdgSelectorTest {
         mFakeDns.setAnswer(fqdnFromEhplmn3, new String[] {TEST_IP_ADDRESS_2}, TYPE_A);
         mFakeDns.setAnswer(fqdnFromEhplmn4, new String[] {TEST_IP_ADDRESS_3}, TYPE_A);
 
-        ArrayList<InetAddress> testInetAddresses = getValidatedServerListWithDefaultParams(false);
-
-        assertEquals(4, testInetAddresses.size());
-        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_1), testInetAddresses.get(0));
-        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS), testInetAddresses.get(1));
-        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_2), testInetAddresses.get(2));
-        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_3), testInetAddresses.get(3));
+        List<InetAddress> actualAddresses = getValidatedServerListWithDefaultParams(false);
+        String[] testIpAddresses = {
+            TEST_IP_ADDRESS_1, TEST_IP_ADDRESS, TEST_IP_ADDRESS_2, TEST_IP_ADDRESS_3,
+        };
+        List<InetAddress> expectedAddresses = getInetAddresses(testIpAddresses);
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
     @Test
@@ -409,9 +419,8 @@ public class EpdgSelectorTest {
                     CarrierConfigManager.Iwlan.EPDG_PLMN_EHPLMN_ALL,
                 });
 
-        ArrayList<InetAddress> testInetAddresses = getValidatedServerListWithDefaultParams(false);
-
-        assertEquals(0, testInetAddresses.size());
+        List<InetAddress> actualAddresses = getValidatedServerListWithDefaultParams(false);
+        assertEquals(0, actualAddresses.size());
     }
 
     @Test
@@ -439,9 +448,8 @@ public class EpdgSelectorTest {
                     CarrierConfigManager.Iwlan.EPDG_PLMN_EHPLMN_ALL,
                 });
 
-        ArrayList<InetAddress> testInetAddresses = getValidatedServerListWithDefaultParams(false);
-
-        assertEquals(0, testInetAddresses.size());
+        List<InetAddress> actualAddresses = getValidatedServerListWithDefaultParams(false);
+        assertEquals(0, actualAddresses.size());
     }
 
     @Test
@@ -467,9 +475,8 @@ public class EpdgSelectorTest {
                     CarrierConfigManager.Iwlan.EPDG_PLMN_EHPLMN_ALL,
                 });
 
-        ArrayList<InetAddress> testInetAddresses = getValidatedServerListWithDefaultParams(false);
-
-        assertEquals(0, testInetAddresses.size());
+        List<InetAddress> actualAddresses = getValidatedServerListWithDefaultParams(false);
+        assertEquals(0, actualAddresses.size());
     }
 
     @Test
@@ -499,10 +506,9 @@ public class EpdgSelectorTest {
         mFakeDns.setAnswer(fqdnFromEhplmn3, new String[] {TEST_IP_ADDRESS_2}, TYPE_A);
         mFakeDns.setAnswer(fqdnFromEhplmn4, new String[] {TEST_IP_ADDRESS_3}, TYPE_A);
 
-        ArrayList<InetAddress> testInetAddresses = getValidatedServerListWithDefaultParams(false);
-
-        assertEquals(1, testInetAddresses.size());
-        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS), testInetAddresses.get(0));
+        List<InetAddress> actualAddresses = getValidatedServerListWithDefaultParams(false);
+        List<InetAddress> expectedAddresses = getInetAddresses(new String[] {TEST_IP_ADDRESS});
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
     @Test
@@ -533,10 +539,9 @@ public class EpdgSelectorTest {
         mFakeDns.setAnswer(fqdnFromEhplmn1, new String[] {TEST_IP_ADDRESS_1}, TYPE_A);
         mFakeDns.setAnswer(fqdnFromEhplmn2, new String[] {TEST_IP_ADDRESS_2}, TYPE_A);
 
-        ArrayList<InetAddress> testInetAddresses = getValidatedServerListWithDefaultParams(false);
-
-        assertEquals(1, testInetAddresses.size());
-        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS), testInetAddresses.get(0));
+        List<InetAddress> actualAddresses = getValidatedServerListWithDefaultParams(false);
+        List<InetAddress> expectedAddresses = getInetAddresses(new String[] {TEST_IP_ADDRESS});
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
     @Test
@@ -562,27 +567,26 @@ public class EpdgSelectorTest {
         IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, testStaticAddress);
 
-        ArrayList<InetAddress> testInetAddresses =
+        List<InetAddress> actualAddresses =
                 getValidatedServerListWithDefaultParams(false /*isEmergency*/);
-
-        assertEquals(3, testInetAddresses.size());
-        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_1), testInetAddresses.get(0));
-        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_2), testInetAddresses.get(1));
-        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS), testInetAddresses.get(2));
+        List<InetAddress> expectedAddresses =
+                getInetAddresses(
+                        new String[] {TEST_IP_ADDRESS_1, TEST_IP_ADDRESS_2, TEST_IP_ADDRESS});
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
-    private ArrayList<InetAddress> getValidatedServerListWithDefaultParams(boolean isEmergency)
+    private List<InetAddress> getValidatedServerListWithDefaultParams(boolean isEmergency)
             throws Exception {
         return getValidatedServerListWithIpPreference(
                 EpdgSelector.PROTO_FILTER_IPV4V6, EpdgSelector.IPV4_PREFERRED, isEmergency);
     }
 
-    private ArrayList<InetAddress> getValidatedServerListWithIpPreference(
+    private List<InetAddress> getValidatedServerListWithIpPreference(
             @EpdgSelector.ProtoFilter int filter,
             @EpdgSelector.EpdgAddressOrder int order,
             boolean isEmergency)
             throws Exception {
-        ArrayList<InetAddress> testInetAddresses = new ArrayList<InetAddress>();
+        List<InetAddress> actualAddresses = new ArrayList<InetAddress>();
         final CountDownLatch latch = new CountDownLatch(1);
         IwlanError ret =
                 mEpdgSelector.getValidatedServerList(
@@ -599,7 +603,7 @@ public class EpdgSelectorTest {
                                 assertEquals(1234, transactionId);
 
                                 for (InetAddress mInetAddress : validIPList) {
-                                    testInetAddresses.add(mInetAddress);
+                                    actualAddresses.add(mInetAddress);
                                 }
                                 Log.d(TAG, "onServerListChanged received");
                                 latch.countDown();
@@ -614,7 +618,7 @@ public class EpdgSelectorTest {
 
         assertEquals(IwlanError.NO_ERROR, ret.getErrorType());
         latch.await(1, TimeUnit.SECONDS);
-        return testInetAddresses;
+        return actualAddresses;
     }
 
     @Test
@@ -641,12 +645,12 @@ public class EpdgSelectorTest {
         assertTrue(mEpdgSelector.setPcoData(TEST_PCO_ID_IPV6, TEST_PCO_IPV6_DATA));
         assertTrue(mEpdgSelector.setPcoData(TEST_PCO_ID_IPV4, TEST_PCO_IPV4_DATA));
 
-        ArrayList<InetAddress> testInetAddresses =
-                getValidatedServerListWithDefaultParams(false /* isEmergency */);
+        Set<InetAddress> actualAddresses =
+                new HashSet<>(getValidatedServerListWithDefaultParams(false /* isEmergency */));
+        Set<InetAddress> expectedAddresses =
+                new HashSet<>(getInetAddresses(new String[] {TEST_IP_ADDRESS, TEST_IPV6_ADDRESS}));
 
-        assertEquals(2, testInetAddresses.size());
-        assertTrue(testInetAddresses.contains(InetAddress.getByName(TEST_IP_ADDRESS)));
-        assertTrue(testInetAddresses.contains(InetAddress.getByName(TEST_IPV6_ADDRESS)));
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
     @Test
@@ -660,10 +664,10 @@ public class EpdgSelectorTest {
         assertTrue(mEpdgSelector.setPcoData(TEST_PCO_ID_IPV6, TEST_PCO_NO_DATA));
         assertTrue(mEpdgSelector.setPcoData(TEST_PCO_ID_IPV4, TEST_PCO_NO_DATA));
 
-        ArrayList<InetAddress> testInetAddresses =
+        List<InetAddress> actualAddresses =
                 getValidatedServerListWithDefaultParams(false /* isEmergency */);
 
-        assertEquals(0, testInetAddresses.size());
+        assertEquals(0, actualAddresses.size());
     }
 
     @Test
@@ -677,10 +681,9 @@ public class EpdgSelectorTest {
         assertTrue(mEpdgSelector.setPcoData(TEST_PCO_ID_IPV6, TEST_PCO_PLMN_DATA));
         assertTrue(mEpdgSelector.setPcoData(TEST_PCO_ID_IPV4, TEST_PCO_PLMN_DATA));
 
-        ArrayList<InetAddress> testInetAddresses =
+        List<InetAddress> actualAddresses =
                 getValidatedServerListWithDefaultParams(false /* isEmergency */);
-
-        assertEquals(0, testInetAddresses.size());
+        assertEquals(0, actualAddresses.size());
     }
 
     private void addTestPcoIdsToTestConfigBundle() {
@@ -751,13 +754,13 @@ public class EpdgSelectorTest {
         setAnswerForCellularMethod(isEmergency, 311, 120);
         setAnswerForCellularMethod(isEmergency, 300, 120);
 
-        ArrayList<InetAddress> testInetAddresses =
-                getValidatedServerListWithDefaultParams(isEmergency);
+        List<InetAddress> actualAddresses = getValidatedServerListWithDefaultParams(isEmergency);
 
-        assertEquals(3, testInetAddresses.size());
-        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS), testInetAddresses.get(0));
-        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_1), testInetAddresses.get(1));
-        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_2), testInetAddresses.get(2));
+        List<InetAddress> expectedAddresses =
+                getInetAddresses(
+                        new String[] {TEST_IP_ADDRESS, TEST_IP_ADDRESS_1, TEST_IP_ADDRESS_2});
+
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
     @Test
@@ -792,37 +795,21 @@ public class EpdgSelectorTest {
         mFakeDns.setAnswer(fqdnFromRplmn, new String[] {TEST_IP_ADDRESS}, TYPE_A);
         mFakeDns.setAnswer(staticAddr, new String[] {TEST_IP_ADDRESS_1, TEST_IPV6_ADDRESS}, TYPE_A);
 
-        ArrayList<InetAddress> testInetAddresses = getValidatedServerListWithDefaultParams(false);
-        assertArrayEquals(
-                List.of(
-                                InetAddress.getByName(TEST_IP_ADDRESS),
-                                InetAddress.getByName(TEST_IP_ADDRESS_1),
-                                InetAddress.getByName(TEST_IPV6_ADDRESS))
-                        .toArray(),
-                testInetAddresses.toArray());
+        List<InetAddress> expectedAddresses =
+                getInetAddresses(
+                        new String[] {TEST_IP_ADDRESS, TEST_IP_ADDRESS_1, TEST_IPV6_ADDRESS});
+
+        List<InetAddress> actualAddresses = getValidatedServerListWithDefaultParams(false);
+        assertEquals(expectedAddresses, actualAddresses);
 
         mEpdgSelector.onEpdgConnectionFailed(
-                InetAddress.getByName(TEST_IP_ADDRESS), mockIkeIOException);
+                InetAddress.parseNumericAddress(TEST_IP_ADDRESS), mockIkeIOException);
         // Flag disabled should not affect the result
-        testInetAddresses = getValidatedServerListWithDefaultParams(false);
-        assertArrayEquals(
-                List.of(
-                                InetAddress.getByName(TEST_IP_ADDRESS),
-                                InetAddress.getByName(TEST_IP_ADDRESS_1),
-                                InetAddress.getByName(TEST_IPV6_ADDRESS))
-                        .toArray(),
-                testInetAddresses.toArray());
+        assertEquals(expectedAddresses, actualAddresses);
 
         mEpdgSelector.onEpdgConnectedSuccessfully();
         // Flag disabled should not affect the result
-        testInetAddresses = getValidatedServerListWithDefaultParams(false);
-        assertArrayEquals(
-                List.of(
-                                InetAddress.getByName(TEST_IP_ADDRESS),
-                                InetAddress.getByName(TEST_IP_ADDRESS_1),
-                                InetAddress.getByName(TEST_IPV6_ADDRESS))
-                        .toArray(),
-                testInetAddresses.toArray());
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
     @Test
@@ -858,100 +845,73 @@ public class EpdgSelectorTest {
         mFakeDns.setAnswer(fqdnFromRplmn, new String[] {TEST_IP_ADDRESS}, TYPE_A);
         mFakeDns.setAnswer(staticAddr, new String[] {TEST_IP_ADDRESS_1, TEST_IPV6_ADDRESS}, TYPE_A);
 
-        ArrayList<InetAddress> testInetAddresses = getValidatedServerListWithDefaultParams(false);
-        assertArrayEquals(
-                List.of(
-                                InetAddress.getByName(TEST_IP_ADDRESS),
-                                InetAddress.getByName(TEST_IP_ADDRESS_1),
-                                InetAddress.getByName(TEST_IPV6_ADDRESS))
-                        .toArray(),
-                testInetAddresses.toArray());
+        List<InetAddress> actualAddresses = getValidatedServerListWithDefaultParams(false);
+        List<InetAddress> expectedAddresses =
+                getInetAddresses(
+                        new String[] {TEST_IP_ADDRESS, TEST_IP_ADDRESS_1, TEST_IPV6_ADDRESS});
+        assertEquals(expectedAddresses, actualAddresses);
 
         mEpdgSelector.onEpdgConnectionFailed(
-                InetAddress.getByName(TEST_IP_ADDRESS), mockIkeIOException);
-        testInetAddresses = getValidatedServerListWithDefaultParams(false);
-        assertArrayEquals(
-                List.of(
-                                InetAddress.getByName(TEST_IP_ADDRESS_1),
-                                InetAddress.getByName(TEST_IPV6_ADDRESS))
-                        .toArray(),
-                testInetAddresses.toArray());
+                InetAddress.parseNumericAddress(TEST_IP_ADDRESS), mockIkeIOException);
+        actualAddresses = getValidatedServerListWithDefaultParams(false);
+        expectedAddresses = getInetAddresses(new String[] {TEST_IP_ADDRESS_1, TEST_IPV6_ADDRESS});
+        assertEquals(expectedAddresses, actualAddresses);
 
         mEpdgSelector.onEpdgConnectionFailed(
                 InetAddress.getByName(TEST_IP_ADDRESS_1), mockIkeProtocolException);
-        testInetAddresses = getValidatedServerListWithDefaultParams(false);
-        assertArrayEquals(
+        actualAddresses = getValidatedServerListWithDefaultParams(false);
+        assertEquals(
                 List.of(InetAddress.getByName(TEST_IPV6_ADDRESS)).toArray(),
-                testInetAddresses.toArray());
+                actualAddresses.toArray());
 
         // Reset temporary excluded ip addresses
         mEpdgSelector.onEpdgConnectedSuccessfully();
-        testInetAddresses = getValidatedServerListWithDefaultParams(false);
-        assertArrayEquals(
-                List.of(
-                                InetAddress.getByName(TEST_IP_ADDRESS),
-                                InetAddress.getByName(TEST_IP_ADDRESS_1),
-                                InetAddress.getByName(TEST_IPV6_ADDRESS))
-                        .toArray(),
-                testInetAddresses.toArray());
+        actualAddresses = getValidatedServerListWithDefaultParams(false);
+        expectedAddresses =
+                getInetAddresses(
+                        new String[] {TEST_IP_ADDRESS, TEST_IP_ADDRESS_1, TEST_IPV6_ADDRESS});
+        assertEquals(expectedAddresses, actualAddresses);
 
         mEpdgSelector.onEpdgConnectionFailed(
-                InetAddress.getByName(TEST_IP_ADDRESS), mockIkeProtocolException);
-        testInetAddresses = getValidatedServerListWithDefaultParams(false);
-        assertArrayEquals(
-                List.of(
-                                InetAddress.getByName(TEST_IP_ADDRESS_1),
-                                InetAddress.getByName(TEST_IPV6_ADDRESS))
-                        .toArray(),
-                testInetAddresses.toArray());
+                InetAddress.parseNumericAddress(TEST_IP_ADDRESS), mockIkeProtocolException);
+        actualAddresses = getValidatedServerListWithDefaultParams(false);
+        expectedAddresses = getInetAddresses(new String[] {TEST_IP_ADDRESS_1, TEST_IPV6_ADDRESS});
+        assertEquals(expectedAddresses, actualAddresses);
 
         mEpdgSelector.onEpdgConnectionFailed(
                 InetAddress.getByName(TEST_IPV6_ADDRESS), mockIkeIOException);
-        testInetAddresses = getValidatedServerListWithDefaultParams(false);
-        assertArrayEquals(
-                List.of(InetAddress.getByName(TEST_IP_ADDRESS_1)).toArray(),
-                testInetAddresses.toArray());
+        actualAddresses = getValidatedServerListWithDefaultParams(false);
+        expectedAddresses = getInetAddresses(new String[] {TEST_IP_ADDRESS_1});
+        assertEquals(expectedAddresses, actualAddresses);
 
         mEpdgSelector.onEpdgConnectionFailed(
                 InetAddress.getByName(TEST_IP_ADDRESS_1), mockIkeIOException);
         // All ip addresses removed, should reset excluded address
-        testInetAddresses = getValidatedServerListWithDefaultParams(false);
-        assertArrayEquals(
-                List.of(
-                                InetAddress.getByName(TEST_IP_ADDRESS),
-                                InetAddress.getByName(TEST_IP_ADDRESS_1),
-                                InetAddress.getByName(TEST_IPV6_ADDRESS))
-                        .toArray(),
-                testInetAddresses.toArray());
+        actualAddresses = getValidatedServerListWithDefaultParams(false);
+        expectedAddresses =
+                getInetAddresses(
+                        new String[] {TEST_IP_ADDRESS, TEST_IP_ADDRESS_1, TEST_IPV6_ADDRESS});
+        assertEquals(expectedAddresses, actualAddresses);
 
         mEpdgSelector.onEpdgConnectionFailed(
                 InetAddress.getByName(TEST_IP_ADDRESS_1), mockIkeIOException);
-        testInetAddresses = getValidatedServerListWithDefaultParams(false);
-        assertArrayEquals(
-                List.of(
-                                InetAddress.getByName(TEST_IP_ADDRESS),
-                                InetAddress.getByName(TEST_IPV6_ADDRESS))
-                        .toArray(),
-                testInetAddresses.toArray());
+        actualAddresses = getValidatedServerListWithDefaultParams(false);
+        expectedAddresses = getInetAddresses(new String[] {TEST_IP_ADDRESS, TEST_IPV6_ADDRESS});
+        assertEquals(expectedAddresses, actualAddresses);
 
         // When the original result changed
         mFakeDns.setAnswer(staticAddr, new String[] {TEST_IP_ADDRESS_1}, TYPE_A);
         mFakeDns.setAnswer(fqdnFromRplmn, new String[] {TEST_IP_ADDRESS_3}, TYPE_A);
-        testInetAddresses = getValidatedServerListWithDefaultParams(false);
-        assertArrayEquals(
-                List.of(InetAddress.getByName(TEST_IP_ADDRESS_3)).toArray(),
-                testInetAddresses.toArray());
+        actualAddresses = getValidatedServerListWithDefaultParams(false);
+        expectedAddresses = getInetAddresses(new String[] {TEST_IP_ADDRESS_3});
+        assertEquals(expectedAddresses, actualAddresses);
 
         mEpdgSelector.onEpdgConnectionFailed(
                 InetAddress.getByName(TEST_IP_ADDRESS_3), mockIkeIOException);
         // It should also reset the excluded list once all ip addresses are excluded
-        testInetAddresses = getValidatedServerListWithDefaultParams(false);
-        assertArrayEquals(
-                List.of(
-                                InetAddress.getByName(TEST_IP_ADDRESS_3),
-                                InetAddress.getByName(TEST_IP_ADDRESS_1))
-                        .toArray(),
-                testInetAddresses.toArray());
+        actualAddresses = getValidatedServerListWithDefaultParams(false);
+        expectedAddresses = getInetAddresses(new String[] {TEST_IP_ADDRESS_3, TEST_IP_ADDRESS_1});
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
     private void setAnswerForCellularMethod(boolean isEmergency, int mcc, int mnc)
@@ -1023,25 +983,17 @@ public class EpdgSelectorTest {
         mFakeDns.setAnswer(fqdnFromRplmn, new String[] {TEST_IP_ADDRESS}, TYPE_A);
         mFakeDns.setAnswer(staticAddr, new String[] {TEST_IP_ADDRESS_1, TEST_IPV6_ADDRESS}, TYPE_A);
 
-        ArrayList<InetAddress> testInetAddresses = getValidatedServerListWithDefaultParams(false);
-        assertArrayEquals(
-                List.of(
-                                InetAddress.getByName(TEST_IP_ADDRESS),
-                                InetAddress.getByName(TEST_IP_ADDRESS_1),
-                                InetAddress.getByName(TEST_IPV6_ADDRESS))
-                        .toArray(),
-                testInetAddresses.toArray());
+        List<InetAddress> expectedAddresses =
+                getInetAddresses(
+                        new String[] {TEST_IP_ADDRESS, TEST_IP_ADDRESS_1, TEST_IPV6_ADDRESS});
+
+        List<InetAddress> actualAddresses = getValidatedServerListWithDefaultParams(false);
+        assertEquals(expectedAddresses, actualAddresses);
 
         mEpdgSelector.onEpdgConnectionFailed(
-                InetAddress.getByName(TEST_IP_ADDRESS), mockIkeNetworkLostException);
-        testInetAddresses = getValidatedServerListWithDefaultParams(false);
-        assertArrayEquals(
-                List.of(
-                                InetAddress.getByName(TEST_IP_ADDRESS),
-                                InetAddress.getByName(TEST_IP_ADDRESS_1),
-                                InetAddress.getByName(TEST_IPV6_ADDRESS))
-                        .toArray(),
-                testInetAddresses.toArray());
+                InetAddress.parseNumericAddress(TEST_IP_ADDRESS), mockIkeNetworkLostException);
+        actualAddresses = getValidatedServerListWithDefaultParams(false);
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
     @Test
@@ -1064,15 +1016,14 @@ public class EpdgSelectorTest {
         IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, testStaticAddress);
 
-        ArrayList<InetAddress> testInetAddresses =
+        List<InetAddress> actualAddresses =
                 getValidatedServerListWithIpPreference(
                         EpdgSelector.PROTO_FILTER_IPV4V6,
                         EpdgSelector.IPV4_PREFERRED,
                         false /*isEmergency*/);
-
-        assertEquals(2, testInetAddresses.size());
-        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_1), testInetAddresses.get(0));
-        assertEquals(InetAddress.getByName(TEST_IPV6_ADDRESS), testInetAddresses.get(1));
+        List<InetAddress> expectedAddresses =
+                getInetAddresses(new String[] {TEST_IP_ADDRESS_1, TEST_IPV6_ADDRESS});
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
     @Test
@@ -1095,15 +1046,14 @@ public class EpdgSelectorTest {
         IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, testStaticAddress);
 
-        ArrayList<InetAddress> testInetAddresses =
+        List<InetAddress> actualAddresses =
                 getValidatedServerListWithIpPreference(
                         EpdgSelector.PROTO_FILTER_IPV4V6,
                         EpdgSelector.IPV6_PREFERRED,
                         false /*isEmergency*/);
-
-        assertEquals(2, testInetAddresses.size());
-        assertEquals(InetAddress.getByName(TEST_IPV6_ADDRESS), testInetAddresses.get(0));
-        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_1), testInetAddresses.get(1));
+        List<InetAddress> expectedAddresses =
+                getInetAddresses(new String[] {TEST_IPV6_ADDRESS, TEST_IP_ADDRESS_1});
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
     @Test
@@ -1126,14 +1076,13 @@ public class EpdgSelectorTest {
         IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, testStaticAddress);
 
-        ArrayList<InetAddress> testInetAddresses =
+        List<InetAddress> expectedAddresses = getInetAddresses(new String[] {TEST_IP_ADDRESS_1});
+        List<InetAddress> actualAddresses =
                 getValidatedServerListWithIpPreference(
                         EpdgSelector.PROTO_FILTER_IPV4,
                         EpdgSelector.SYSTEM_PREFERRED,
                         false /*isEmergency*/);
-
-        assertEquals(1, testInetAddresses.size());
-        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_1), testInetAddresses.get(0));
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
     @Test
@@ -1161,14 +1110,14 @@ public class EpdgSelectorTest {
         mFakeDns.setAnswer(expectedFqdnFromEHplmn, new String[] {TEST_IP_ADDRESS_1}, TYPE_A);
         mFakeDns.setAnswer(expectedFqdnFromConfig, new String[] {TEST_IP_ADDRESS_2}, TYPE_A);
 
-        ArrayList<InetAddress> testInetAddresses =
+        List<InetAddress> expectedAddresses =
+                Arrays.asList(InetAddress.getAllByName(TEST_IP_ADDRESS_1));
+        List<InetAddress> actualAddresses =
                 getValidatedServerListWithIpPreference(
                         EpdgSelector.PROTO_FILTER_IPV4,
                         EpdgSelector.SYSTEM_PREFERRED,
                         false /*isEmergency*/);
-
-        assertEquals(1, testInetAddresses.size());
-        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_1), testInetAddresses.get(0));
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
     @Test
@@ -1191,14 +1140,14 @@ public class EpdgSelectorTest {
         IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, testStaticAddress);
 
-        ArrayList<InetAddress> testInetAddresses =
+        List<InetAddress> expectedAddresses =
+                Arrays.asList(InetAddress.getAllByName(TEST_IPV6_ADDRESS));
+        List<InetAddress> actualAddresses =
                 getValidatedServerListWithIpPreference(
                         EpdgSelector.PROTO_FILTER_IPV6,
                         EpdgSelector.SYSTEM_PREFERRED,
                         false /*isEmergency*/);
-
-        assertEquals(1, testInetAddresses.size());
-        assertEquals(InetAddress.getByName(TEST_IPV6_ADDRESS), testInetAddresses.get(0));
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
     @Test
@@ -1223,16 +1172,15 @@ public class EpdgSelectorTest {
         IwlanCarrierConfig.putTestConfigString(
                 CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_STRING, testStaticAddress);
 
-        ArrayList<InetAddress> testInetAddresses =
+        List<InetAddress> actualAddresses =
                 getValidatedServerListWithIpPreference(
                         EpdgSelector.PROTO_FILTER_IPV4V6,
                         EpdgSelector.SYSTEM_PREFERRED,
                         false /*isEmergency*/);
-
-        assertEquals(3, testInetAddresses.size());
-        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_1), testInetAddresses.get(0));
-        assertEquals(InetAddress.getByName(TEST_IPV6_ADDRESS), testInetAddresses.get(1));
-        assertEquals(InetAddress.getByName(TEST_IP_ADDRESS_2), testInetAddresses.get(2));
+        List<InetAddress> expectedAddresses =
+                getInetAddresses(
+                        new String[] {TEST_IP_ADDRESS_1, TEST_IPV6_ADDRESS, TEST_IP_ADDRESS_2});
+        assertEquals(expectedAddresses, actualAddresses);
     }
 
     /**
@@ -1253,6 +1201,7 @@ public class EpdgSelectorTest {
                 mType = type;
                 mAddresses = addr;
             }
+
             // Full match or partial match that target host contains the entry hostname to support
             // random private dns probe hostname.
             private boolean matches(String hostname, int type) {
@@ -1309,12 +1258,6 @@ public class EpdgSelectorTest {
             answer.addAll(queryIpv4(hostname));
             answer.addAll(queryIpv6(hostname));
             return answer;
-        }
-
-        private void addAllIfNotNull(List<InetAddress> list, List<InetAddress> c) {
-            if (c != null) {
-                list.addAll(c);
-            }
         }
 
         /** Starts mocking DNS queries. */
