@@ -1356,18 +1356,12 @@ public class EpdgSelectorTest {
             String hostname = invocation.getArgument(posHostname);
             Executor executor = invocation.getArgument(posExecutor);
             DnsResolver.Callback<List<InetAddress>> callback = invocation.getArgument(posCallback);
-            List<InetAddress> answer;
-
-            switch (posType) {
-                case TYPE_A:
-                    answer = queryIpv4(hostname);
-                    break;
-                case TYPE_AAAA:
-                    answer = queryIpv6(hostname);
-                    break;
-                default:
-                    answer = queryAllTypes(hostname);
-            }
+            List<InetAddress> answer =
+                    switch (posType) {
+                        case TYPE_A -> queryIpv4(hostname);
+                        case TYPE_AAAA -> queryIpv6(hostname);
+                        default -> queryAllTypes(hostname);
+                    };
 
             if (answer != null && answer.size() > 0) {
                 new Handler(Looper.getMainLooper())

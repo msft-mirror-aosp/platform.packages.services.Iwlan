@@ -667,19 +667,15 @@ public class ErrorPolicyManager {
     private List<String> parseErrorDetails(int errorType, JSONArray errorDetailArray)
             throws JSONException, IllegalArgumentException {
         List<String> ret = new ArrayList<>();
-        boolean isValidErrorDetail = true;
 
         for (int i = 0; i < errorDetailArray.length(); i++) {
             String errorDetail = errorDetailArray.getString(i).trim();
-            // TODO(b/314900634): Refactor into switch expression
-            switch (errorType) {
-                case IKE_PROTOCOL_ERROR_TYPE:
-                    isValidErrorDetail = verifyIkeProtocolErrorDetail(errorDetail);
-                    break;
-                case GENERIC_ERROR_TYPE:
-                    isValidErrorDetail = verifyGenericErrorDetail(errorDetail);
-                    break;
-            }
+            boolean isValidErrorDetail =
+                    switch (errorType) {
+                        case IKE_PROTOCOL_ERROR_TYPE -> verifyIkeProtocolErrorDetail(errorDetail);
+                        case GENERIC_ERROR_TYPE -> verifyGenericErrorDetail(errorDetail);
+                        default -> true;
+                    };
             if (!isValidErrorDetail) {
                 throw new IllegalArgumentException(
                         "Invalid ErrorDetail: " + errorDetail + " for ErrorType: " + errorType);

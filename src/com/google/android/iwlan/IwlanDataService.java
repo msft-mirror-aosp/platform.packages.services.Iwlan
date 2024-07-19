@@ -425,24 +425,16 @@ public class IwlanDataService extends DataService {
             @Override
             public String toString() {
                 StringBuilder sb = new StringBuilder();
-                String tunnelState = "UNKNOWN";
-                switch (mState) {
-                    case TUNNEL_DOWN:
-                        tunnelState = "DOWN";
-                        break;
-                    case TUNNEL_IN_BRINGUP:
-                        tunnelState = "IN BRINGUP";
-                        break;
-                    case TUNNEL_UP:
-                        tunnelState = "UP";
-                        break;
-                    case TUNNEL_IN_BRINGDOWN:
-                        tunnelState = "IN BRINGDOWN";
-                        break;
-                    case TUNNEL_IN_FORCE_CLEAN_WAS_IN_BRINGUP:
-                        tunnelState = "IN FORCE CLEAN WAS IN BRINGUP";
-                        break;
-                }
+                String tunnelState =
+                        switch (mState) {
+                            case TUNNEL_DOWN -> "DOWN";
+                            case TUNNEL_IN_BRINGUP -> "IN BRINGUP";
+                            case TUNNEL_UP -> "UP";
+                            case TUNNEL_IN_BRINGDOWN -> "IN BRINGDOWN";
+                            case TUNNEL_IN_FORCE_CLEAN_WAS_IN_BRINGUP ->
+                                    "IN FORCE CLEAN WAS IN BRINGUP";
+                            default -> "UNKNOWN";
+                        };
                 sb.append("\tCurrent State of this tunnel: ")
                         .append(mState)
                         .append(" ")
