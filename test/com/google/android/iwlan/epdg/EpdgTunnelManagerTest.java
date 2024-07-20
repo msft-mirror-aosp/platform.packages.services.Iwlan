@@ -1559,7 +1559,7 @@ public class EpdgTunnelManagerTest {
         ChildSessionCallback childSessionCallback =
                 ikeSessionArgumentCaptors.mChildSessionCallbackCaptor.getValue();
         verifyTunnelOnOpened(toBeOpenedApnName, childSessionCallback);
-        verify(mMockEpdgSelector, never()).onEpdgConnectionFailed(any());
+        verify(mMockEpdgSelector, never()).onEpdgConnectionFailed(any(), any());
         verify(mMockEpdgSelector).onEpdgConnectedSuccessfully();
     }
 
@@ -2175,23 +2175,23 @@ public class EpdgTunnelManagerTest {
         boolean ipv4ConfigRequestPresent = true;
         for (TunnelModeChildSessionParams.TunnelModeChildConfigRequest configRequest :
                 configRequests) {
-            if (configRequest instanceof TunnelModeChildSessionParams.ConfigRequestIpv6Address) {
+            if (configRequest
+                    instanceof
+                    TunnelModeChildSessionParams.ConfigRequestIpv6Address
+                                    configRequestIpv6Address) {
                 ipv6ConfigRequestPresent = true;
-                assertEquals(
-                        testAddressV6,
-                        ((TunnelModeChildSessionParams.ConfigRequestIpv6Address) configRequest)
-                                .getAddress());
+                assertEquals(testAddressV6, configRequestIpv6Address.getAddress());
                 assertEquals(
                         ipv6AddressLen,
                         ((TunnelModeChildSessionParams.ConfigRequestIpv6Address) configRequest)
                                 .getPrefixLength());
             }
-            if (configRequest instanceof TunnelModeChildSessionParams.ConfigRequestIpv4Address) {
+            if (configRequest
+                    instanceof
+                    TunnelModeChildSessionParams.ConfigRequestIpv4Address
+                                    configRequestIpv4Address) {
                 ipv4ConfigRequestPresent = true;
-                assertEquals(
-                        testAddressV4,
-                        ((TunnelModeChildSessionParams.ConfigRequestIpv4Address) configRequest)
-                                .getAddress());
+                assertEquals(testAddressV4, configRequestIpv4Address.getAddress());
             }
         }
         assertTrue(ipv6ConfigRequestPresent);
@@ -2519,7 +2519,9 @@ public class EpdgTunnelManagerTest {
         mTestLooper.dispatchAll();
 
         verify(mEpdgTunnelManager).reportIwlanError(eq(testApnName), eq(error));
-        verify(mMockEpdgSelector).onEpdgConnectionFailed(eq(EXPECTED_EPDG_ADDRESSES.get(0)));
+        verify(mMockEpdgSelector)
+                .onEpdgConnectionFailed(
+                        eq(EXPECTED_EPDG_ADDRESSES.get(0)), any(IkeIOException.class));
         verify(mMockEpdgSelector, never()).onEpdgConnectedSuccessfully();
         verify(mMockIwlanTunnelCallback, atLeastOnce()).onClosed(eq(testApnName), eq(error));
     }
