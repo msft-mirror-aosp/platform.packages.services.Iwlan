@@ -21,6 +21,9 @@ import android.net.DnsResolver;
 import android.net.DnsResolver.DnsException;
 import android.net.InetAddresses;
 import android.net.Network;
+import android.net.ipsec.ike.exceptions.IkeException;
+import android.net.ipsec.ike.exceptions.IkeIOException;
+import android.net.ipsec.ike.exceptions.IkeProtocolException;
 import android.support.annotation.IntDef;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
@@ -262,14 +265,17 @@ public class EpdgSelector {
     }
 
     /**
-     * Notify {@link EpdgSelector} that failed to connect to an ePDG. EpdgSelector will add the
-     * {@code ipAddress} into excluded list and will not retry until any ePDG connected successfully
-     * or all ip addresses candidates are tried.
+     * Notify {@link EpdgSelector} that failed to connect to an ePDG due to IKE exception.
+     * EpdgSelector will add the {@code ipAddress} into excluded list and will not retry until any
+     * ePDG connected successfully or all ip addresses candidates are tried.
      *
      * @param ipAddress the ePDG ip address that failed to connect
+     * @param cause the failure cause {@link IkeException} of the connection
      */
-    void onEpdgConnectionFailed(InetAddress ipAddress) {
-        excludeIpAddress(ipAddress);
+    void onEpdgConnectionFailed(InetAddress ipAddress, IkeException cause) {
+        if (cause instanceof IkeProtocolException || cause instanceof IkeIOException) {
+            excludeIpAddress(ipAddress);
+        }
     }
 
     private void excludeIpAddress(InetAddress ipAddress) {
@@ -843,18 +849,18 @@ public class EpdgSelector {
                 continue;
             }
 
-            if (cellInfo instanceof CellInfoGsm) {
-                CellIdentityGsm gsmCellId = ((CellInfoGsm) cellInfo).getCellIdentity();
+            if (cellInfo instanceof CellInfoGsm cellInfoGsm) {
+                CellIdentityGsm gsmCellId = cellInfoGsm.getCellIdentity();
                 String lacString = String.format("%04x", gsmCellId.getLac());
 
                 lacDomainNameResolution(filter, validIpList, lacString, isEmergency, network);
-            } else if (cellInfo instanceof CellInfoWcdma) {
-                CellIdentityWcdma wcdmaCellId = ((CellInfoWcdma) cellInfo).getCellIdentity();
+            } else if (cellInfo instanceof CellInfoWcdma cellInfoWcdma) {
+                CellIdentityWcdma wcdmaCellId = cellInfoWcdma.getCellIdentity();
                 String lacString = String.format("%04x", wcdmaCellId.getLac());
 
                 lacDomainNameResolution(filter, validIpList, lacString, isEmergency, network);
-            } else if (cellInfo instanceof CellInfoLte) {
-                CellIdentityLte lteCellId = ((CellInfoLte) cellInfo).getCellIdentity();
+            } else if (cellInfo instanceof CellInfoLte cellInfoLte) {
+                CellIdentityLte lteCellId = cellInfoLte.getCellIdentity();
                 String tacString = String.format("%04x", lteCellId.getTac());
                 String[] tacSubString = new String[2];
                 tacSubString[0] = tacString.substring(0, 2);
@@ -890,8 +896,8 @@ public class EpdgSelector {
                     getIP(domainName.toString(), filter, validIpList, network);
                     domainName.setLength(0);
                 }
-            } else if (cellInfo instanceof CellInfoNr) {
-                CellIdentityNr nrCellId = (CellIdentityNr) cellInfo.getCellIdentity();
+            } else if (cellInfo instanceof CellInfoNr cellInfoNr) {
+                CellIdentityNr nrCellId = (CellIdentityNr) cellInfoNr.getCellIdentity();
                 String tacString = String.format("%06x", nrCellId.getTac());
                 String[] tacSubString = new String[3];
                 tacSubString[0] = tacString.substring(0, 2);
