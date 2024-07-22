@@ -871,8 +871,6 @@ public class EpdgTunnelManagerTest {
 
     @Test
     public void testRekeyAndNattTimerFromCarrierConfig() throws Exception {
-        String testApnName = "www.xyz.com";
-
         // Test values
         int hardTime = 50000;
         int softTime = 20000;
@@ -938,8 +936,6 @@ public class EpdgTunnelManagerTest {
 
     @Test
     public void testSetRetransmissionTimeoutsFromCarrierConfig() throws Exception {
-        String testApnName = "www.xyz.com";
-
         int[] testTimeouts = {1000, 1200, 1400, 1600, 2000, 4000};
 
         IwlanCarrierConfig.putTestConfigIntArray(
@@ -984,9 +980,6 @@ public class EpdgTunnelManagerTest {
 
     @Test
     public void testSetDpdDelayFromCarrierConfig() throws Exception {
-        String testApnName = "www.xyz.com";
-
-        // Test values
         int testDpdDelay = 600;
 
         IwlanCarrierConfig.putTestConfigInt(
@@ -1766,8 +1759,6 @@ public class EpdgTunnelManagerTest {
     }
 
     private void testSetIkeTrafficSelectors(int apnProtocol, boolean handover) throws Exception {
-        String testApnName = "www.xyz.com";
-
         doReturn(null)
                 .when(mMockIkeSessionCreator)
                 .createIkeSession(
@@ -1971,8 +1962,6 @@ public class EpdgTunnelManagerTest {
     }
 
     private void verifyN1modeCapability(int pduSessionId) throws Exception {
-
-        String testApnName = "www.xyz.com";
         byte pduSessionIdToByte = (byte) pduSessionId;
 
         doReturn(null)
@@ -2025,8 +2014,6 @@ public class EpdgTunnelManagerTest {
 
     @Test
     public void testInvalidNattTimerFromCarrierConfig() throws Exception {
-        String testApnName = "www.xyz.com";
-
         int nattTimer = 4500; // valid range for natt timer is 0-3600
         int defaultNattTimer =
                 IwlanCarrierConfig.getDefaultConfigInt(

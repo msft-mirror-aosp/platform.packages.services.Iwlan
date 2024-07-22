@@ -222,4 +222,23 @@ public class IwlanError {
         }
         return ret;
     }
+
+    @Override
+    public int hashCode() {
+        int result = Integer.hashCode(mErrorType); // Use Integer.hashCode for int primitive
+
+        if (mException != null) {
+            result = 31 * result + mException.getClass().hashCode();
+
+            if (mException instanceof IkeProtocolException) {
+                int ikeErrorType = ((IkeProtocolException) mException).getErrorType();
+                result =
+                        31 * result
+                                + Integer.hashCode(
+                                        ikeErrorType); // Use Integer.hashCode for int primitive
+            }
+        }
+
+        return result;
+    }
 }

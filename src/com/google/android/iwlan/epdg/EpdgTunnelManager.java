@@ -1365,49 +1365,41 @@ public class EpdgTunnelManager {
                         mSlotId,
                         CarrierConfigManager.Iwlan.KEY_DIFFIE_HELLMAN_GROUPS_INT_ARRAY));
 
-        int[] encryptionAlgos =
+        String encryptionAlgosConfigKey =
                 isChildProposal
-                        ? IwlanCarrierConfig.getConfigIntArray(
-                                mContext,
-                                mSlotId,
-                                CarrierConfigManager.Iwlan
-                                    .KEY_SUPPORTED_CHILD_SESSION_ENCRYPTION_ALGORITHMS_INT_ARRAY)
-                        : IwlanCarrierConfig.getConfigIntArray(
-                                mContext,
-                                mSlotId,
-                                CarrierConfigManager.Iwlan
-                                    .KEY_SUPPORTED_IKE_SESSION_ENCRYPTION_ALGORITHMS_INT_ARRAY);
+                        ? CarrierConfigManager.Iwlan
+                                .KEY_SUPPORTED_CHILD_SESSION_ENCRYPTION_ALGORITHMS_INT_ARRAY
+                        : CarrierConfigManager.Iwlan
+                                .KEY_SUPPORTED_IKE_SESSION_ENCRYPTION_ALGORITHMS_INT_ARRAY;
+
+        int[] encryptionAlgos =
+                IwlanCarrierConfig.getConfigIntArray(mContext, mSlotId, encryptionAlgosConfigKey);
 
         for (int encryptionAlgo : encryptionAlgos) {
             if (encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_CBC) {
-                int[] aesCbcKeyLens =
+                String aesCbcKeyLensConfigKey =
                         isChildProposal
-                                ? IwlanCarrierConfig.getConfigIntArray(
-                                        mContext,
-                                        mSlotId,
-                                        CarrierConfigManager.Iwlan
-                                                .KEY_CHILD_SESSION_AES_CBC_KEY_SIZE_INT_ARRAY)
-                                : IwlanCarrierConfig.getConfigIntArray(
-                                        mContext,
-                                        mSlotId,
-                                        CarrierConfigManager.Iwlan
-                                                .KEY_IKE_SESSION_AES_CBC_KEY_SIZE_INT_ARRAY);
+                                ? CarrierConfigManager.Iwlan
+                                        .KEY_CHILD_SESSION_AES_CBC_KEY_SIZE_INT_ARRAY
+                                : CarrierConfigManager.Iwlan
+                                        .KEY_IKE_SESSION_AES_CBC_KEY_SIZE_INT_ARRAY;
+
+                int[] aesCbcKeyLens =
+                        IwlanCarrierConfig.getConfigIntArray(
+                                mContext, mSlotId, aesCbcKeyLensConfigKey);
                 epdgSaProposal.addProposedEncryptionAlgorithm(encryptionAlgo, aesCbcKeyLens);
             }
 
             if (encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_CTR) {
-                int[] aesCtrKeyLens =
+                String aesCtrKeyLensConfigKey =
                         isChildProposal
-                                ? IwlanCarrierConfig.getConfigIntArray(
-                                        mContext,
-                                        mSlotId,
-                                        CarrierConfigManager.Iwlan
-                                                .KEY_CHILD_SESSION_AES_CTR_KEY_SIZE_INT_ARRAY)
-                                : IwlanCarrierConfig.getConfigIntArray(
-                                        mContext,
-                                        mSlotId,
-                                        CarrierConfigManager.Iwlan
-                                                .KEY_IKE_SESSION_AES_CTR_KEY_SIZE_INT_ARRAY);
+                                ? CarrierConfigManager.Iwlan
+                                        .KEY_CHILD_SESSION_AES_CTR_KEY_SIZE_INT_ARRAY
+                                : CarrierConfigManager.Iwlan
+                                        .KEY_IKE_SESSION_AES_CTR_KEY_SIZE_INT_ARRAY;
+                int[] aesCtrKeyLens =
+                        IwlanCarrierConfig.getConfigIntArray(
+                                mContext, mSlotId, aesCtrKeyLensConfigKey);
                 epdgSaProposal.addProposedEncryptionAlgorithm(encryptionAlgo, aesCtrKeyLens);
             }
         }
@@ -1421,18 +1413,14 @@ public class EpdgTunnelManager {
                                     .KEY_SUPPORTED_INTEGRITY_ALGORITHMS_INT_ARRAY));
         }
 
-        int[] aeadAlgos =
+        String aeadAlgosConfigKey =
                 isChildProposal
-                        ? IwlanCarrierConfig.getConfigIntArray(
-                                mContext,
-                                mSlotId,
-                                CarrierConfigManager.Iwlan
-                                        .KEY_SUPPORTED_CHILD_SESSION_AEAD_ALGORITHMS_INT_ARRAY)
-                        : IwlanCarrierConfig.getConfigIntArray(
-                                mContext,
-                                mSlotId,
-                                CarrierConfigManager.Iwlan
-                                        .KEY_SUPPORTED_IKE_SESSION_AEAD_ALGORITHMS_INT_ARRAY);
+                        ? CarrierConfigManager.Iwlan
+                                .KEY_SUPPORTED_CHILD_SESSION_AEAD_ALGORITHMS_INT_ARRAY
+                        : CarrierConfigManager.Iwlan
+                                .KEY_SUPPORTED_IKE_SESSION_AEAD_ALGORITHMS_INT_ARRAY;
+        int[] aeadAlgos =
+                IwlanCarrierConfig.getConfigIntArray(mContext, mSlotId, aeadAlgosConfigKey);
         for (int aeadAlgo : aeadAlgos) {
             if (!validateConfig(aeadAlgo, VALID_AEAD_ALGOS, CONFIG_TYPE_ENCRYPT_ALGO)) {
                 continue;
@@ -1440,18 +1428,15 @@ public class EpdgTunnelManager {
             if ((aeadAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_8)
                     || (aeadAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12)
                     || (aeadAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16)) {
-                int[] aesGcmKeyLens =
+                String aesGcmKeyLensConfigKey =
                         isChildProposal
-                                ? IwlanCarrierConfig.getConfigIntArray(
-                                        mContext,
-                                        mSlotId,
-                                        CarrierConfigManager.Iwlan
-                                                .KEY_CHILD_SESSION_AES_GCM_KEY_SIZE_INT_ARRAY)
-                                : IwlanCarrierConfig.getConfigIntArray(
-                                        mContext,
-                                        mSlotId,
-                                        CarrierConfigManager.Iwlan
-                                                .KEY_IKE_SESSION_AES_GCM_KEY_SIZE_INT_ARRAY);
+                                ? CarrierConfigManager.Iwlan
+                                        .KEY_CHILD_SESSION_AES_GCM_KEY_SIZE_INT_ARRAY
+                                : CarrierConfigManager.Iwlan
+                                        .KEY_IKE_SESSION_AES_GCM_KEY_SIZE_INT_ARRAY;
+                int[] aesGcmKeyLens =
+                        IwlanCarrierConfig.getConfigIntArray(
+                                mContext, mSlotId, aesGcmKeyLensConfigKey);
                 epdgSaProposal.addProposedAeadAlgorithm(aeadAlgo, aesGcmKeyLens);
             }
         }
@@ -1849,7 +1834,6 @@ public class EpdgTunnelManager {
             OnClosedMetrics.Builder onClosedMetricsBuilder;
             TunnelRequestWrapper tunnelRequestWrapper;
             ConnectivityManager connectivityManager;
-            NetworkCapabilities networkCapabilities;
             boolean isNetworkValidated;
             switch (msg.what) {
                 case EVENT_CHILD_SESSION_OPENED:
@@ -1994,8 +1978,9 @@ public class EpdgTunnelManager {
                         // Iwlan reports IKE_SESSION_CLOSED_BEFORE_CHILD_SESSION_OPENED
                         // instead of NO_ERROR
                         if (!tunnelConfig.hasTunnelOpened()) {
-                            iwlanError = new IwlanError(
-                                    IwlanError.IKE_SESSION_CLOSED_BEFORE_CHILD_SESSION_OPENED);
+                            int errorType =
+                                    IwlanError.IKE_SESSION_CLOSED_BEFORE_CHILD_SESSION_OPENED;
+                            iwlanError = new IwlanError(errorType);
                         } else {
                             iwlanError = tunnelConfig.getError();
                         }

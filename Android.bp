@@ -38,6 +38,19 @@ android_app {
         "modules-utils-handlerexecutor",
     ],
 
+    errorprone: {
+        enabled: true,
+        // Error-prone checking only warns of problems when building. To make the build fail with
+        // these errors, list the specific error-prone problems below.
+        javacflags: [
+            "-Xep:NullablePrimitive:ERROR",
+            "-Xep:AutoValueImmutableFields:OFF",
+            "-Xep:DoNotMockAutoValue:OFF",
+            "-Xep:JavaUtilDate:OFF",
+            "-Xep:LongFloatConversion:OFF",
+        ],
+    },
+
     plugins: ["auto_value_plugin"],
 
     required: ["privapp-permlist_com.google.android.iwlan.xml"],
@@ -80,6 +93,19 @@ android_test {
         "android.net.ipsec.ike.stubs.system",
         "auto_value_annotations",
     ],
+
+    errorprone: {
+        enabled: true,
+        // Error-prone checking only warns of problems when building. To make the build fail with
+        // these errors, list the specific error-prone problems below.
+        javacflags: [
+            "-Xep:NullablePrimitive:ERROR",
+            "-Xep:AutoValueImmutableFields:OFF",
+            "-Xep:DoNotMockAutoValue:OFF",
+            "-Xep:JavaUtilDate:OFF",
+            "-Xep:LongFloatConversion:OFF",
+        ],
+    },
 
     plugins: ["auto_value_plugin"],
 

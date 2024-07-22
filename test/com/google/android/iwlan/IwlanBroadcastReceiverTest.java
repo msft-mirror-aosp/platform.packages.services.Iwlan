@@ -27,7 +27,6 @@ import static org.mockito.Mockito.verify;
 
 import android.content.Context;
 import android.content.Intent;
-import android.net.Network;
 import android.net.wifi.WifiManager;
 import android.telephony.CarrierConfigManager;
 import android.telephony.SubscriptionManager;
@@ -62,7 +61,6 @@ public class IwlanBroadcastReceiverTest {
 
     MockitoSession mStaticMockSession;
     @Mock private Context mMockContext;
-    @Mock private Network mMockNetwork;
     @Mock private EpdgSelector mMockEpdgSelector;
     @Mock private IwlanEventListener mMockIwlanEventListener;
 
@@ -166,6 +164,7 @@ public class IwlanBroadcastReceiverTest {
 
         verify(mMockIwlanEventListener).onBroadcastReceived(intent);
     }
+
     private void onReceiveMethodWithArgs(int apnType, int pcoId) {
         // Create intent object
         final Intent mIntent = new Intent(ACTION_CARRIER_SIGNAL_PCO_VALUE);

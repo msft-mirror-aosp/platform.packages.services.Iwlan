@@ -26,6 +26,7 @@ import java.util.Objects;
 public interface TunnelMetricsInterface {
     /** Called for logging the tunnel is opened. */
     void onOpened(OnOpenedMetrics metricsData);
+
     /** Called for logging the tunnel is closed or bring up failed. */
     void onClosed(OnClosedMetrics metricsData);
 

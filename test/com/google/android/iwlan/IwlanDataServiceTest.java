@@ -95,7 +95,6 @@ import com.google.android.iwlan.epdg.EpdgTunnelManager;
 import com.google.android.iwlan.epdg.NetworkSliceSelectionAssistanceInformation;
 import com.google.android.iwlan.epdg.TunnelLinkProperties;
 import com.google.android.iwlan.epdg.TunnelSetupRequest;
-import com.google.android.iwlan.flags.FeatureFlags;
 import com.google.android.iwlan.proto.MetricsAtom;
 
 import org.junit.After;
@@ -149,7 +148,6 @@ public class IwlanDataServiceTest {
     @Mock private LinkAddress mMockIPv6LinkAddress;
     @Mock private Inet4Address mMockInet4Address;
     @Mock private Inet6Address mMockInet6Address;
-    @Mock private FeatureFlags mFakeFeatureFlags;
 
     MockitoSession mStaticMockSession;
 
@@ -164,12 +162,6 @@ public class IwlanDataServiceTest {
             ArgumentCaptor.forClass(NetworkCallback.class);
 
     private final class IwlanDataServiceCallback extends IDataServiceCallback.Stub {
-
-        private final String mTag;
-
-        IwlanDataServiceCallback(String tag) {
-            mTag = tag;
-        }
 
         @Override
         public void onSetupDataCallComplete(
@@ -272,7 +264,7 @@ public class IwlanDataServiceTest {
         when(mMockIPv4LinkAddress.getAddress()).thenReturn(mMockInet4Address);
         when(mMockIPv6LinkAddress.getAddress()).thenReturn(mMockInet6Address);
 
-        mIwlanDataService = spy(new IwlanDataService(mFakeFeatureFlags));
+        mIwlanDataService = spy(new IwlanDataService());
 
         // Injects the test looper into the IwlanDataServiceHandler
         doReturn(mTestLooper.getLooper()).when(mIwlanDataService).getLooper();
@@ -616,7 +608,7 @@ public class IwlanDataServiceTest {
         List<InetAddress> mGatewayAddressList;
         List<InetAddress> mPCSFAddressList;
 
-        IwlanDataServiceCallback callback = new IwlanDataServiceCallback("requestDataCallList");
+        IwlanDataServiceCallback callback = new IwlanDataServiceCallback();
         TunnelLinkProperties mLinkProperties = createTunnelLinkProperties();
         mSpyIwlanDataServiceProvider.setTunnelState(
                 dp,
@@ -669,7 +661,7 @@ public class IwlanDataServiceTest {
 
     @Test
     public void testRequestDataCallListEmpty() throws Exception {
-        IwlanDataServiceCallback callback = new IwlanDataServiceCallback("requestDataCallList");
+        IwlanDataServiceCallback callback = new IwlanDataServiceCallback();
         mSpyIwlanDataServiceProvider.requestDataCallList(new DataServiceCallback(callback));
         mTestLooper.dispatchAll();
 
