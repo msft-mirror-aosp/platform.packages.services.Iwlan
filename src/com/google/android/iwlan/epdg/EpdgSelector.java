@@ -429,7 +429,7 @@ public class EpdgSelector {
      * @param timeout timeout in seconds.
      * @return List of unique IP addresses corresponding to the domainNames.
      */
-    private LinkedHashMap<String, List<InetAddress>> getIP(
+    private Map<String, List<InetAddress>> getIP(
             List<String> domainNames, int filter, Network network, long timeout) {
         // LinkedHashMap preserves insertion order (and hence priority) of domain names passed in.
         LinkedHashMap<String, List<InetAddress>> domainNameToIpAddr = new LinkedHashMap<>();
@@ -643,7 +643,7 @@ public class EpdgSelector {
         return plmnsFromCarrierConfig.contains(new StringBuilder(plmn).insert(3, "-").toString());
     }
 
-    private ArrayList<InetAddress> removeDuplicateIp(List<InetAddress> validIpList) {
+    private List<InetAddress> removeDuplicateIp(List<InetAddress> validIpList) {
         ArrayList<InetAddress> resultIpList = new ArrayList<InetAddress>();
 
         for (InetAddress validIp : validIpList) {
@@ -659,9 +659,8 @@ public class EpdgSelector {
             @NonNull List<InetAddress> validIpList, @EpdgAddressOrder int order) {
         return switch (order) {
             case IPV4_PREFERRED -> validIpList.stream().sorted(inetAddressComparator).toList();
-            case IPV6_PREFERRED -> validIpList.stream()
-                    .sorted(inetAddressComparator.reversed())
-                    .toList();
+            case IPV6_PREFERRED ->
+                    validIpList.stream().sorted(inetAddressComparator.reversed()).toList();
             case SYSTEM_PREFERRED -> validIpList;
             default -> {
                 Log.w(TAG, "Invalid EpdgAddressOrder : " + order);
@@ -733,7 +732,7 @@ public class EpdgSelector {
         }
 
         Log.d(TAG, "Static Domain Names: " + Arrays.toString(domainNames));
-        LinkedHashMap<String, List<InetAddress>> domainNameToIpAddr =
+        Map<String, List<InetAddress>> domainNameToIpAddr =
                 getIP(
                         Arrays.asList(domainNames),
                         filter,
@@ -814,7 +813,7 @@ public class EpdgSelector {
             domainName.setLength(0);
         }
 
-        LinkedHashMap<String, List<InetAddress>> domainNameToIpAddr =
+        Map<String, List<InetAddress>> domainNameToIpAddr =
                 getIP(domainNames, filter, network, PARALLEL_PLMN_RESOLUTION_TIMEOUT_DURATION_SEC);
         printParallelDnsResult(domainNameToIpAddr);
         domainNameToIpAddr.values().forEach(validIpList::addAll);
@@ -869,7 +868,7 @@ public class EpdgSelector {
                 plmnList = getPlmnList();
                 for (String plmn : plmnList) {
                     String[] mccmnc = splitMccMnc(plmn);
-                    /**
+                    /*
                      * Tracking Area Identity based ePDG FQDN format:
                      * tac-lb<TAC-low-byte>.tac-hb<TAC-high-byte>.tac.
                      * epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
@@ -907,7 +906,7 @@ public class EpdgSelector {
                 plmnList = getPlmnList();
                 for (String plmn : plmnList) {
                     String[] mccmnc = splitMccMnc(plmn);
-                    /**
+                    /*
                      * 5GS Tracking Area Identity based ePDG FQDN format:
                      * tac-lb<TAC-low-byte>.tac-mb<TAC-middle-byte>.tac-hb<TAC-high-byte>.
                      * 5gstac.epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
@@ -954,7 +953,7 @@ public class EpdgSelector {
         plmnList = getPlmnList();
         for (String plmn : plmnList) {
             String[] mccmnc = splitMccMnc(plmn);
-            /**
+            /*
              * Location Area Identity based ePDG FQDN format:
              * lac<LAC>.epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
              *
