@@ -3352,13 +3352,51 @@ public class EpdgTunnelManagerTest {
     }
 
     @Test
+    public void testScreenOnNetworkValidation_shouldValidate_ifInEventsConfig() {
+        when(mMockNetworkCapabilities.hasCapability(
+                        eq(NetworkCapabilities.NET_CAPABILITY_VALIDATED)))
+                .thenReturn(true);
+        IwlanCarrierConfig.putTestConfigIntArray(
+                IwlanCarrierConfig.KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY,
+                new int[] {IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_SCREEN_ON});
+
+        advanceClockByTimeMs(100000);
+        mEpdgTunnelManager.validateUnderlyingNetwork(
+                IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_SCREEN_ON);
+        mTestLooper.dispatchAll();
+
+        verify(mMockConnectivityManager, times(1))
+                .reportNetworkConnectivity(eq(mMockDefaultNetwork), eq(false));
+    }
+
+    @Test
+    public void testScreenOnNetworkValidation_shouldNotValidate_ifNotInEventsConfig() {
+        when(mMockNetworkCapabilities.hasCapability(
+                        eq(NetworkCapabilities.NET_CAPABILITY_VALIDATED)))
+                .thenReturn(true);
+        IwlanCarrierConfig.putTestConfigIntArray(
+                IwlanCarrierConfig.KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY,
+                new int[] {});
+
+        advanceClockByTimeMs(100000);
+        mEpdgTunnelManager.validateUnderlyingNetwork(
+                IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_SCREEN_ON);
+        mTestLooper.dispatchAll();
+
+        verify(mMockConnectivityManager, never()).reportNetworkConnectivity(any(), eq(false));
+    }
+
+    @Test
     public void testNetworkValidation_shouldNotValidate_ifWithinInterval() {
         when(mMockNetworkCapabilities.hasCapability(
                         eq(NetworkCapabilities.NET_CAPABILITY_VALIDATED)))
                 .thenReturn(true);
         IwlanCarrierConfig.putTestConfigIntArray(
                 IwlanCarrierConfig.KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY,
-                new int[] {IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_MAKING_CALL});
+                new int[] {
+                    IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_MAKING_CALL,
+                    IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_SCREEN_ON
+                });
 
         advanceClockByTimeMs(100000);
         mEpdgTunnelManager.validateUnderlyingNetwork(
@@ -3371,6 +3409,9 @@ public class EpdgTunnelManagerTest {
         // Since last validation passed 1s, but interval is 10s, should not trigger validation
         mEpdgTunnelManager.validateUnderlyingNetwork(
                 IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_MAKING_CALL);
+        // Different validation event validation interval are shared, should not trigger validation
+        mEpdgTunnelManager.validateUnderlyingNetwork(
+                IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_SCREEN_ON);
         mTestLooper.dispatchAll();
         verify(mMockConnectivityManager, times(1))
                 .reportNetworkConnectivity(eq(mMockDefaultNetwork), eq(false));

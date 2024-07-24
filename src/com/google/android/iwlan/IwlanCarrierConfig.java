@@ -83,7 +83,10 @@ public class IwlanCarrierConfig {
     /** Trigger network validation when making a call */
     public static final int NETWORK_VALIDATION_EVENT_MAKING_CALL = 0;
 
-    @IntDef({NETWORK_VALIDATION_EVENT_MAKING_CALL})
+    /** Trigger network validation when screen on */
+    public static final int NETWORK_VALIDATION_EVENT_SCREEN_ON = 1;
+
+    @IntDef({NETWORK_VALIDATION_EVENT_MAKING_CALL, NETWORK_VALIDATION_EVENT_SCREEN_ON})
     public @interface NetworkValidationEvent {}
 
     /**
@@ -92,6 +95,7 @@ public class IwlanCarrierConfig {
      *
      * <ul>
      *   <li>0: NETWORK_VALIDATION_EVENT_MAKING_CALL
+     *   <li>1: NETWORK_VALIDATION_EVENT_SCREEN_ON
      * </ul>
      */
     public static final String KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY =
@@ -618,6 +622,7 @@ public class IwlanCarrierConfig {
             @IwlanCarrierConfig.NetworkValidationEvent int event) {
         return switch (event) {
             case IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_MAKING_CALL -> "MAKING_CALL";
+            case IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_SCREEN_ON -> "SCREEN_ON";
             default -> "UNKNOWN";
         };
     }

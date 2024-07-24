@@ -2832,6 +2832,24 @@ public class IwlanDataServiceTest {
     }
 
     @Test
+    public void testTriggerNetworkValidationByEvent_shouldTrigger_ifScreenOn() {
+        // Wifi connected
+        onSystemDefaultNetworkConnected(
+                mMockNetwork, mLinkProperties, TRANSPORT_WIFI, DEFAULT_SUB_INDEX);
+
+        mIwlanDataService
+                .mIwlanDataServiceHandler
+                .obtainMessage(
+                        IwlanEventListener.SCREEN_ON_EVENT, DEFAULT_SLOT_INDEX, 0 /* unused */)
+                .sendToTarget();
+        mTestLooper.dispatchAll();
+
+        verify(mMockEpdgTunnelManager, times(1))
+                .validateUnderlyingNetwork(
+                        eq(IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_SCREEN_ON));
+    }
+
+    @Test
     public void testEmergencyRetryTimerWithNoHandover() {
         // Wifi connected
         onSystemDefaultNetworkConnected(TRANSPORT_WIFI);
