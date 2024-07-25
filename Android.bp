@@ -47,7 +47,10 @@ android_app {
 
     plugins: ["auto_value_plugin"],
 
-    required: ["privapp-permlist_com.google.android.iwlan.xml"],
+    required: [
+        "privapp-permlist_com.google.android.iwlan.xml",
+        "sysconfig_com.google.android.iwlan.xml",
+    ],
 
     owner: "google",
     system_ext_specific: true,
@@ -59,7 +62,15 @@ android_app {
 prebuilt_etc {
     name: "privapp-permlist_com.google.android.iwlan.xml",
     sub_dir: "permissions",
-    src: "com.google.android.iwlan.xml",
+    src: "privapp-permlist_com.google.android.iwlan.xml",
+    filename_from_src: true,
+    system_ext_specific: true,
+}
+
+prebuilt_etc {
+    name: "sysconfig_com.google.android.iwlan.xml",
+    sub_dir: "sysconfig",
+    src: "sysconfig_com.google.android.iwlan.xml",
     filename_from_src: true,
     system_ext_specific: true,
 }
