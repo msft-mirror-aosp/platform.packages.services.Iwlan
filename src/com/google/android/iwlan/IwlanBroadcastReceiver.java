@@ -135,7 +135,7 @@ public class IwlanBroadcastReceiver extends BroadcastReceiver {
                         Log.d(TAG, "SetPcoData to EpdgSelector");
                         EpdgSelector selector =
                                 EpdgSelector.getSelectorInstance(mContext, intentSlotIndex);
-                        boolean ret = selector.setPcoData(pcoId, pcoData);
+                        selector.setPcoData(pcoId, pcoData);
                     } else {
                         Log.d(TAG, "Unwanted PcoID " + pcoId);
                     }
