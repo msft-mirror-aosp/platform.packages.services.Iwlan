@@ -19,12 +19,8 @@ android_app {
         "src/**/I*.aidl",
         ":statslog-Iwlan-java-gen",
     ],
-    resource_dirs: [
-        "res",
-    ],
     static_libs: [
         "android-support-annotations",
-        "net-utils-dnspacket-common",
         "iwlan_telephony_flags_lib",
     ],
 
@@ -33,8 +29,6 @@ android_app {
         "androidx.annotation_annotation",
         "auto_value_annotations",
         "framework-annotations-lib",
-        "framework-connectivity",
-        "framework-wifi",
         "modules-utils-handlerexecutor",
     ],
 
@@ -53,7 +47,10 @@ android_app {
 
     plugins: ["auto_value_plugin"],
 
-    required: ["privapp-permlist_com.google.android.iwlan.xml"],
+    required: [
+        "privapp-permlist_com.google.android.iwlan.xml",
+        "sysconfig_com.google.android.iwlan.xml",
+    ],
 
     owner: "google",
     system_ext_specific: true,
@@ -65,7 +62,15 @@ android_app {
 prebuilt_etc {
     name: "privapp-permlist_com.google.android.iwlan.xml",
     sub_dir: "permissions",
-    src: "com.google.android.iwlan.xml",
+    src: "privapp-permlist_com.google.android.iwlan.xml",
+    filename_from_src: true,
+    system_ext_specific: true,
+}
+
+prebuilt_etc {
+    name: "sysconfig_com.google.android.iwlan.xml",
+    sub_dir: "sysconfig",
+    src: "sysconfig_com.google.android.iwlan.xml",
     filename_from_src: true,
     system_ext_specific: true,
 }
@@ -115,7 +120,6 @@ android_test {
         "frameworks-base-testutils",
         "mockito-target-inline-minus-junit4",
         "mockito-target-extended-minus-junit4",
-        "net-utils-dnspacket-common",
         "iwlan_telephony_flags_lib",
         "platform-test-annotations",
         "flag-junit",
