@@ -80,6 +80,13 @@ public class IwlanCarrierConfig {
             PREFIX + "validate_underlying_network_on_no_response_bool";
 
     /**
+     * Key to control which events should trigger IWLAN underlying network validation when specific
+     * event received
+     */
+    public static final String KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY =
+            PREFIX + "underlying_network_validation_events_int_array";
+
+    /**
      * IWLAN error policy configs that determine the behavior when error happens during ePDG tunnel
      * setup. Refer to {@link #DEFAULT_ERROR_POLICY_CONFIG_STRING} for the default value.
      *
@@ -196,6 +203,12 @@ public class IwlanCarrierConfig {
     public static final boolean DEFAULT_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL = true;
 
     /**
+     * The default value of which events should trigger IWLAN underlying network validation. This is
+     * the default value for {@link #KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY}
+     */
+    public static final int[] DEFAULT_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY = {};
+
+    /**
      * The default value for determining IWLAN's behavior when error happens during ePDG tunnel
      * setup. This is the default value for {@link #KEY_ERROR_POLICY_CONFIG_STRING}.
      */
@@ -264,6 +277,9 @@ public class IwlanCarrierConfig {
         bundle.putBoolean(
                 KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL,
                 DEFAULT_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL);
+        bundle.putIntArray(
+                KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY,
+                DEFAULT_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY);
         bundle.putString(KEY_ERROR_POLICY_CONFIG_STRING, DEFAULT_ERROR_POLICY_CONFIG_STRING);
         return bundle;
     }
