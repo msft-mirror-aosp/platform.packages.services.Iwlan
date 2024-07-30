@@ -65,11 +65,19 @@ public class IwlanCarrierConfig {
             PREFIX + "ike_device_identity_supported_bool";
 
     /**
-     * Boolean indicating if reordering ike SA transforms enabled. Refer to
-     * {@link #DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL} for the default value.
+     * Boolean indicating if reordering ike SA transforms enabled. Refer to {@link
+     * #DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL} for the default value.
      */
     public static final String KEY_IKE_SA_TRANSFORMS_REORDER_BOOL =
             PREFIX + "ike_sa_transforms_reorder_bool";
+
+    /**
+     * Boolean indicating if underlying network validation check when no response on network is
+     * enabled. By default, this value is {@link
+     * #DEFAULT_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL}.
+     */
+    public static final String KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL =
+            PREFIX + "validate_underlying_network_on_no_response_bool";
 
     /**
      * IWLAN error policy configs that determine the behavior when error happens during ePDG tunnel
@@ -170,6 +178,7 @@ public class IwlanCarrierConfig {
 
     /** This is the default value for {@link #KEY_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL}. */
     public static final boolean DEFAULT_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL = false;
+
     /**
      * Default value indicating whether the UE includes the IKE DEVICE_IDENTITY Notify payload upon
      * receiving a request. This is the default setting for {@link
@@ -179,6 +188,12 @@ public class IwlanCarrierConfig {
 
     /** This is the default value for {@link #KEY_IKE_SA_TRANSFORMS_REORDER_BOOL}. */
     public static final boolean DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL = false;
+
+    /**
+     * The default value for determining whether underlying network validation check when no
+     * response on network shall be enabled or disabled.
+     */
+    public static final boolean DEFAULT_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL = true;
 
     /**
      * The default value for determining IWLAN's behavior when error happens during ePDG tunnel
@@ -246,6 +261,9 @@ public class IwlanCarrierConfig {
                 KEY_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL, DEFAULT_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL);
         bundle.putBoolean(
                 KEY_IKE_SA_TRANSFORMS_REORDER_BOOL, DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL);
+        bundle.putBoolean(
+                KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL,
+                DEFAULT_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL);
         bundle.putString(KEY_ERROR_POLICY_CONFIG_STRING, DEFAULT_ERROR_POLICY_CONFIG_STRING);
         return bundle;
     }
