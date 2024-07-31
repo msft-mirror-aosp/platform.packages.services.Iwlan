@@ -74,8 +74,6 @@ import com.google.android.iwlan.epdg.EpdgSelector;
 import com.google.android.iwlan.epdg.EpdgTunnelManager;
 import com.google.android.iwlan.epdg.TunnelLinkProperties;
 import com.google.android.iwlan.epdg.TunnelSetupRequest;
-import com.google.android.iwlan.flags.FeatureFlags;
-import com.google.android.iwlan.flags.FeatureFlagsImpl;
 import com.google.android.iwlan.proto.MetricsAtom;
 
 import java.io.FileDescriptor;
@@ -99,7 +97,6 @@ import java.util.function.Consumer;
 
 public class IwlanDataService extends DataService {
 
-    private final FeatureFlags mFeatureFlags;
     private static final String TAG = IwlanDataService.class.getSimpleName();
 
     private static final String CONTEXT_ATTRIBUTION_TAG = "IWLAN";
@@ -145,14 +142,7 @@ public class IwlanDataService extends DataService {
 
     private boolean mIs5GEnabledOnUi;
 
-    public IwlanDataService() {
-        mFeatureFlags = new FeatureFlagsImpl();
-    }
-
-    @VisibleForTesting
-    IwlanDataService(FeatureFlags featureFlags) {
-        mFeatureFlags = featureFlags;
-    }
+    public IwlanDataService() {}
 
     // TODO: see if network monitor callback impl can be shared between dataservice and
     // networkservice
@@ -425,24 +415,16 @@ public class IwlanDataService extends DataService {
             @Override
             public String toString() {
                 StringBuilder sb = new StringBuilder();
-                String tunnelState = "UNKNOWN";
-                switch (mState) {
-                    case TUNNEL_DOWN:
-                        tunnelState = "DOWN";
-                        break;
-                    case TUNNEL_IN_BRINGUP:
-                        tunnelState = "IN BRINGUP";
-                        break;
-                    case TUNNEL_UP:
-                        tunnelState = "UP";
-                        break;
-                    case TUNNEL_IN_BRINGDOWN:
-                        tunnelState = "IN BRINGDOWN";
-                        break;
-                    case TUNNEL_IN_FORCE_CLEAN_WAS_IN_BRINGUP:
-                        tunnelState = "IN FORCE CLEAN WAS IN BRINGUP";
-                        break;
-                }
+                String tunnelState =
+                        switch (mState) {
+                            case TUNNEL_DOWN -> "DOWN";
+                            case TUNNEL_IN_BRINGUP -> "IN BRINGUP";
+                            case TUNNEL_UP -> "UP";
+                            case TUNNEL_IN_BRINGDOWN -> "IN BRINGDOWN";
+                            case TUNNEL_IN_FORCE_CLEAN_WAS_IN_BRINGUP ->
+                                    "IN FORCE CLEAN WAS IN BRINGUP";
+                            default -> "UNKNOWN";
+                        };
                 sb.append("\tCurrent State of this tunnel: ")
                         .append(mState)
                         .append(" ")
@@ -874,13 +856,9 @@ public class IwlanDataService extends DataService {
                             accessNetworkType,
                             dataProfile,
                             isRoaming,
-                            allowRoaming,
                             reason,
                             linkProperties,
                             pduSessionId,
-                            sliceInfo,
-                            trafficDescriptor,
-                            matchAllRuleAllowed,
                             callback,
                             this);
 
@@ -1155,7 +1133,7 @@ public class IwlanDataService extends DataService {
                     continue;
                 }
 
-                if (mCellInfo == null || mCellInfo != cellInfo) {
+                if (mCellInfo == null || !mCellInfo.equals(cellInfo)) {
                     mCellInfo = cellInfo;
                     Log.d(TAG, " Update cached cellinfo");
                     return true;
@@ -2152,16 +2130,12 @@ public class IwlanDataService extends DataService {
         final int mAccessNetworkType;
         @NonNull final DataProfile mDataProfile;
         final boolean mIsRoaming;
-        final boolean mAllowRoaming;
         final int mReason;
         @Nullable final LinkProperties mLinkProperties;
 
         @IntRange(from = 0, to = 15)
         final int mPduSessionId;
 
-        @Nullable final NetworkSliceInfo mSliceInfo;
-        @Nullable final TrafficDescriptor mTrafficDescriptor;
-        final boolean mMatchAllRuleAllowed;
         @NonNull final DataServiceCallback mCallback;
         final IwlanDataServiceProvider mIwlanDataServiceProvider;
 
@@ -2169,25 +2143,17 @@ public class IwlanDataService extends DataService {
                 int accessNetworkType,
                 DataProfile dataProfile,
                 boolean isRoaming,
-                boolean allowRoaming,
                 int reason,
                 LinkProperties linkProperties,
                 int pduSessionId,
-                NetworkSliceInfo sliceInfo,
-                TrafficDescriptor trafficDescriptor,
-                boolean matchAllRuleAllowed,
                 DataServiceCallback callback,
                 IwlanDataServiceProvider dsp) {
             mAccessNetworkType = accessNetworkType;
             mDataProfile = dataProfile;
             mIsRoaming = isRoaming;
-            mAllowRoaming = allowRoaming;
             mReason = reason;
             mLinkProperties = linkProperties;
             mPduSessionId = pduSessionId;
-            mSliceInfo = sliceInfo;
-            mTrafficDescriptor = trafficDescriptor;
-            mMatchAllRuleAllowed = matchAllRuleAllowed;
             mCallback = callback;
             mIwlanDataServiceProvider = dsp;
         }
@@ -2444,52 +2410,33 @@ public class IwlanDataService extends DataService {
     }
 
     private static String eventToString(int event) {
-        switch (event) {
-            case EVENT_TUNNEL_OPENED:
-                return "EVENT_TUNNEL_OPENED";
-            case EVENT_TUNNEL_CLOSED:
-                return "EVENT_TUNNEL_CLOSED";
-            case EVENT_SETUP_DATA_CALL:
-                return "EVENT_SETUP_DATA_CALL";
-            case EVENT_DEACTIVATE_DATA_CALL:
-                return "EVENT_DEACTIVATE_DATA_CALL";
-            case EVENT_DATA_CALL_LIST_REQUEST:
-                return "EVENT_DATA_CALL_LIST_REQUEST";
-            case EVENT_FORCE_CLOSE_TUNNEL:
-                return "EVENT_FORCE_CLOSE_TUNNEL";
-            case EVENT_ADD_DATA_SERVICE_PROVIDER:
-                return "EVENT_ADD_DATA_SERVICE_PROVIDER";
-            case EVENT_REMOVE_DATA_SERVICE_PROVIDER:
-                return "EVENT_REMOVE_DATA_SERVICE_PROVIDER";
-            case IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT:
-                return "CARRIER_CONFIG_CHANGED_EVENT";
-            case IwlanEventListener.CARRIER_CONFIG_UNKNOWN_CARRIER_EVENT:
-                return "CARRIER_CONFIG_UNKNOWN_CARRIER_EVENT";
-            case IwlanEventListener.WIFI_CALLING_ENABLE_EVENT:
-                return "WIFI_CALLING_ENABLE_EVENT";
-            case IwlanEventListener.WIFI_CALLING_DISABLE_EVENT:
-                return "WIFI_CALLING_DISABLE_EVENT";
-            case IwlanEventListener.CROSS_SIM_CALLING_ENABLE_EVENT:
-                return "CROSS_SIM_CALLING_ENABLE_EVENT";
-            case IwlanEventListener.CELLINFO_CHANGED_EVENT:
-                return "CELLINFO_CHANGED_EVENT";
-            case EVENT_TUNNEL_OPENED_METRICS:
-                return "EVENT_TUNNEL_OPENED_METRICS";
-            case EVENT_TUNNEL_CLOSED_METRICS:
-                return "EVENT_TUNNEL_CLOSED_METRICS";
-            case EVENT_DEACTIVATE_DATA_CALL_WITH_DELAY:
-                return "EVENT_DEACTIVATE_DATA_CALL_WITH_DELAY";
-            case IwlanEventListener.CALL_STATE_CHANGED_EVENT:
-                return "CALL_STATE_CHANGED_EVENT";
-            case IwlanEventListener.PREFERRED_NETWORK_TYPE_CHANGED_EVENT:
-                return "PREFERRED_NETWORK_TYPE_CHANGED_EVENT";
-            case EVENT_ON_LIVENESS_STATUS_CHANGED:
-                return "EVENT_ON_LIVENESS_STATUS_CHANGED";
-            case EVENT_REQUEST_NETWORK_VALIDATION:
-                return "EVENT_REQUEST_NETWORK_VALIDATION";
-            default:
-                return "Unknown(" + event + ")";
-        }
+        return switch (event) {
+            case EVENT_TUNNEL_OPENED -> "EVENT_TUNNEL_OPENED";
+            case EVENT_TUNNEL_CLOSED -> "EVENT_TUNNEL_CLOSED";
+            case EVENT_SETUP_DATA_CALL -> "EVENT_SETUP_DATA_CALL";
+            case EVENT_DEACTIVATE_DATA_CALL -> "EVENT_DEACTIVATE_DATA_CALL";
+            case EVENT_DATA_CALL_LIST_REQUEST -> "EVENT_DATA_CALL_LIST_REQUEST";
+            case EVENT_FORCE_CLOSE_TUNNEL -> "EVENT_FORCE_CLOSE_TUNNEL";
+            case EVENT_ADD_DATA_SERVICE_PROVIDER -> "EVENT_ADD_DATA_SERVICE_PROVIDER";
+            case EVENT_REMOVE_DATA_SERVICE_PROVIDER -> "EVENT_REMOVE_DATA_SERVICE_PROVIDER";
+            case IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT -> "CARRIER_CONFIG_CHANGED_EVENT";
+            case IwlanEventListener.CARRIER_CONFIG_UNKNOWN_CARRIER_EVENT ->
+                    "CARRIER_CONFIG_UNKNOWN_CARRIER_EVENT";
+            case IwlanEventListener.WIFI_CALLING_ENABLE_EVENT -> "WIFI_CALLING_ENABLE_EVENT";
+            case IwlanEventListener.WIFI_CALLING_DISABLE_EVENT -> "WIFI_CALLING_DISABLE_EVENT";
+            case IwlanEventListener.CROSS_SIM_CALLING_ENABLE_EVENT ->
+                    "CROSS_SIM_CALLING_ENABLE_EVENT";
+            case IwlanEventListener.CELLINFO_CHANGED_EVENT -> "CELLINFO_CHANGED_EVENT";
+            case EVENT_TUNNEL_OPENED_METRICS -> "EVENT_TUNNEL_OPENED_METRICS";
+            case EVENT_TUNNEL_CLOSED_METRICS -> "EVENT_TUNNEL_CLOSED_METRICS";
+            case EVENT_DEACTIVATE_DATA_CALL_WITH_DELAY -> "EVENT_DEACTIVATE_DATA_CALL_WITH_DELAY";
+            case IwlanEventListener.CALL_STATE_CHANGED_EVENT -> "CALL_STATE_CHANGED_EVENT";
+            case IwlanEventListener.PREFERRED_NETWORK_TYPE_CHANGED_EVENT ->
+                    "PREFERRED_NETWORK_TYPE_CHANGED_EVENT";
+            case EVENT_ON_LIVENESS_STATUS_CHANGED -> "EVENT_ON_LIVENESS_STATUS_CHANGED";
+            case EVENT_REQUEST_NETWORK_VALIDATION -> "EVENT_REQUEST_NETWORK_VALIDATION";
+            default -> "Unknown(" + event + ")";
+        };
     }
 
     private void initAllowedNetworkType() {
@@ -2558,18 +2505,13 @@ public class IwlanDataService extends DataService {
     }
 
     private String requestReasonToString(int reason) {
-        switch (reason) {
-            case DataService.REQUEST_REASON_UNKNOWN:
-                return "UNKNOWN";
-            case DataService.REQUEST_REASON_NORMAL:
-                return "NORMAL";
-            case DataService.REQUEST_REASON_SHUTDOWN:
-                return "SHUTDOWN";
-            case DataService.REQUEST_REASON_HANDOVER:
-                return "HANDOVER";
-            default:
-                return "UNKNOWN(" + reason + ")";
-        }
+        return switch (reason) {
+            case DataService.REQUEST_REASON_UNKNOWN -> "UNKNOWN";
+            case DataService.REQUEST_REASON_NORMAL -> "NORMAL";
+            case DataService.REQUEST_REASON_SHUTDOWN -> "SHUTDOWN";
+            case DataService.REQUEST_REASON_HANDOVER -> "HANDOVER";
+            default -> "UNKNOWN(" + reason + ")";
+        };
     }
 
     @Override
