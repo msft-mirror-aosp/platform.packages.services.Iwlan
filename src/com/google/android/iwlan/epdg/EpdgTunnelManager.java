@@ -265,24 +265,17 @@ public class EpdgTunnelManager {
     public @interface TunnelBringDownReason {}
 
     private static String bringdownReasonToString(@TunnelBringDownReason int reason) {
-        switch (reason) {
-            case BRINGDOWN_REASON_UNKNOWN:
-                return "BRINGDOWN_REASON_UNKNOWN";
-            case BRINGDOWN_REASON_DISABLE_N1_MODE:
-                return "BRINGDOWN_REASON_DISABLE_N1_MODE";
-            case BRINGDOWN_REASON_ENABLE_N1_MODE:
-                return "BRINGDOWN_REASON_ENABLE_N1_MODE";
-            case BRINGDOWN_REASON_SERVICE_OUT_OF_SYNC:
-                return "BRINGDOWN_REASON_SERVICE_OUT_OF_SYNC";
-            case BRINGDOWN_REASON_IN_DEACTIVATING_STATE:
-                return "BRINGDOWN_REASON_IN_DEACTIVATING_STATE";
-            case BRINGDOWN_REASON_NETWORK_UPDATE_WHEN_TUNNEL_IN_BRINGUP:
-                return "BRINGDOWN_REASON_NETWORK_UPDATE_WHEN_TUNNEL_IN_BRINGUP";
-            case BRINGDOWN_REASON_DEACTIVATE_DATA_CALL:
-                return "BRINGDOWN_REASON_DEACTIVATE_DATA_CALL";
-            default:
-                return "Unknown(" + reason + ")";
-        }
+        return switch (reason) {
+            case BRINGDOWN_REASON_UNKNOWN -> "BRINGDOWN_REASON_UNKNOWN";
+            case BRINGDOWN_REASON_DISABLE_N1_MODE -> "BRINGDOWN_REASON_DISABLE_N1_MODE";
+            case BRINGDOWN_REASON_ENABLE_N1_MODE -> "BRINGDOWN_REASON_ENABLE_N1_MODE";
+            case BRINGDOWN_REASON_SERVICE_OUT_OF_SYNC -> "BRINGDOWN_REASON_SERVICE_OUT_OF_SYNC";
+            case BRINGDOWN_REASON_IN_DEACTIVATING_STATE -> "BRINGDOWN_REASON_IN_DEACTIVATING_STATE";
+            case BRINGDOWN_REASON_NETWORK_UPDATE_WHEN_TUNNEL_IN_BRINGUP ->
+                    "BRINGDOWN_REASON_NETWORK_UPDATE_WHEN_TUNNEL_IN_BRINGUP";
+            case BRINGDOWN_REASON_DEACTIVATE_DATA_CALL -> "BRINGDOWN_REASON_DEACTIVATE_DATA_CALL";
+            default -> "Unknown(" + reason + ")";
+        };
     }
 
     private final EpdgSelector.EpdgSelectorCallback mSelectorCallback =
@@ -1372,49 +1365,41 @@ public class EpdgTunnelManager {
                         mSlotId,
                         CarrierConfigManager.Iwlan.KEY_DIFFIE_HELLMAN_GROUPS_INT_ARRAY));
 
-        int[] encryptionAlgos =
+        String encryptionAlgosConfigKey =
                 isChildProposal
-                        ? IwlanCarrierConfig.getConfigIntArray(
-                                mContext,
-                                mSlotId,
-                                CarrierConfigManager.Iwlan
-                                    .KEY_SUPPORTED_CHILD_SESSION_ENCRYPTION_ALGORITHMS_INT_ARRAY)
-                        : IwlanCarrierConfig.getConfigIntArray(
-                                mContext,
-                                mSlotId,
-                                CarrierConfigManager.Iwlan
-                                    .KEY_SUPPORTED_IKE_SESSION_ENCRYPTION_ALGORITHMS_INT_ARRAY);
+                        ? CarrierConfigManager.Iwlan
+                                .KEY_SUPPORTED_CHILD_SESSION_ENCRYPTION_ALGORITHMS_INT_ARRAY
+                        : CarrierConfigManager.Iwlan
+                                .KEY_SUPPORTED_IKE_SESSION_ENCRYPTION_ALGORITHMS_INT_ARRAY;
+
+        int[] encryptionAlgos =
+                IwlanCarrierConfig.getConfigIntArray(mContext, mSlotId, encryptionAlgosConfigKey);
 
         for (int encryptionAlgo : encryptionAlgos) {
             if (encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_CBC) {
-                int[] aesCbcKeyLens =
+                String aesCbcKeyLensConfigKey =
                         isChildProposal
-                                ? IwlanCarrierConfig.getConfigIntArray(
-                                        mContext,
-                                        mSlotId,
-                                        CarrierConfigManager.Iwlan
-                                                .KEY_CHILD_SESSION_AES_CBC_KEY_SIZE_INT_ARRAY)
-                                : IwlanCarrierConfig.getConfigIntArray(
-                                        mContext,
-                                        mSlotId,
-                                        CarrierConfigManager.Iwlan
-                                                .KEY_IKE_SESSION_AES_CBC_KEY_SIZE_INT_ARRAY);
+                                ? CarrierConfigManager.Iwlan
+                                        .KEY_CHILD_SESSION_AES_CBC_KEY_SIZE_INT_ARRAY
+                                : CarrierConfigManager.Iwlan
+                                        .KEY_IKE_SESSION_AES_CBC_KEY_SIZE_INT_ARRAY;
+
+                int[] aesCbcKeyLens =
+                        IwlanCarrierConfig.getConfigIntArray(
+                                mContext, mSlotId, aesCbcKeyLensConfigKey);
                 epdgSaProposal.addProposedEncryptionAlgorithm(encryptionAlgo, aesCbcKeyLens);
             }
 
             if (encryptionAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_CTR) {
-                int[] aesCtrKeyLens =
+                String aesCtrKeyLensConfigKey =
                         isChildProposal
-                                ? IwlanCarrierConfig.getConfigIntArray(
-                                        mContext,
-                                        mSlotId,
-                                        CarrierConfigManager.Iwlan
-                                                .KEY_CHILD_SESSION_AES_CTR_KEY_SIZE_INT_ARRAY)
-                                : IwlanCarrierConfig.getConfigIntArray(
-                                        mContext,
-                                        mSlotId,
-                                        CarrierConfigManager.Iwlan
-                                                .KEY_IKE_SESSION_AES_CTR_KEY_SIZE_INT_ARRAY);
+                                ? CarrierConfigManager.Iwlan
+                                        .KEY_CHILD_SESSION_AES_CTR_KEY_SIZE_INT_ARRAY
+                                : CarrierConfigManager.Iwlan
+                                        .KEY_IKE_SESSION_AES_CTR_KEY_SIZE_INT_ARRAY;
+                int[] aesCtrKeyLens =
+                        IwlanCarrierConfig.getConfigIntArray(
+                                mContext, mSlotId, aesCtrKeyLensConfigKey);
                 epdgSaProposal.addProposedEncryptionAlgorithm(encryptionAlgo, aesCtrKeyLens);
             }
         }
@@ -1428,18 +1413,14 @@ public class EpdgTunnelManager {
                                     .KEY_SUPPORTED_INTEGRITY_ALGORITHMS_INT_ARRAY));
         }
 
-        int[] aeadAlgos =
+        String aeadAlgosConfigKey =
                 isChildProposal
-                        ? IwlanCarrierConfig.getConfigIntArray(
-                                mContext,
-                                mSlotId,
-                                CarrierConfigManager.Iwlan
-                                        .KEY_SUPPORTED_CHILD_SESSION_AEAD_ALGORITHMS_INT_ARRAY)
-                        : IwlanCarrierConfig.getConfigIntArray(
-                                mContext,
-                                mSlotId,
-                                CarrierConfigManager.Iwlan
-                                        .KEY_SUPPORTED_IKE_SESSION_AEAD_ALGORITHMS_INT_ARRAY);
+                        ? CarrierConfigManager.Iwlan
+                                .KEY_SUPPORTED_CHILD_SESSION_AEAD_ALGORITHMS_INT_ARRAY
+                        : CarrierConfigManager.Iwlan
+                                .KEY_SUPPORTED_IKE_SESSION_AEAD_ALGORITHMS_INT_ARRAY;
+        int[] aeadAlgos =
+                IwlanCarrierConfig.getConfigIntArray(mContext, mSlotId, aeadAlgosConfigKey);
         for (int aeadAlgo : aeadAlgos) {
             if (!validateConfig(aeadAlgo, VALID_AEAD_ALGOS, CONFIG_TYPE_ENCRYPT_ALGO)) {
                 continue;
@@ -1447,18 +1428,15 @@ public class EpdgTunnelManager {
             if ((aeadAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_8)
                     || (aeadAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_12)
                     || (aeadAlgo == SaProposal.ENCRYPTION_ALGORITHM_AES_GCM_16)) {
-                int[] aesGcmKeyLens =
+                String aesGcmKeyLensConfigKey =
                         isChildProposal
-                                ? IwlanCarrierConfig.getConfigIntArray(
-                                        mContext,
-                                        mSlotId,
-                                        CarrierConfigManager.Iwlan
-                                                .KEY_CHILD_SESSION_AES_GCM_KEY_SIZE_INT_ARRAY)
-                                : IwlanCarrierConfig.getConfigIntArray(
-                                        mContext,
-                                        mSlotId,
-                                        CarrierConfigManager.Iwlan
-                                                .KEY_IKE_SESSION_AES_GCM_KEY_SIZE_INT_ARRAY);
+                                ? CarrierConfigManager.Iwlan
+                                        .KEY_CHILD_SESSION_AES_GCM_KEY_SIZE_INT_ARRAY
+                                : CarrierConfigManager.Iwlan
+                                        .KEY_IKE_SESSION_AES_GCM_KEY_SIZE_INT_ARRAY;
+                int[] aesGcmKeyLens =
+                        IwlanCarrierConfig.getConfigIntArray(
+                                mContext, mSlotId, aesGcmKeyLensConfigKey);
                 epdgSaProposal.addProposedAeadAlgorithm(aeadAlgo, aesGcmKeyLens);
             }
         }
@@ -1777,16 +1755,14 @@ public class EpdgTunnelManager {
                         ? CarrierConfigManager.Iwlan.KEY_IKE_LOCAL_ID_TYPE_INT
                         : CarrierConfigManager.Iwlan.KEY_IKE_REMOTE_ID_TYPE_INT;
         int idType = IwlanCarrierConfig.getConfigInt(mContext, mSlotId, idTypeConfig);
-        switch (idType) {
-            case CarrierConfigManager.Iwlan.ID_TYPE_FQDN:
-                return new IkeFqdnIdentification(id);
-            case CarrierConfigManager.Iwlan.ID_TYPE_KEY_ID:
-                return new IkeKeyIdIdentification(id.getBytes(StandardCharsets.US_ASCII));
-            case CarrierConfigManager.Iwlan.ID_TYPE_RFC822_ADDR:
-                return new IkeRfc822AddrIdentification(id);
-            default:
-                throw new IllegalArgumentException("Invalid local Identity type: " + idType);
-        }
+        return switch (idType) {
+            case CarrierConfigManager.Iwlan.ID_TYPE_FQDN -> new IkeFqdnIdentification(id);
+            case CarrierConfigManager.Iwlan.ID_TYPE_KEY_ID ->
+                    new IkeKeyIdIdentification(id.getBytes(StandardCharsets.US_ASCII));
+            case CarrierConfigManager.Iwlan.ID_TYPE_RFC822_ADDR ->
+                    new IkeRfc822AddrIdentification(id);
+            default -> throw new IllegalArgumentException("Invalid local Identity type: " + idType);
+        };
     }
 
     private EapSessionConfig getEapConfig() throws IwlanSimNotReadyException {
@@ -1858,7 +1834,6 @@ public class EpdgTunnelManager {
             OnClosedMetrics.Builder onClosedMetricsBuilder;
             TunnelRequestWrapper tunnelRequestWrapper;
             ConnectivityManager connectivityManager;
-            NetworkCapabilities networkCapabilities;
             boolean isNetworkValidated;
             switch (msg.what) {
                 case EVENT_CHILD_SESSION_OPENED:
@@ -2003,8 +1978,9 @@ public class EpdgTunnelManager {
                         // Iwlan reports IKE_SESSION_CLOSED_BEFORE_CHILD_SESSION_OPENED
                         // instead of NO_ERROR
                         if (!tunnelConfig.hasTunnelOpened()) {
-                            iwlanError = new IwlanError(
-                                    IwlanError.IKE_SESSION_CLOSED_BEFORE_CHILD_SESSION_OPENED);
+                            int errorType =
+                                    IwlanError.IKE_SESSION_CLOSED_BEFORE_CHILD_SESSION_OPENED;
+                            iwlanError = new IwlanError(errorType);
                         } else {
                             iwlanError = tunnelConfig.getError();
                         }
@@ -2023,7 +1999,12 @@ public class EpdgTunnelManager {
                         }
                         mEpdgMonitor.onEpdgConnectionFailed(
                                 tunnelConfig.isEmergency(), tunnelConfig.getEpdgAddress());
-                        getEpdgSelector().onEpdgConnectionFailed(tunnelConfig.getEpdgAddress());
+                        if (sessionClosedData.mIkeException != null) {
+                            getEpdgSelector()
+                                    .onEpdgConnectionFailed(
+                                            tunnelConfig.getEpdgAddress(),
+                                            sessionClosedData.mIkeException);
+                        }
                     } else {
                         /* PDN disconnected case */
                         triggerUnderlyingNetworkValidationIfNeeded(iwlanError);
@@ -2225,8 +2206,8 @@ public class EpdgTunnelManager {
 
                     if (enabledFastReauth) {
                         EapInfo eapInfo = sessionConfiguration.getEapInfo();
-                        if (eapInfo instanceof EapAkaInfo) {
-                            mNextReauthId = ((EapAkaInfo) eapInfo).getReauthId();
+                        if (eapInfo instanceof EapAkaInfo eapAkaInfo) {
+                            mNextReauthId = eapAkaInfo.getReauthId();
                             Log.d(TAG, "Update ReauthId: " + Arrays.toString(mNextReauthId));
                         } else {
                             mNextReauthId = null;
@@ -2971,38 +2952,25 @@ public class EpdgTunnelManager {
     }
 
     private static String eventToString(int event) {
-        switch (event) {
-            case EVENT_TUNNEL_BRINGUP_REQUEST:
-                return "EVENT_TUNNEL_BRINGUP_REQUEST";
-            case EVENT_TUNNEL_BRINGDOWN_REQUEST:
-                return "EVENT_TUNNEL_BRINGDOWN_REQUEST";
-            case EVENT_CHILD_SESSION_OPENED:
-                return "EVENT_CHILD_SESSION_OPENED";
-            case EVENT_CHILD_SESSION_CLOSED:
-                return "EVENT_CHILD_SESSION_CLOSED";
-            case EVENT_IKE_SESSION_CLOSED:
-                return "EVENT_IKE_SESSION_CLOSED";
-            case EVENT_EPDG_ADDRESS_SELECTION_REQUEST_COMPLETE:
-                return "EVENT_EPDG_ADDRESS_SELECTION_REQUEST_COMPLETE";
-            case EVENT_IPSEC_TRANSFORM_CREATED:
-                return "EVENT_IPSEC_TRANSFORM_CREATED";
-            case EVENT_IPSEC_TRANSFORM_DELETED:
-                return "EVENT_IPSEC_TRANSFORM_DELETED";
-            case EVENT_UPDATE_NETWORK:
-                return "EVENT_UPDATE_NETWORK";
-            case EVENT_IKE_SESSION_OPENED:
-                return "EVENT_IKE_SESSION_OPENED";
-            case EVENT_IKE_SESSION_CONNECTION_INFO_CHANGED:
-                return "EVENT_IKE_SESSION_CONNECTION_INFO_CHANGED";
-            case EVENT_IKE_3GPP_DATA_RECEIVED:
-                return "EVENT_IKE_3GPP_DATA_RECEIVED";
-            case EVENT_IKE_LIVENESS_STATUS_CHANGED:
-                return "EVENT_IKE_LIVENESS_STATUS_CHANGED";
-            case EVENT_REQUEST_NETWORK_VALIDATION_CHECK:
-                return "EVENT_REQUEST_NETWORK_VALIDATION_CHECK";
-            default:
-                return "Unknown(" + event + ")";
-        }
+        return switch (event) {
+            case EVENT_TUNNEL_BRINGUP_REQUEST -> "EVENT_TUNNEL_BRINGUP_REQUEST";
+            case EVENT_TUNNEL_BRINGDOWN_REQUEST -> "EVENT_TUNNEL_BRINGDOWN_REQUEST";
+            case EVENT_CHILD_SESSION_OPENED -> "EVENT_CHILD_SESSION_OPENED";
+            case EVENT_CHILD_SESSION_CLOSED -> "EVENT_CHILD_SESSION_CLOSED";
+            case EVENT_IKE_SESSION_CLOSED -> "EVENT_IKE_SESSION_CLOSED";
+            case EVENT_EPDG_ADDRESS_SELECTION_REQUEST_COMPLETE ->
+                    "EVENT_EPDG_ADDRESS_SELECTION_REQUEST_COMPLETE";
+            case EVENT_IPSEC_TRANSFORM_CREATED -> "EVENT_IPSEC_TRANSFORM_CREATED";
+            case EVENT_IPSEC_TRANSFORM_DELETED -> "EVENT_IPSEC_TRANSFORM_DELETED";
+            case EVENT_UPDATE_NETWORK -> "EVENT_UPDATE_NETWORK";
+            case EVENT_IKE_SESSION_OPENED -> "EVENT_IKE_SESSION_OPENED";
+            case EVENT_IKE_SESSION_CONNECTION_INFO_CHANGED ->
+                    "EVENT_IKE_SESSION_CONNECTION_INFO_CHANGED";
+            case EVENT_IKE_3GPP_DATA_RECEIVED -> "EVENT_IKE_3GPP_DATA_RECEIVED";
+            case EVENT_IKE_LIVENESS_STATUS_CHANGED -> "EVENT_IKE_LIVENESS_STATUS_CHANGED";
+            case EVENT_REQUEST_NETWORK_VALIDATION_CHECK -> "EVENT_REQUEST_NETWORK_VALIDATION_CHECK";
+            default -> "Unknown(" + event + ")";
+        };
     }
 
     @VisibleForTesting
