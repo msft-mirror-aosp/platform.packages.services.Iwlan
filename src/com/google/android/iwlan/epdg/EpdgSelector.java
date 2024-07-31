@@ -21,6 +21,9 @@ import android.net.DnsResolver;
 import android.net.DnsResolver.DnsException;
 import android.net.InetAddresses;
 import android.net.Network;
+import android.net.ipsec.ike.exceptions.IkeException;
+import android.net.ipsec.ike.exceptions.IkeIOException;
+import android.net.ipsec.ike.exceptions.IkeProtocolException;
 import android.support.annotation.IntDef;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
@@ -262,14 +265,17 @@ public class EpdgSelector {
     }
 
     /**
-     * Notify {@link EpdgSelector} that failed to connect to an ePDG. EpdgSelector will add the
-     * {@code ipAddress} into excluded list and will not retry until any ePDG connected successfully
-     * or all ip addresses candidates are tried.
+     * Notify {@link EpdgSelector} that failed to connect to an ePDG due to IKE exception.
+     * EpdgSelector will add the {@code ipAddress} into excluded list and will not retry until any
+     * ePDG connected successfully or all ip addresses candidates are tried.
      *
      * @param ipAddress the ePDG ip address that failed to connect
+     * @param cause the failure cause {@link IkeException} of the connection
      */
-    void onEpdgConnectionFailed(InetAddress ipAddress) {
-        excludeIpAddress(ipAddress);
+    void onEpdgConnectionFailed(InetAddress ipAddress, IkeException cause) {
+        if (cause instanceof IkeProtocolException || cause instanceof IkeIOException) {
+            excludeIpAddress(ipAddress);
+        }
     }
 
     private void excludeIpAddress(InetAddress ipAddress) {
@@ -423,7 +429,7 @@ public class EpdgSelector {
      * @param timeout timeout in seconds.
      * @return List of unique IP addresses corresponding to the domainNames.
      */
-    private LinkedHashMap<String, List<InetAddress>> getIP(
+    private Map<String, List<InetAddress>> getIP(
             List<String> domainNames, int filter, Network network, long timeout) {
         // LinkedHashMap preserves insertion order (and hence priority) of domain names passed in.
         LinkedHashMap<String, List<InetAddress>> domainNameToIpAddr = new LinkedHashMap<>();
@@ -637,7 +643,7 @@ public class EpdgSelector {
         return plmnsFromCarrierConfig.contains(new StringBuilder(plmn).insert(3, "-").toString());
     }
 
-    private ArrayList<InetAddress> removeDuplicateIp(List<InetAddress> validIpList) {
+    private List<InetAddress> removeDuplicateIp(List<InetAddress> validIpList) {
         ArrayList<InetAddress> resultIpList = new ArrayList<InetAddress>();
 
         for (InetAddress validIp : validIpList) {
@@ -653,9 +659,8 @@ public class EpdgSelector {
             @NonNull List<InetAddress> validIpList, @EpdgAddressOrder int order) {
         return switch (order) {
             case IPV4_PREFERRED -> validIpList.stream().sorted(inetAddressComparator).toList();
-            case IPV6_PREFERRED -> validIpList.stream()
-                    .sorted(inetAddressComparator.reversed())
-                    .toList();
+            case IPV6_PREFERRED ->
+                    validIpList.stream().sorted(inetAddressComparator.reversed()).toList();
             case SYSTEM_PREFERRED -> validIpList;
             default -> {
                 Log.w(TAG, "Invalid EpdgAddressOrder : " + order);
@@ -727,7 +732,7 @@ public class EpdgSelector {
         }
 
         Log.d(TAG, "Static Domain Names: " + Arrays.toString(domainNames));
-        LinkedHashMap<String, List<InetAddress>> domainNameToIpAddr =
+        Map<String, List<InetAddress>> domainNameToIpAddr =
                 getIP(
                         Arrays.asList(domainNames),
                         filter,
@@ -808,7 +813,7 @@ public class EpdgSelector {
             domainName.setLength(0);
         }
 
-        LinkedHashMap<String, List<InetAddress>> domainNameToIpAddr =
+        Map<String, List<InetAddress>> domainNameToIpAddr =
                 getIP(domainNames, filter, network, PARALLEL_PLMN_RESOLUTION_TIMEOUT_DURATION_SEC);
         printParallelDnsResult(domainNameToIpAddr);
         domainNameToIpAddr.values().forEach(validIpList::addAll);
@@ -843,18 +848,18 @@ public class EpdgSelector {
                 continue;
             }
 
-            if (cellInfo instanceof CellInfoGsm) {
-                CellIdentityGsm gsmCellId = ((CellInfoGsm) cellInfo).getCellIdentity();
+            if (cellInfo instanceof CellInfoGsm cellInfoGsm) {
+                CellIdentityGsm gsmCellId = cellInfoGsm.getCellIdentity();
                 String lacString = String.format("%04x", gsmCellId.getLac());
 
                 lacDomainNameResolution(filter, validIpList, lacString, isEmergency, network);
-            } else if (cellInfo instanceof CellInfoWcdma) {
-                CellIdentityWcdma wcdmaCellId = ((CellInfoWcdma) cellInfo).getCellIdentity();
+            } else if (cellInfo instanceof CellInfoWcdma cellInfoWcdma) {
+                CellIdentityWcdma wcdmaCellId = cellInfoWcdma.getCellIdentity();
                 String lacString = String.format("%04x", wcdmaCellId.getLac());
 
                 lacDomainNameResolution(filter, validIpList, lacString, isEmergency, network);
-            } else if (cellInfo instanceof CellInfoLte) {
-                CellIdentityLte lteCellId = ((CellInfoLte) cellInfo).getCellIdentity();
+            } else if (cellInfo instanceof CellInfoLte cellInfoLte) {
+                CellIdentityLte lteCellId = cellInfoLte.getCellIdentity();
                 String tacString = String.format("%04x", lteCellId.getTac());
                 String[] tacSubString = new String[2];
                 tacSubString[0] = tacString.substring(0, 2);
@@ -863,7 +868,7 @@ public class EpdgSelector {
                 plmnList = getPlmnList();
                 for (String plmn : plmnList) {
                     String[] mccmnc = splitMccMnc(plmn);
-                    /**
+                    /*
                      * Tracking Area Identity based ePDG FQDN format:
                      * tac-lb<TAC-low-byte>.tac-hb<TAC-high-byte>.tac.
                      * epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
@@ -890,8 +895,8 @@ public class EpdgSelector {
                     getIP(domainName.toString(), filter, validIpList, network);
                     domainName.setLength(0);
                 }
-            } else if (cellInfo instanceof CellInfoNr) {
-                CellIdentityNr nrCellId = (CellIdentityNr) cellInfo.getCellIdentity();
+            } else if (cellInfo instanceof CellInfoNr cellInfoNr) {
+                CellIdentityNr nrCellId = (CellIdentityNr) cellInfoNr.getCellIdentity();
                 String tacString = String.format("%06x", nrCellId.getTac());
                 String[] tacSubString = new String[3];
                 tacSubString[0] = tacString.substring(0, 2);
@@ -901,7 +906,7 @@ public class EpdgSelector {
                 plmnList = getPlmnList();
                 for (String plmn : plmnList) {
                     String[] mccmnc = splitMccMnc(plmn);
-                    /**
+                    /*
                      * 5GS Tracking Area Identity based ePDG FQDN format:
                      * tac-lb<TAC-low-byte>.tac-mb<TAC-middle-byte>.tac-hb<TAC-high-byte>.
                      * 5gstac.epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
@@ -948,7 +953,7 @@ public class EpdgSelector {
         plmnList = getPlmnList();
         for (String plmn : plmnList) {
             String[] mccmnc = splitMccMnc(plmn);
-            /**
+            /*
              * Location Area Identity based ePDG FQDN format:
              * lac<LAC>.epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
              *
