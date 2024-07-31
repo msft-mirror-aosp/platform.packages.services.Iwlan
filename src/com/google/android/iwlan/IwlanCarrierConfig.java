@@ -65,8 +65,8 @@ public class IwlanCarrierConfig {
             PREFIX + "ike_device_identity_supported_bool";
 
     /**
-     * Boolean indicating if reordering ike SA transforms enabled. Refer to
-     * {@link #DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL} for the default value.
+     * Boolean indicating if reordering ike SA transforms enabled. Refer to {@link
+     * #DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL} for the default value.
      */
     public static final String KEY_IKE_SA_TRANSFORMS_REORDER_BOOL =
             PREFIX + "ike_sa_transforms_reorder_bool";
@@ -178,6 +178,7 @@ public class IwlanCarrierConfig {
 
     /** This is the default value for {@link #KEY_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL}. */
     public static final boolean DEFAULT_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL = false;
+
     /**
      * Default value indicating whether the UE includes the IKE DEVICE_IDENTITY Notify payload upon
      * receiving a request. This is the default setting for {@link

@@ -871,8 +871,6 @@ public class EpdgTunnelManagerTest {
 
     @Test
     public void testRekeyAndNattTimerFromCarrierConfig() throws Exception {
-        String testApnName = "www.xyz.com";
-
         // Test values
         int hardTime = 50000;
         int softTime = 20000;
@@ -938,8 +936,6 @@ public class EpdgTunnelManagerTest {
 
     @Test
     public void testSetRetransmissionTimeoutsFromCarrierConfig() throws Exception {
-        String testApnName = "www.xyz.com";
-
         int[] testTimeouts = {1000, 1200, 1400, 1600, 2000, 4000};
 
         IwlanCarrierConfig.putTestConfigIntArray(
@@ -984,9 +980,6 @@ public class EpdgTunnelManagerTest {
 
     @Test
     public void testSetDpdDelayFromCarrierConfig() throws Exception {
-        String testApnName = "www.xyz.com";
-
-        // Test values
         int testDpdDelay = 600;
 
         IwlanCarrierConfig.putTestConfigInt(
@@ -1559,7 +1552,7 @@ public class EpdgTunnelManagerTest {
         ChildSessionCallback childSessionCallback =
                 ikeSessionArgumentCaptors.mChildSessionCallbackCaptor.getValue();
         verifyTunnelOnOpened(toBeOpenedApnName, childSessionCallback);
-        verify(mMockEpdgSelector, never()).onEpdgConnectionFailed(any());
+        verify(mMockEpdgSelector, never()).onEpdgConnectionFailed(any(), any());
         verify(mMockEpdgSelector).onEpdgConnectedSuccessfully();
     }
 
@@ -1766,8 +1759,6 @@ public class EpdgTunnelManagerTest {
     }
 
     private void testSetIkeTrafficSelectors(int apnProtocol, boolean handover) throws Exception {
-        String testApnName = "www.xyz.com";
-
         doReturn(null)
                 .when(mMockIkeSessionCreator)
                 .createIkeSession(
@@ -1971,8 +1962,6 @@ public class EpdgTunnelManagerTest {
     }
 
     private void verifyN1modeCapability(int pduSessionId) throws Exception {
-
-        String testApnName = "www.xyz.com";
         byte pduSessionIdToByte = (byte) pduSessionId;
 
         doReturn(null)
@@ -2025,8 +2014,6 @@ public class EpdgTunnelManagerTest {
 
     @Test
     public void testInvalidNattTimerFromCarrierConfig() throws Exception {
-        String testApnName = "www.xyz.com";
-
         int nattTimer = 4500; // valid range for natt timer is 0-3600
         int defaultNattTimer =
                 IwlanCarrierConfig.getDefaultConfigInt(
@@ -2175,23 +2162,23 @@ public class EpdgTunnelManagerTest {
         boolean ipv4ConfigRequestPresent = true;
         for (TunnelModeChildSessionParams.TunnelModeChildConfigRequest configRequest :
                 configRequests) {
-            if (configRequest instanceof TunnelModeChildSessionParams.ConfigRequestIpv6Address) {
+            if (configRequest
+                    instanceof
+                    TunnelModeChildSessionParams.ConfigRequestIpv6Address
+                                    configRequestIpv6Address) {
                 ipv6ConfigRequestPresent = true;
-                assertEquals(
-                        testAddressV6,
-                        ((TunnelModeChildSessionParams.ConfigRequestIpv6Address) configRequest)
-                                .getAddress());
+                assertEquals(testAddressV6, configRequestIpv6Address.getAddress());
                 assertEquals(
                         ipv6AddressLen,
                         ((TunnelModeChildSessionParams.ConfigRequestIpv6Address) configRequest)
                                 .getPrefixLength());
             }
-            if (configRequest instanceof TunnelModeChildSessionParams.ConfigRequestIpv4Address) {
+            if (configRequest
+                    instanceof
+                    TunnelModeChildSessionParams.ConfigRequestIpv4Address
+                                    configRequestIpv4Address) {
                 ipv4ConfigRequestPresent = true;
-                assertEquals(
-                        testAddressV4,
-                        ((TunnelModeChildSessionParams.ConfigRequestIpv4Address) configRequest)
-                                .getAddress());
+                assertEquals(testAddressV4, configRequestIpv4Address.getAddress());
             }
         }
         assertTrue(ipv6ConfigRequestPresent);
@@ -2519,7 +2506,9 @@ public class EpdgTunnelManagerTest {
         mTestLooper.dispatchAll();
 
         verify(mEpdgTunnelManager).reportIwlanError(eq(testApnName), eq(error));
-        verify(mMockEpdgSelector).onEpdgConnectionFailed(eq(EXPECTED_EPDG_ADDRESSES.get(0)));
+        verify(mMockEpdgSelector)
+                .onEpdgConnectionFailed(
+                        eq(EXPECTED_EPDG_ADDRESSES.get(0)), any(IkeIOException.class));
         verify(mMockEpdgSelector, never()).onEpdgConnectedSuccessfully();
         verify(mMockIwlanTunnelCallback, atLeastOnce()).onClosed(eq(testApnName), eq(error));
     }
