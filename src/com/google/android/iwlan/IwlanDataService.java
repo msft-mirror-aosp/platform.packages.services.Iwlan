@@ -886,11 +886,9 @@ public class IwlanDataService extends DataService {
                         // Transport Type
                         networkTransport);
             }
-
             getIwlanDataServiceHandler()
-                    .sendMessage(
-                            getIwlanDataServiceHandler()
-                                    .obtainMessage(EVENT_SETUP_DATA_CALL, setupDataCallData));
+                    .obtainMessage(EVENT_SETUP_DATA_CALL, setupDataCallData)
+                    .sendToTarget();
         }
 
         /**
@@ -1024,12 +1022,10 @@ public class IwlanDataService extends DataService {
         @Override
         public void requestDataCallList(DataServiceCallback callback) {
             getIwlanDataServiceHandler()
-                    .sendMessage(
-                            getIwlanDataServiceHandler()
-                                    .obtainMessage(
-                                            EVENT_DATA_CALL_LIST_REQUEST,
-                                            new DataCallRequestData(
-                                                    callback, IwlanDataServiceProvider.this)));
+                    .obtainMessage(
+                            EVENT_DATA_CALL_LIST_REQUEST,
+                            new DataCallRequestData(callback, IwlanDataServiceProvider.this))
+                    .sendToTarget();
         }
 
         @VisibleForTesting
@@ -2352,17 +2348,15 @@ public class IwlanDataService extends DataService {
         IwlanDataServiceProvider dp = new IwlanDataServiceProvider(slotIndex, this);
 
         getIwlanDataServiceHandler()
-                .sendMessage(
-                        getIwlanDataServiceHandler()
-                                .obtainMessage(EVENT_ADD_DATA_SERVICE_PROVIDER, dp));
+                .obtainMessage(EVENT_ADD_DATA_SERVICE_PROVIDER, dp)
+                .sendToTarget();
         return dp;
     }
 
     public void removeDataServiceProvider(IwlanDataServiceProvider dp) {
         getIwlanDataServiceHandler()
-                .sendMessage(
-                        getIwlanDataServiceHandler()
-                                .obtainMessage(EVENT_REMOVE_DATA_SERVICE_PROVIDER, dp));
+                .obtainMessage(EVENT_REMOVE_DATA_SERVICE_PROVIDER, dp)
+                .sendToTarget();
     }
 
     @VisibleForTesting
@@ -2499,8 +2493,7 @@ public class IwlanDataService extends DataService {
     @Override
     public boolean onUnbind(Intent intent) {
         Log.d(TAG, "IwlanDataService onUnbind");
-        getIwlanDataServiceHandler()
-                .sendMessage(getIwlanDataServiceHandler().obtainMessage(EVENT_FORCE_CLOSE_TUNNEL));
+        getIwlanDataServiceHandler().obtainMessage(EVENT_FORCE_CLOSE_TUNNEL).sendToTarget();
         return super.onUnbind(intent);
     }
 

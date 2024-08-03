@@ -492,19 +492,19 @@ public class EpdgTunnelManager {
         @Override
         public void onOpened(IkeSessionConfiguration sessionConfiguration) {
             Log.d(TAG, "Ike session opened for apn: " + mApnName + " with token: " + mToken);
-            mHandler.sendMessage(
-                    mHandler.obtainMessage(
+            mHandler.obtainMessage(
                             EVENT_IKE_SESSION_OPENED,
-                            new IkeSessionOpenedData(mApnName, mToken, sessionConfiguration)));
+                            new IkeSessionOpenedData(mApnName, mToken, sessionConfiguration))
+                    .sendToTarget();
         }
 
         @Override
         public void onClosed() {
             Log.d(TAG, "Ike session closed for apn: " + mApnName + " with token: " + mToken);
-            mHandler.sendMessage(
-                    mHandler.obtainMessage(
+            mHandler.obtainMessage(
                             EVENT_IKE_SESSION_CLOSED,
-                            new SessionClosedData(mApnName, mToken, null /* ikeException */)));
+                            new SessionClosedData(mApnName, mToken, null /* ikeException */))
+                    .sendToTarget();
         }
 
         @Override
@@ -539,11 +539,11 @@ public class EpdgTunnelManager {
                             + mToken
                             + " Network: "
                             + network);
-            mHandler.sendMessage(
-                    mHandler.obtainMessage(
+            mHandler.obtainMessage(
                             EVENT_IKE_SESSION_CONNECTION_INFO_CHANGED,
                             new IkeSessionConnectionInfoData(
-                                    mApnName, mToken, ikeSessionConnectionInfo)));
+                                    mApnName, mToken, ikeSessionConnectionInfo))
+                    .sendToTarget();
         }
 
         @Override
@@ -588,10 +588,10 @@ public class EpdgTunnelManager {
 
         @Override
         public void onIke3gppDataReceived(List<Ike3gppData> payloads) {
-            mHandler.sendMessage(
-                    mHandler.obtainMessage(
+            mHandler.obtainMessage(
                             EVENT_IKE_3GPP_DATA_RECEIVED,
-                            new Ike3gppDataReceived(mApnName, mToken, payloads)));
+                            new Ike3gppDataReceived(mApnName, mToken, payloads))
+                    .sendToTarget();
         }
     }
 
@@ -609,23 +609,23 @@ public class EpdgTunnelManager {
         @Override
         public void onOpened(ChildSessionConfiguration sessionConfiguration) {
             Log.d(TAG, "onOpened child session for apn: " + mApnName + " with token: " + mToken);
-            mHandler.sendMessage(
-                    mHandler.obtainMessage(
+            mHandler.obtainMessage(
                             EVENT_CHILD_SESSION_OPENED,
                             new TunnelOpenedData(
                                     mApnName,
                                     mToken,
                                     sessionConfiguration.getInternalDnsServers(),
-                                    sessionConfiguration.getInternalAddresses())));
+                                    sessionConfiguration.getInternalAddresses()))
+                    .sendToTarget();
         }
 
         @Override
         public void onClosed() {
             Log.d(TAG, "onClosed child session for apn: " + mApnName + " with token: " + mToken);
-            mHandler.sendMessage(
-                    mHandler.obtainMessage(
+            mHandler.obtainMessage(
                             EVENT_CHILD_SESSION_CLOSED,
-                            new SessionClosedData(mApnName, mToken, null /* ikeException */)));
+                            new SessionClosedData(mApnName, mToken, null /* ikeException */))
+                    .sendToTarget();
         }
 
         @Override
@@ -638,22 +638,19 @@ public class EpdgTunnelManager {
                 IpSecTransform inIpSecTransform, IpSecTransform outIpSecTransform) {
             // migration is similar to addition
             Log.d(TAG, "Transforms migrated for apn: " + mApnName + " with token: " + mToken);
-            mHandler.sendMessage(
-                    mHandler.obtainMessage(
+            mHandler.obtainMessage(
                             EVENT_IPSEC_TRANSFORM_CREATED,
                             new IpsecTransformData(
-                                    inIpSecTransform,
-                                    IpSecManager.DIRECTION_IN,
-                                    mApnName,
-                                    mToken)));
-            mHandler.sendMessage(
-                    mHandler.obtainMessage(
+                                    inIpSecTransform, IpSecManager.DIRECTION_IN, mApnName, mToken))
+                    .sendToTarget();
+            mHandler.obtainMessage(
                             EVENT_IPSEC_TRANSFORM_CREATED,
                             new IpsecTransformData(
                                     outIpSecTransform,
                                     IpSecManager.DIRECTION_OUT,
                                     mApnName,
-                                    mToken)));
+                                    mToken))
+                    .sendToTarget();
         }
 
         @Override
@@ -666,10 +663,10 @@ public class EpdgTunnelManager {
                             + mApnName
                             + ", token: "
                             + mToken);
-            mHandler.sendMessage(
-                    mHandler.obtainMessage(
+            mHandler.obtainMessage(
                             EVENT_IPSEC_TRANSFORM_CREATED,
-                            new IpsecTransformData(ipSecTransform, direction, mApnName, mToken)));
+                            new IpsecTransformData(ipSecTransform, direction, mApnName, mToken))
+                    .sendToTarget();
         }
 
         @Override
@@ -682,10 +679,10 @@ public class EpdgTunnelManager {
                             + mApnName
                             + ", token: "
                             + mToken);
-            mHandler.sendMessage(
-                    mHandler.obtainMessage(
+            mHandler.obtainMessage(
                             EVENT_IPSEC_TRANSFORM_DELETED,
-                            new IpsecTransformData(ipSecTransform, direction, mApnName, mToken)));
+                            new IpsecTransformData(ipSecTransform, direction, mApnName, mToken))
+                    .sendToTarget();
         }
     }
 
@@ -797,7 +794,7 @@ public class EpdgTunnelManager {
     public void updateNetwork(Network network, LinkProperties linkProperties) {
         UpdateNetworkWrapper updateNetworkWrapper =
                 new UpdateNetworkWrapper(network, linkProperties);
-        mHandler.sendMessage(mHandler.obtainMessage(EVENT_UPDATE_NETWORK, updateNetworkWrapper));
+        mHandler.obtainMessage(EVENT_UPDATE_NETWORK, updateNetworkWrapper).sendToTarget();
     }
 
     /**
@@ -1793,9 +1790,8 @@ public class EpdgTunnelManager {
                         + sessionType);
         exception.printStackTrace();
 
-        mHandler.sendMessage(
-                mHandler.obtainMessage(
-                        sessionType, new SessionClosedData(apnName, token, exception)));
+        mHandler.obtainMessage(sessionType, new SessionClosedData(apnName, token, exception))
+                .sendToTarget();
     }
 
     private boolean isEpdgSelectionOrFirstTunnelBringUpInProgress() {
@@ -2919,9 +2915,8 @@ public class EpdgTunnelManager {
         mEpdgServerSelectionStartTime = 0;
         EpdgSelectorResult epdgSelectorResult =
                 new EpdgSelectorResult(validIPList, result, transactionId);
-        mHandler.sendMessage(
-                mHandler.obtainMessage(
-                        EVENT_EPDG_ADDRESS_SELECTION_REQUEST_COMPLETE, epdgSelectorResult));
+        mHandler.obtainMessage(EVENT_EPDG_ADDRESS_SELECTION_REQUEST_COMPLETE, epdgSelectorResult)
+                .sendToTarget();
     }
 
     static boolean isValidApnProtocol(int proto) {
