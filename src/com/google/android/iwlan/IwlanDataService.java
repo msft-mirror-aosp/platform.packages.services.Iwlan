@@ -676,6 +676,7 @@ public class IwlanDataService extends DataService {
             events.add(IwlanEventListener.CELLINFO_CHANGED_EVENT);
             events.add(IwlanEventListener.CALL_STATE_CHANGED_EVENT);
             events.add(IwlanEventListener.PREFERRED_NETWORK_TYPE_CHANGED_EVENT);
+            events.add(IwlanEventListener.SCREEN_ON_EVENT);
             IwlanEventListener.getInstance(mContext, slotIndex)
                     .addEventListener(events, getIwlanDataServiceHandler());
         }
@@ -1602,12 +1603,28 @@ public class IwlanDataService extends DataService {
                     }
                     break;
 
+                case IwlanEventListener.SCREEN_ON_EVENT:
+                    EpdgTunnelManager.getInstance(mContext, msg.arg1)
+                            .validateUnderlyingNetwork(
+                                    IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_SCREEN_ON);
+                    break;
+
                 case IwlanEventListener.CALL_STATE_CHANGED_EVENT:
                     iwlanDataServiceProvider =
                             (IwlanDataServiceProvider) getDataServiceProvider(msg.arg1);
 
                     int previousCallState = iwlanDataServiceProvider.mCallState;
                     int currentCallState = iwlanDataServiceProvider.mCallState = msg.arg2;
+                    boolean isCallInitiating =
+                            previousCallState == TelephonyManager.CALL_STATE_IDLE
+                                    && currentCallState == TelephonyManager.CALL_STATE_OFFHOOK;
+
+                    if (isCallInitiating) {
+                        int slotIndex = msg.arg1;
+                        EpdgTunnelManager.getInstance(mContext, slotIndex)
+                                .validateUnderlyingNetwork(
+                                        IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_MAKING_CALL);
+                    }
 
                     if (!IwlanCarrierConfig.getConfigBoolean(
                             mContext,
@@ -2433,6 +2450,7 @@ public class IwlanDataService extends DataService {
             case IwlanEventListener.CALL_STATE_CHANGED_EVENT -> "CALL_STATE_CHANGED_EVENT";
             case IwlanEventListener.PREFERRED_NETWORK_TYPE_CHANGED_EVENT ->
                     "PREFERRED_NETWORK_TYPE_CHANGED_EVENT";
+            case IwlanEventListener.SCREEN_ON_EVENT -> "SCREEN_ON_EVENT";
             case EVENT_ON_LIVENESS_STATUS_CHANGED -> "EVENT_ON_LIVENESS_STATUS_CHANGED";
             case EVENT_REQUEST_NETWORK_VALIDATION -> "EVENT_REQUEST_NETWORK_VALIDATION";
             default -> "Unknown(" + event + ")";
