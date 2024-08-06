@@ -165,6 +165,16 @@ public class IwlanBroadcastReceiverTest {
         verify(mMockIwlanEventListener).onBroadcastReceived(intent);
     }
 
+    @Test
+    public void testScreenOn_shouldSendToListener() throws Exception {
+        final Intent intent = new Intent(Intent.ACTION_SCREEN_ON);
+
+        // Trigger broadcast
+        mBroadcastReceiver.onReceive(mMockContext, intent);
+
+        verify(mMockIwlanEventListener).onBroadcastReceived(intent);
+    }
+
     private void onReceiveMethodWithArgs(int apnType, int pcoId) {
         // Create intent object
         final Intent mIntent = new Intent(ACTION_CARRIER_SIGNAL_PCO_VALUE);

@@ -158,6 +158,11 @@ public class EpdgTunnelManager {
     private static final String TRAFFIC_SELECTOR_IPV6_END_ADDR =
             "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff";
 
+    private static final int NETWORK_VALIDATION_MIN_INTERVAL_MS = 10000;
+
+    private static long sLastUnderlyingNetworkValidationMs = 0;
+    private static final Object sLastUnderlyingNetworkValidationLock = new Object();
+
     // "192.0.2.0" is selected from RFC5737, "IPv4 Address Blocks Reserved for Documentation"
     private static final InetAddress DUMMY_ADDR = InetAddresses.parseNumericAddress("192.0.2.0");
 
@@ -732,6 +737,7 @@ public class EpdgTunnelManager {
     @VisibleForTesting
     public static void resetAllInstances() {
         mTunnelManagerInstances.clear();
+        sLastUnderlyingNetworkValidationMs = 0;
     }
 
     public interface TunnelCallback {
@@ -3101,6 +3107,34 @@ public class EpdgTunnelManager {
 
         Log.d(TAG, "On triggering underlying network validation. Cause: " + error);
         mHandler.obtainMessage(EVENT_TRIGGER_UNDERLYING_NETWORK_VALIDATION).sendToTarget();
+    }
+
+    public void validateUnderlyingNetwork(@IwlanCarrierConfig.NetworkValidationEvent int event) {
+        int[] networkValidationEvents =
+                IwlanCarrierConfig.getConfigIntArray(
+                        mContext,
+                        mSlotId,
+                        IwlanCarrierConfig.KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY);
+        if (Arrays.stream(networkValidationEvents)
+                .noneMatch(validationEvent -> validationEvent == event)) {
+            return;
+        }
+        synchronized (sLastUnderlyingNetworkValidationLock) {
+            long now = IwlanHelper.elapsedRealtime();
+            // TODO (b/356791418): Consolidate underlying network handling into a single centralized
+            //  subcomponent to prevent duplicate processing across different threads and classes
+            //  . Until then, we will prevent sending duplicate network validations by checking
+            //  the recent trigger time.
+            if (now - sLastUnderlyingNetworkValidationMs > NETWORK_VALIDATION_MIN_INTERVAL_MS) {
+                sLastUnderlyingNetworkValidationMs = now;
+                Log.d(
+                        TAG,
+                        "On triggering underlying network validation. Event: "
+                                + IwlanCarrierConfig.getUnderlyingNetworkValidationEventString(
+                                        event));
+                mHandler.obtainMessage(EVENT_TRIGGER_UNDERLYING_NETWORK_VALIDATION).sendToTarget();
+            }
+        }
     }
 
     void onTriggerUnderlyingNetworkValidation() {
