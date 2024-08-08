@@ -1999,7 +1999,7 @@ public class EpdgTunnelManager {
                         }
                     } else {
                         /* PDN disconnected case */
-                        triggerUnderlyingNetworkValidationIfNeeded(iwlanError);
+                        triggerUnderlyingNetworkValidationOnError(iwlanError);
                     }
 
                     Log.d(TAG, "Tunnel Closed: " + iwlanError);
@@ -2978,13 +2978,13 @@ public class EpdgTunnelManager {
 
     @VisibleForTesting
     long reportIwlanError(String apnName, IwlanError error) {
-        triggerUnderlyingNetworkValidationIfNeeded(error);
+        triggerUnderlyingNetworkValidationOnError(error);
         return ErrorPolicyManager.getInstance(mContext, mSlotId).reportIwlanError(apnName, error);
     }
 
     @VisibleForTesting
     long reportIwlanError(String apnName, IwlanError error, long backOffTime) {
-        triggerUnderlyingNetworkValidationIfNeeded(error);
+        triggerUnderlyingNetworkValidationOnError(error);
         return ErrorPolicyManager.getInstance(mContext, mSlotId)
                 .reportIwlanError(apnName, error, backOffTime);
     }
@@ -3062,20 +3062,13 @@ public class EpdgTunnelManager {
      * Trigger network validation on the underlying network if needed to possibly update validation
      * status and cause system switch default network.
      */
-    void triggerUnderlyingNetworkValidationIfNeeded(IwlanError error) {
-        boolean underlyingNetworkValidationCheckEnabled =
-                IwlanCarrierConfig.getConfigBoolean(
-                        mContext,
-                        mSlotId,
-                        IwlanCarrierConfig.KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL);
-        if (!mFeatureFlags.validateUnderlyingNetworkOnNoResponse()
-                || !underlyingNetworkValidationCheckEnabled
-                || !isUnderlyingNetworkValidationRequired(error.getErrorType())) {
+    void triggerUnderlyingNetworkValidationOnError(IwlanError error) {
+        if (!isUnderlyingNetworkValidationRequired(error.getErrorType())) {
             return;
         }
 
         Log.d(TAG, "On triggering underlying network validation. Cause: " + error);
-        mHandler.obtainMessage(EVENT_TRIGGER_UNDERLYING_NETWORK_VALIDATION).sendToTarget();
+        validateUnderlyingNetwork(IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_NO_RESPONSE);
     }
 
     public void validateUnderlyingNetwork(@IwlanCarrierConfig.NetworkValidationEvent int event) {

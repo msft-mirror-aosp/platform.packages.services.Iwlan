@@ -3015,10 +3015,11 @@ public class EpdgTunnelManagerTest {
         when(mMockNetworkCapabilities.hasCapability(
                         eq(NetworkCapabilities.NET_CAPABILITY_VALIDATED)))
                 .thenReturn(true);
-        when(mFakeFeatureFlags.validateUnderlyingNetworkOnNoResponse()).thenReturn(true);
-        IwlanCarrierConfig.putTestConfigBoolean(
-                IwlanCarrierConfig.KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL, true);
+        IwlanCarrierConfig.putTestConfigIntArray(
+                IwlanCarrierConfig.KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY,
+                new int[] {IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_NO_RESPONSE});
 
+        advanceClockByTimeMs(100000);
         setupTunnelBringup();
         ArgumentCaptor<EpdgTunnelManager.TmIkeSessionCallback> ikeSessionCallbackCaptor =
                 ArgumentCaptor.forClass(EpdgTunnelManager.TmIkeSessionCallback.class);
@@ -3042,10 +3043,11 @@ public class EpdgTunnelManagerTest {
         when(mMockNetworkCapabilities.hasCapability(
                         eq(NetworkCapabilities.NET_CAPABILITY_VALIDATED)))
                 .thenReturn(true);
-        when(mFakeFeatureFlags.validateUnderlyingNetworkOnNoResponse()).thenReturn(true);
-        IwlanCarrierConfig.putTestConfigBoolean(
-                IwlanCarrierConfig.KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL, true);
+        IwlanCarrierConfig.putTestConfigIntArray(
+                IwlanCarrierConfig.KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY,
+                new int[] {IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_NO_RESPONSE});
 
+        advanceClockByTimeMs(100000);
         IkeSessionArgumentCaptors ikeSessionArgumentCaptors =
                 verifyBringUpTunnelWithDnsQuery(TEST_APN_NAME, mMockDefaultNetwork);
         ChildSessionCallback childSessionCallback =
@@ -3066,10 +3068,11 @@ public class EpdgTunnelManagerTest {
         when(mMockNetworkCapabilities.hasCapability(
                         eq(NetworkCapabilities.NET_CAPABILITY_VALIDATED)))
                 .thenReturn(true);
-        when(mFakeFeatureFlags.validateUnderlyingNetworkOnNoResponse()).thenReturn(true);
-        IwlanCarrierConfig.putTestConfigBoolean(
-                IwlanCarrierConfig.KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL, true);
+        IwlanCarrierConfig.putTestConfigIntArray(
+                IwlanCarrierConfig.KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY,
+                new int[] {IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_NO_RESPONSE});
 
+        advanceClockByTimeMs(100000);
         IkeSessionArgumentCaptors ikeSessionArgumentCaptors =
                 verifyBringUpTunnelWithDnsQuery(
                         TEST_APN_NAME, mMockDefaultNetwork, mMockIkeSession);
@@ -3091,15 +3094,16 @@ public class EpdgTunnelManagerTest {
     }
 
     @Test
-    public void testUnderlyingNetworkValidation_DnsResolutionFailure() throws Exception {
+    public void testUnderlyingNetworkValidation_DnsResolutionFailure() {
         IwlanError error = new IwlanError(IwlanError.EPDG_SELECTOR_SERVER_SELECTION_FAILED);
         when(mMockNetworkCapabilities.hasCapability(
                         eq(NetworkCapabilities.NET_CAPABILITY_VALIDATED)))
                 .thenReturn(true);
-        when(mFakeFeatureFlags.validateUnderlyingNetworkOnNoResponse()).thenReturn(true);
-        IwlanCarrierConfig.putTestConfigBoolean(
-                IwlanCarrierConfig.KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL, true);
+        IwlanCarrierConfig.putTestConfigIntArray(
+                IwlanCarrierConfig.KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY,
+                new int[] {IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_NO_RESPONSE});
 
+        advanceClockByTimeMs(100000);
         boolean ret =
                 mEpdgTunnelManager.bringUpTunnel(
                         getBasicTunnelSetupRequest(TEST_APN_NAME, ApnSetting.PROTOCOL_IP),
@@ -3122,10 +3126,11 @@ public class EpdgTunnelManagerTest {
         when(mMockNetworkCapabilities.hasCapability(
                         eq(NetworkCapabilities.NET_CAPABILITY_VALIDATED)))
                 .thenReturn(true);
-        when(mFakeFeatureFlags.validateUnderlyingNetworkOnNoResponse()).thenReturn(true);
-        IwlanCarrierConfig.putTestConfigBoolean(
-                IwlanCarrierConfig.KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL, true);
+        IwlanCarrierConfig.putTestConfigIntArray(
+                IwlanCarrierConfig.KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY,
+                new int[] {IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_NO_RESPONSE});
 
+        advanceClockByTimeMs(100000);
         setupTunnelBringup();
         ArgumentCaptor<EpdgTunnelManager.TmIkeSessionCallback> ikeSessionCallbackCaptor =
                 ArgumentCaptor.forClass(EpdgTunnelManager.TmIkeSessionCallback.class);
@@ -3151,10 +3156,11 @@ public class EpdgTunnelManagerTest {
         when(mMockNetworkCapabilities.hasCapability(
                         eq(NetworkCapabilities.NET_CAPABILITY_VALIDATED)))
                 .thenReturn(false);
-        when(mFakeFeatureFlags.validateUnderlyingNetworkOnNoResponse()).thenReturn(true);
-        IwlanCarrierConfig.putTestConfigBoolean(
-                IwlanCarrierConfig.KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL, true);
+        IwlanCarrierConfig.putTestConfigIntArray(
+                IwlanCarrierConfig.KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY,
+                new int[] {IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_NO_RESPONSE});
 
+        advanceClockByTimeMs(100000);
         IkeSessionArgumentCaptors ikeSessionArgumentCaptors =
                 verifyBringUpTunnelWithDnsQuery(TEST_APN_NAME, mMockDefaultNetwork);
         ChildSessionCallback childSessionCallback =
@@ -3175,34 +3181,11 @@ public class EpdgTunnelManagerTest {
         when(mMockNetworkCapabilities.hasCapability(
                         eq(NetworkCapabilities.NET_CAPABILITY_VALIDATED)))
                 .thenReturn(true);
-        when(mFakeFeatureFlags.validateUnderlyingNetworkOnNoResponse()).thenReturn(true);
-        IwlanCarrierConfig.putTestConfigBoolean(
-                IwlanCarrierConfig.KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL, false);
+        IwlanCarrierConfig.putTestConfigIntArray(
+                IwlanCarrierConfig.KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY,
+                new int[] {});
 
-        IkeSessionArgumentCaptors ikeSessionArgumentCaptors =
-                verifyBringUpTunnelWithDnsQuery(TEST_APN_NAME, mMockDefaultNetwork);
-        ChildSessionCallback childSessionCallback =
-                ikeSessionArgumentCaptors.mChildSessionCallbackCaptor.getValue();
-        verifyTunnelOnOpened(TEST_APN_NAME, childSessionCallback);
-        mEpdgTunnelManager
-                .getTmIkeSessionCallback(
-                        TEST_APN_NAME, mEpdgTunnelManager.getCurrentTokenForApn(TEST_APN_NAME))
-                .onClosedWithException(mMockIkeIoException);
-        mTestLooper.dispatchAll();
-
-        verify(mMockConnectivityManager, never())
-                .reportNetworkConnectivity(eq(mMockDefaultNetwork), eq(false));
-    }
-
-    @Test
-    public void testUnderlyingNetworkValidation_FeatureFlagDisabled() throws Exception {
-        when(mMockNetworkCapabilities.hasCapability(
-                        eq(NetworkCapabilities.NET_CAPABILITY_VALIDATED)))
-                .thenReturn(true);
-        when(mFakeFeatureFlags.validateUnderlyingNetworkOnNoResponse()).thenReturn(false);
-        IwlanCarrierConfig.putTestConfigBoolean(
-                IwlanCarrierConfig.KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL, false);
-
+        advanceClockByTimeMs(100000);
         IkeSessionArgumentCaptors ikeSessionArgumentCaptors =
                 verifyBringUpTunnelWithDnsQuery(TEST_APN_NAME, mMockDefaultNetwork);
         ChildSessionCallback childSessionCallback =
