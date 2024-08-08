@@ -191,12 +191,10 @@ public class IwlanNetworkService extends NetworkService {
         @Override
         public void requestNetworkRegistrationInfo(int domain, NetworkServiceCallback callback) {
             getIwlanNetworkServiceHandler()
-                    .sendMessage(
-                            getIwlanNetworkServiceHandler()
-                                    .obtainMessage(
-                                            EVENT_NETWORK_REGISTRATION_INFO_REQUEST,
-                                            new NetworkRegistrationInfoRequestData(
-                                                    domain, callback, this)));
+                    .obtainMessage(
+                            EVENT_NETWORK_REGISTRATION_INFO_REQUEST,
+                            new NetworkRegistrationInfoRequestData(domain, callback, this))
+                    .sendToTarget();
         }
 
         /**
@@ -364,9 +362,8 @@ public class IwlanNetworkService extends NetworkService {
 
         IwlanNetworkServiceProvider np = new IwlanNetworkServiceProvider(slotIndex, this);
         getIwlanNetworkServiceHandler()
-                .sendMessage(
-                        getIwlanNetworkServiceHandler()
-                                .obtainMessage(EVENT_CREATE_NETWORK_SERVICE_PROVIDER, np));
+                .obtainMessage(EVENT_CREATE_NETWORK_SERVICE_PROVIDER, np)
+                .sendToTarget();
         return np;
     }
 
@@ -432,9 +429,8 @@ public class IwlanNetworkService extends NetworkService {
 
     public void removeNetworkServiceProvider(IwlanNetworkServiceProvider np) {
         getIwlanNetworkServiceHandler()
-                .sendMessage(
-                        getIwlanNetworkServiceHandler()
-                                .obtainMessage(EVENT_REMOVE_NETWORK_SERVICE_PROVIDER, np));
+                .obtainMessage(EVENT_REMOVE_NETWORK_SERVICE_PROVIDER, np)
+                .sendToTarget();
     }
 
     void initCallback() {
