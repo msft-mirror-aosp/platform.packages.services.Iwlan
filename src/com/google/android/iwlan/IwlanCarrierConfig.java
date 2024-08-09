@@ -72,21 +72,20 @@ public class IwlanCarrierConfig {
     public static final String KEY_IKE_SA_TRANSFORMS_REORDER_BOOL =
             PREFIX + "ike_sa_transforms_reorder_bool";
 
-    /**
-     * Boolean indicating if underlying network validation check when no response on network is
-     * enabled. By default, this value is {@link
-     * #DEFAULT_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL}.
-     */
-    public static final String KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL =
-            PREFIX + "validate_underlying_network_on_no_response_bool";
-
     /** Trigger network validation when making a call */
     public static final int NETWORK_VALIDATION_EVENT_MAKING_CALL = 0;
 
     /** Trigger network validation when screen on */
     public static final int NETWORK_VALIDATION_EVENT_SCREEN_ON = 1;
 
-    @IntDef({NETWORK_VALIDATION_EVENT_MAKING_CALL, NETWORK_VALIDATION_EVENT_SCREEN_ON})
+    /** Trigger network validation when no response on network */
+    public static final int NETWORK_VALIDATION_EVENT_NO_RESPONSE = 2;
+
+    @IntDef({
+        NETWORK_VALIDATION_EVENT_MAKING_CALL,
+        NETWORK_VALIDATION_EVENT_SCREEN_ON,
+        NETWORK_VALIDATION_EVENT_NO_RESPONSE
+    })
     public @interface NetworkValidationEvent {}
 
     /**
@@ -96,6 +95,7 @@ public class IwlanCarrierConfig {
      * <ul>
      *   <li>0: NETWORK_VALIDATION_EVENT_MAKING_CALL
      *   <li>1: NETWORK_VALIDATION_EVENT_SCREEN_ON
+     *   <li>2: NETWORK_VALIDATION_EVENT_NO_RESPONSE
      * </ul>
      */
     public static final String KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY =
@@ -212,12 +212,6 @@ public class IwlanCarrierConfig {
     public static final boolean DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL = false;
 
     /**
-     * The default value for determining whether underlying network validation check when no
-     * response on network shall be enabled or disabled.
-     */
-    public static final boolean DEFAULT_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL = true;
-
-    /**
      * The default value of which events should trigger IWLAN underlying network validation. This is
      * the default value for {@link #KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY}
      */
@@ -289,9 +283,6 @@ public class IwlanCarrierConfig {
                 KEY_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL, DEFAULT_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL);
         bundle.putBoolean(
                 KEY_IKE_SA_TRANSFORMS_REORDER_BOOL, DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL);
-        bundle.putBoolean(
-                KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL,
-                DEFAULT_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL);
         bundle.putIntArray(
                 KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY,
                 DEFAULT_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY);
