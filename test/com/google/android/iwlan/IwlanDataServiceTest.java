@@ -91,7 +91,6 @@ import android.telephony.ims.ImsMmTelManager;
 import com.google.android.iwlan.IwlanDataService.IwlanDataServiceProvider;
 import com.google.android.iwlan.IwlanDataService.IwlanDataServiceProvider.IwlanTunnelCallback;
 import com.google.android.iwlan.IwlanDataService.IwlanDataServiceProvider.TunnelState;
-import com.google.android.iwlan.epdg.EpdgSelector;
 import com.google.android.iwlan.epdg.EpdgTunnelManager;
 import com.google.android.iwlan.epdg.NetworkSliceSelectionAssistanceInformation;
 import com.google.android.iwlan.epdg.TunnelLinkProperties;
@@ -146,7 +145,6 @@ public class IwlanDataServiceTest {
     @Mock private ImsManager mMockImsManager;
     @Mock private ImsMmTelManager mMockImsMmTelManager;
     @Mock private TelephonyManager mMockTelephonyManager;
-    @Mock private EpdgSelector mMockEpdgSelector;
     @Mock private LinkAddress mMockIPv4LinkAddress;
     @Mock private LinkAddress mMockIPv6LinkAddress;
     @Mock private Inet4Address mMockInet4Address;
@@ -209,7 +207,6 @@ public class IwlanDataServiceTest {
 
         mStaticMockSession =
                 mockitoSession()
-                        .mockStatic(EpdgSelector.class)
                         .mockStatic(EpdgTunnelManager.class)
                         .mockStatic(ErrorPolicyManager.class)
                         .mockStatic(IwlanBroadcastReceiver.class)
@@ -260,9 +257,6 @@ public class IwlanDataServiceTest {
         when(mMockImsManager.getImsMmTelManager(anyInt())).thenReturn(mMockImsMmTelManager);
 
         when(mMockImsMmTelManager.isVoWiFiSettingEnabled()).thenReturn(false);
-
-        when(EpdgSelector.getSelectorInstance(eq(mMockContext), eq(DEFAULT_SLOT_INDEX)))
-                .thenReturn(mMockEpdgSelector);
 
         when(mMockIPv4LinkAddress.getAddress()).thenReturn(mMockInet4Address);
         when(mMockIPv6LinkAddress.getAddress()).thenReturn(mMockInet6Address);
@@ -1389,24 +1383,7 @@ public class IwlanDataServiceTest {
            1. Network connected, CarrierConfig ready, WifiCallingSetting enabled
            2. Connection ipFamily changed.
         */
-        verify(mMockEpdgSelector, times(2))
-                .getValidatedServerList(
-                        eq(0),
-                        eq(EpdgSelector.PROTO_FILTER_IPV4V6),
-                        eq(EpdgSelector.SYSTEM_PREFERRED),
-                        eq(false),
-                        eq(false),
-                        eq(mMockNetwork),
-                        isNull());
-        verify(mMockEpdgSelector, times(2))
-                .getValidatedServerList(
-                        eq(0),
-                        eq(EpdgSelector.PROTO_FILTER_IPV4V6),
-                        eq(EpdgSelector.SYSTEM_PREFERRED),
-                        eq(false),
-                        eq(true),
-                        eq(mMockNetwork),
-                        isNull());
+        verify(mMockEpdgTunnelManager, times(2)).prefetchEpdgServerList(mMockNetwork, false);
     }
 
     private void advanceCalendarByTimeMs(long time, Calendar calendar) {
