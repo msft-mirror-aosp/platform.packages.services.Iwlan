@@ -180,6 +180,7 @@ public class EpdgTunnelManager {
     private boolean mHasConnectedToEpdg;
     private final IkeSessionCreator mIkeSessionCreator;
     private final IpSecManager mIpSecManager;
+    private final EpdgSelector mEpdgSelector;
 
     private final Map<String, TunnelConfig> mApnNameToTunnelConfig = new ConcurrentHashMap<>();
     private final Map<String, Integer> mApnNameToCurrentToken = new ConcurrentHashMap<>();
@@ -693,6 +694,7 @@ public class EpdgTunnelManager {
         mFeatureFlags = featureFlags;
         mIkeSessionCreator = new IkeSessionCreator();
         mIpSecManager = mContext.getSystemService(IpSecManager.class);
+        mEpdgSelector = EpdgSelector.getSelectorInstance(mContext, mSlotId);
         TAG = EpdgTunnelManager.class.getSimpleName() + "[" + mSlotId + "]";
         initHandler();
     }
@@ -716,9 +718,9 @@ public class EpdgTunnelManager {
      * @param subId subscription ID for the tunnel
      * @return tunnel manager instance corresponding to the sub id
      */
-    public static EpdgTunnelManager getInstance(@NonNull Context context, int subId) {
+    public static EpdgTunnelManager getInstance(@NonNull Context context, int slotId) {
         return mTunnelManagerInstances.computeIfAbsent(
-                subId, k -> new EpdgTunnelManager(context, subId, new FeatureFlagsImpl()));
+                slotId, k -> new EpdgTunnelManager(context, slotId, new FeatureFlagsImpl()));
     }
 
     @VisibleForTesting
@@ -1932,7 +1934,7 @@ public class EpdgTunnelManager {
                             .onOpened(apnName, linkProperties, onOpenedMetrics);
 
                     reportIwlanError(apnName, new IwlanError(IwlanError.NO_ERROR));
-                    getEpdgSelector().onEpdgConnectedSuccessfully();
+                    mEpdgSelector.onEpdgConnectedSuccessfully();
 
                     mEpdgMonitor.onApnConnectToEpdg(apnName, tunnelConfig.getEpdgAddress());
                     onConnectedToEpdg(true);
@@ -1992,14 +1994,12 @@ public class EpdgTunnelManager {
                         mEpdgMonitor.onEpdgConnectionFailed(
                                 tunnelConfig.isEmergency(), tunnelConfig.getEpdgAddress());
                         if (sessionClosedData.mIkeException != null) {
-                            getEpdgSelector()
-                                    .onEpdgConnectionFailed(
-                                            tunnelConfig.getEpdgAddress(),
-                                            sessionClosedData.mIkeException);
+                            mEpdgSelector.onEpdgConnectionFailed(
+                                    tunnelConfig.getEpdgAddress(), sessionClosedData.mIkeException);
                         }
                     } else {
                         /* PDN disconnected case */
-                        triggerUnderlyingNetworkValidationIfNeeded(iwlanError);
+                        triggerUnderlyingNetworkValidationOnError(iwlanError);
                     }
 
                     Log.d(TAG, "Tunnel Closed: " + iwlanError);
@@ -2416,9 +2416,8 @@ public class EpdgTunnelManager {
                 Log.w(TAG, "Invalid Ip preference : " + ipPreference);
         }
 
-        EpdgSelector epdgSelector = getEpdgSelector();
         IwlanError epdgError =
-                epdgSelector.getValidatedServerList(
+                mEpdgSelector.getValidatedServerList(
                         mTransactionId,
                         protoFilter,
                         epdgAddressOrder,
@@ -2431,11 +2430,6 @@ public class EpdgTunnelManager {
             Log.e(TAG, "Epdg address selection failed with error:" + epdgError);
             sendSelectionRequestComplete(null, epdgError, mTransactionId);
         }
-    }
-
-    @VisibleForTesting
-    EpdgSelector getEpdgSelector() {
-        return EpdgSelector.getSelectorInstance(mContext, mSlotId);
     }
 
     @VisibleForTesting
@@ -2984,13 +2978,13 @@ public class EpdgTunnelManager {
 
     @VisibleForTesting
     long reportIwlanError(String apnName, IwlanError error) {
-        triggerUnderlyingNetworkValidationIfNeeded(error);
+        triggerUnderlyingNetworkValidationOnError(error);
         return ErrorPolicyManager.getInstance(mContext, mSlotId).reportIwlanError(apnName, error);
     }
 
     @VisibleForTesting
     long reportIwlanError(String apnName, IwlanError error, long backOffTime) {
-        triggerUnderlyingNetworkValidationIfNeeded(error);
+        triggerUnderlyingNetworkValidationOnError(error);
         return ErrorPolicyManager.getInstance(mContext, mSlotId)
                 .reportIwlanError(apnName, error, backOffTime);
     }
@@ -3068,20 +3062,13 @@ public class EpdgTunnelManager {
      * Trigger network validation on the underlying network if needed to possibly update validation
      * status and cause system switch default network.
      */
-    void triggerUnderlyingNetworkValidationIfNeeded(IwlanError error) {
-        boolean underlyingNetworkValidationCheckEnabled =
-                IwlanCarrierConfig.getConfigBoolean(
-                        mContext,
-                        mSlotId,
-                        IwlanCarrierConfig.KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL);
-        if (!mFeatureFlags.validateUnderlyingNetworkOnNoResponse()
-                || !underlyingNetworkValidationCheckEnabled
-                || !isUnderlyingNetworkValidationRequired(error.getErrorType())) {
+    void triggerUnderlyingNetworkValidationOnError(IwlanError error) {
+        if (!isUnderlyingNetworkValidationRequired(error.getErrorType())) {
             return;
         }
 
         Log.d(TAG, "On triggering underlying network validation. Cause: " + error);
-        mHandler.obtainMessage(EVENT_TRIGGER_UNDERLYING_NETWORK_VALIDATION).sendToTarget();
+        validateUnderlyingNetwork(IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_NO_RESPONSE);
     }
 
     public void validateUnderlyingNetwork(@IwlanCarrierConfig.NetworkValidationEvent int event) {
@@ -3147,6 +3134,25 @@ public class EpdgTunnelManager {
     @VisibleForTesting
     protected void removeApnNameInTunnelConfig(String apnName) {
         mApnNameToTunnelConfig.remove(apnName);
+    }
+
+    public void prefetchEpdgServerList(Network network, boolean isRoaming) {
+        mEpdgSelector.getValidatedServerList(
+                0 /* transactionId */,
+                EpdgSelector.PROTO_FILTER_IPV4V6,
+                EpdgSelector.SYSTEM_PREFERRED,
+                isRoaming,
+                false /* isEmergency */,
+                network,
+                null /* selectorCallback */);
+        mEpdgSelector.getValidatedServerList(
+                0 /* transactionId */,
+                EpdgSelector.PROTO_FILTER_IPV4V6,
+                EpdgSelector.SYSTEM_PREFERRED,
+                isRoaming,
+                true /* isEmergency */,
+                network,
+                null /* selectorCallback */);
     }
 
     public void dump(PrintWriter pw) {
