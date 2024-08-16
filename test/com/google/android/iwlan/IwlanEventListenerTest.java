@@ -30,6 +30,7 @@ import static org.mockito.Mockito.when;
 import android.annotation.SuppressLint;
 import android.content.ContentResolver;
 import android.content.Context;
+import android.content.Intent;
 import android.net.Uri;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
@@ -407,6 +408,25 @@ public class IwlanEventListenerTest {
         mTelephonyCallback.onAllowedNetworkTypesChanged(
                 TelephonyManager.ALLOWED_NETWORK_TYPES_REASON_USER,
                 TelephonyManager.NETWORK_TYPE_BITMASK_NR);
+        verify(mMockMessage).sendToTarget();
+    }
+
+    @SuppressLint("MissingPermission")
+    @Test
+    public void testScreenOn_shouldSendToListener() throws Exception {
+        when(mMockHandler.obtainMessage(
+                        eq(IwlanEventListener.SCREEN_ON_EVENT), eq(DEFAULT_SLOT_INDEX), anyInt()))
+                .thenReturn(mMockMessage);
+
+        events = new ArrayList<>();
+        events.add(IwlanEventListener.SCREEN_ON_EVENT);
+        mIwlanEventListener.addEventListener(events, mMockHandler);
+        IwlanEventListener.onBroadcastReceived(new Intent(Intent.ACTION_SCREEN_ON));
+
+        doThrow(new IllegalArgumentException("IllegalArgumentException at isVoWiFiSettingEnabled"))
+                .when(mMockImsMmTelManager)
+                .isVoWiFiSettingEnabled();
+
         verify(mMockMessage).sendToTarget();
     }
 }
