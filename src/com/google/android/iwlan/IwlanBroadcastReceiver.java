@@ -45,6 +45,7 @@ public class IwlanBroadcastReceiver extends BroadcastReceiver {
         IntentFilter intentFilter = new IntentFilter();
         intentFilter.addAction(WifiManager.WIFI_STATE_CHANGED_ACTION);
         intentFilter.addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED);
+        intentFilter.addAction(Intent.ACTION_SCREEN_ON);
         context.registerReceiver(getInstance(), intentFilter);
         mIsReceiverRegistered = true;
     }
@@ -72,6 +73,7 @@ public class IwlanBroadcastReceiver extends BroadcastReceiver {
         switch (action) {
             case Intent.ACTION_AIRPLANE_MODE_CHANGED:
             case WifiManager.WIFI_STATE_CHANGED_ACTION:
+            case Intent.ACTION_SCREEN_ON:
                 IwlanEventListener.onBroadcastReceived(intent);
                 break;
             case TelephonyManager.ACTION_CARRIER_SIGNAL_PCO_VALUE:
@@ -135,7 +137,7 @@ public class IwlanBroadcastReceiver extends BroadcastReceiver {
                         Log.d(TAG, "SetPcoData to EpdgSelector");
                         EpdgSelector selector =
                                 EpdgSelector.getSelectorInstance(mContext, intentSlotIndex);
-                        boolean ret = selector.setPcoData(pcoId, pcoData);
+                        selector.setPcoData(pcoId, pcoData);
                     } else {
                         Log.d(TAG, "Unwanted PcoID " + pcoId);
                     }
