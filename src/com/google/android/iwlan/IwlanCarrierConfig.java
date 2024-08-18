@@ -614,6 +614,7 @@ public class IwlanCarrierConfig {
         return switch (event) {
             case IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_MAKING_CALL -> "MAKING_CALL";
             case IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_SCREEN_ON -> "SCREEN_ON";
+            case IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_NO_RESPONSE -> "NO_RESPONSE";
             default -> "UNKNOWN";
         };
     }
