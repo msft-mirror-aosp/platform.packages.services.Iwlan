@@ -40,6 +40,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.PrintWriter;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -220,8 +221,8 @@ public class ErrorPolicyManager {
                 "Current RetryAction index: "
                         + newRetryAction.currentRetryIndex()
                         + " and time: "
-                        + newRetryAction.totalRetryTimeMs());
-        return newRetryAction.totalRetryTimeMs() / 1000;
+                        + newRetryAction.totalBackoffDuration());
+        return newRetryAction.totalBackoffDuration().toSeconds();
     }
 
     /**
@@ -244,10 +245,10 @@ public class ErrorPolicyManager {
         IkeBackoffNotifyRetryAction newRetryAction =
                 mRetryActionStoreByApn
                         .computeIfAbsent(apn, ApnRetryActionStore::new)
-                        .generateRetryAction(iwlanError, backoffTime);
-        Log.d(LOG_TAG, "Current configured backoff time: " + newRetryAction.backoffTime());
+                        .generateRetryAction(iwlanError, Duration.ofSeconds(backoffTime));
+        Log.d(LOG_TAG, "Current configured backoff time: " + newRetryAction.totalBackoffDuration);
 
-        return newRetryAction.backoffTime();
+        return newRetryAction.totalBackoffDuration.toSeconds();
     }
 
     /**
@@ -372,7 +373,7 @@ public class ErrorPolicyManager {
      * the RetryAction.
      */
     private static long getRemainingRetryTimeMs(RetryAction retryAction) {
-        long totalRetryTimeMs = retryAction.totalRetryTimeMs();
+        long totalRetryTimeMs = retryAction.totalBackoffDuration().toMillis();
         long errorTime = retryAction.lastErrorTime();
         long currentTime = IwlanHelper.elapsedRealtime();
         return Math.max(0, totalRetryTimeMs - (currentTime - errorTime));
@@ -996,7 +997,7 @@ public class ErrorPolicyManager {
         long lastErrorTime();
 
         /** The total time should be waited between lastErrorTime and next retry. */
-        long totalRetryTimeMs();
+        Duration totalBackoffDuration();
 
         /** The number of same cause error observed since last success / unthrottle event. */
         int errorCountOfSameCause();
@@ -1015,8 +1016,8 @@ public class ErrorPolicyManager {
             int currentRetryIndex)
             implements RetryAction {
         @Override
-        public long totalRetryTimeMs() {
-            return TimeUnit.SECONDS.toMillis(errorPolicy().getRetryTime(currentRetryIndex()));
+        public Duration totalBackoffDuration() {
+            return Duration.ofSeconds(errorPolicy().getRetryTime(currentRetryIndex()));
         }
 
         @Override
@@ -1043,12 +1044,8 @@ public class ErrorPolicyManager {
             @Override ErrorPolicy errorPolicy,
             @Override long lastErrorTime,
             @Override int errorCountOfSameCause,
-            long backoffTime)
+            @Override Duration totalBackoffDuration)
             implements RetryAction {
-        @Override
-        public long totalRetryTimeMs() {
-            return TimeUnit.SECONDS.toMillis(backoffTime());
-        }
 
         @Override
         public int getCurrentFqdnIndex(int numFqdns) {
@@ -1174,7 +1171,7 @@ public class ErrorPolicyManager {
         }
 
         private IkeBackoffNotifyRetryAction generateRetryAction(
-                IwlanError iwlanError, long backoffTime) {
+                IwlanError iwlanError, Duration backoffDuration) {
             ErrorCause errorCause = ErrorCause.fromIwlanError(iwlanError);
             @Nullable RetryAction prevRetryAction = mLastRetryActionByCause.get(errorCause);
             int newErrorCount =
@@ -1188,7 +1185,7 @@ public class ErrorPolicyManager {
                             policy,
                             IwlanHelper.elapsedRealtime(),
                             newErrorCount,
-                            backoffTime);
+                            backoffDuration);
             mLastRetryActionByCause.put(errorCause, newRetryAction);
             mLastRetryAction = newRetryAction;
 
