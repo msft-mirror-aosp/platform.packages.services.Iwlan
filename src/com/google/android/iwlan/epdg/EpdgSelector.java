@@ -16,7 +16,10 @@
 
 package com.google.android.iwlan.epdg;
 
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.net.DnsResolver;
 import android.net.DnsResolver.DnsException;
 import android.net.InetAddresses;
@@ -42,6 +45,7 @@ import android.telephony.DataFailCause;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
+import android.telephony.data.ApnSetting;
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -93,8 +97,8 @@ public class EpdgSelector {
             new ConcurrentHashMap<>();
     private int mV4PcoId = -1;
     private int mV6PcoId = -1;
-    private List<byte[]> mV4PcoData;
-    private List<byte[]> mV6PcoData;
+    private final List<byte[]> mV4PcoData = new ArrayList<>();
+    private final List<byte[]> mV6PcoData = new ArrayList<>();
     @NonNull private final ErrorPolicyManager mErrorPolicyManager;
 
     // Temporary excluded IP addresses due to recent failures. Cleared after tunnel opened
@@ -165,13 +169,27 @@ public class EpdgSelector {
         mSlotId = slotId;
         mFeatureFlags = featureFlags;
 
-        mV4PcoData = new ArrayList<>();
-        mV6PcoData = new ArrayList<>();
-
         mErrorPolicyManager = ErrorPolicyManager.getInstance(mContext, mSlotId);
-
+        registerBroadcastReceiver();
         mTemporaryExcludedAddresses = new HashSet<>();
         initializeExecutors();
+    }
+
+    private void registerBroadcastReceiver() {
+        BroadcastReceiver mBroadcastReceiver =
+                new BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context context, Intent intent) {
+                        String action = intent.getAction();
+                        Log.d(TAG, "onReceive: " + action);
+                        if (action.equals(TelephonyManager.ACTION_CARRIER_SIGNAL_PCO_VALUE)) {
+                            processCarrierSignalPcoValue(intent);
+                        }
+                    }
+                };
+        IntentFilter intentFilter =
+                new IntentFilter(TelephonyManager.ACTION_CARRIER_SIGNAL_PCO_VALUE);
+        mContext.registerReceiver(mBroadcastReceiver, intentFilter, Context.RECEIVER_EXPORTED);
     }
 
     private void initializeExecutors() {
@@ -210,42 +228,7 @@ public class EpdgSelector {
         return mSelectorInstances.get(slotId);
     }
 
-    public boolean setPcoData(int pcoId, @NonNull byte[] pcoData) {
-        Log.d(
-                TAG,
-                "onReceive PcoId:"
-                        + String.format("0x%04x", pcoId)
-                        + " PcoData:"
-                        + Arrays.toString(pcoData));
-
-        int PCO_ID_IPV6 =
-                IwlanCarrierConfig.getConfigInt(
-                        mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT);
-        int PCO_ID_IPV4 =
-                IwlanCarrierConfig.getConfigInt(
-                        mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT);
-
-        Log.d(
-                TAG,
-                "PCO_ID_IPV6:"
-                        + String.format("0x%04x", PCO_ID_IPV6)
-                        + " PCO_ID_IPV4:"
-                        + String.format("0x%04x", PCO_ID_IPV4));
-
-        if (pcoId == PCO_ID_IPV4) {
-            mV4PcoId = pcoId;
-            mV4PcoData.add(pcoData);
-            return true;
-        } else if (pcoId == PCO_ID_IPV6) {
-            mV6PcoId = pcoId;
-            mV6PcoData.add(pcoData);
-            return true;
-        }
-
-        return false;
-    }
-
-    public void clearPcoData() {
+    private void clearPcoData() {
         Log.d(TAG, "Clear PCO data");
         mV4PcoId = -1;
         mV6PcoId = -1;
@@ -977,30 +960,30 @@ public class EpdgSelector {
     private void resolutionMethodPco(int filter, @NonNull List<InetAddress> validIpList) {
         Log.d(TAG, "PCO Method");
 
-        int PCO_ID_IPV6 =
+        // TODO(b/362299669): Refactor PCO clean up upon SIM changed.
+        int epdgIPv6PcoId =
                 IwlanCarrierConfig.getConfigInt(
                         mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT);
-        int PCO_ID_IPV4 =
+        int epdgIPv4PcoId =
                 IwlanCarrierConfig.getConfigInt(
                         mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT);
-
         switch (filter) {
             case PROTO_FILTER_IPV4:
-                if (mV4PcoId != PCO_ID_IPV4) {
+                if (mV4PcoId != epdgIPv4PcoId) {
                     clearPcoData();
                 } else {
                     getInetAddressWithPcoData(mV4PcoData, validIpList);
                 }
                 break;
             case PROTO_FILTER_IPV6:
-                if (mV6PcoId != PCO_ID_IPV6) {
+                if (mV6PcoId != epdgIPv6PcoId) {
                     clearPcoData();
                 } else {
                     getInetAddressWithPcoData(mV6PcoData, validIpList);
                 }
                 break;
             case PROTO_FILTER_IPV4V6:
-                if ((mV4PcoId != PCO_ID_IPV4) || (mV6PcoId != PCO_ID_IPV6)) {
+                if ((mV4PcoId != epdgIPv4PcoId) || (mV6PcoId != epdgIPv6PcoId)) {
                     clearPcoData();
                 } else {
                     getInetAddressWithPcoData(mV4PcoData, validIpList);
@@ -1406,5 +1389,47 @@ public class EpdgSelector {
      */
     private static boolean isValidPlmn(String plmn) {
         return plmn != null && PLMN_PATTERN.matcher(plmn).matches();
+    }
+
+    @VisibleForTesting
+    void processCarrierSignalPcoValue(Intent intent) {
+        int apnBitMask = intent.getIntExtra(TelephonyManager.EXTRA_APN_TYPE, 0);
+        int pcoId = intent.getIntExtra(TelephonyManager.EXTRA_PCO_ID, 0);
+        byte[] pcoData = intent.getByteArrayExtra(TelephonyManager.EXTRA_PCO_VALUE);
+        if ((apnBitMask & ApnSetting.TYPE_IMS) == 0) {
+            Log.d(TAG, "Unwanted ApnType for PCO: " + apnBitMask);
+            return;
+        }
+        if (pcoData == null) {
+            Log.e(TAG, "PCO data unavailable");
+            return;
+        }
+        Log.d(
+                TAG,
+                "Received PCO ID:"
+                        + String.format("0x%04x", pcoId)
+                        + ", PcoData:"
+                        + Arrays.toString(pcoData));
+        int epdgIPv6PcoId =
+                IwlanCarrierConfig.getConfigInt(
+                        mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT);
+        int epdgIPv4PcoId =
+                IwlanCarrierConfig.getConfigInt(
+                        mContext, mSlotId, CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV4_INT);
+        Log.d(
+                TAG,
+                "PCO_ID_IPv6:"
+                        + String.format("0x%04x", epdgIPv6PcoId)
+                        + ", PCO_ID_IPv4:"
+                        + String.format("0x%04x", epdgIPv4PcoId));
+        if (pcoId == epdgIPv4PcoId) {
+            mV4PcoId = pcoId;
+            mV4PcoData.add(pcoData);
+        } else if (pcoId == epdgIPv6PcoId) {
+            mV6PcoId = pcoId;
+            mV6PcoData.add(pcoData);
+        } else {
+            Log.d(TAG, "Unwanted PcoID " + pcoId);
+        }
     }
 }
