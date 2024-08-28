@@ -22,9 +22,7 @@ import static android.net.DnsResolver.TYPE_AAAA;
 import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyString;
@@ -38,6 +36,7 @@ import static org.mockito.Mockito.when;
 import static java.util.stream.Collectors.toList;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.DnsResolver;
 import android.net.InetAddresses;
@@ -61,6 +60,7 @@ import android.telephony.DataFailCause;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
+import android.telephony.data.ApnSetting;
 import android.util.Log;
 
 import com.google.android.iwlan.ErrorPolicyManager;
@@ -71,6 +71,8 @@ import com.google.android.iwlan.flags.FeatureFlags;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.MockitoSession;
@@ -90,6 +92,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+@RunWith(JUnit4.class)
 public class EpdgSelectorTest {
 
     private static final String TAG = "EpdgSelectorTest";
@@ -113,11 +116,10 @@ public class EpdgSelectorTest {
     private static final String TEST_IP_ADDRESS_7 = "127.0.0.8";
     private static final String TEST_IPV6_ADDRESS = "0000:0000:0000:0000:0000:0000:0000:0001";
 
+    private static final int TEST_PCO_ID_INVALID = 0xFF00;
     private static final int TEST_PCO_ID_IPV6 = 0xFF01;
     private static final int TEST_PCO_ID_IPV4 = 0xFF02;
 
-    private final String testPcoString = "testPcoData";
-    private final byte[] pcoData = testPcoString.getBytes();
     private final List<String> ehplmnList = new ArrayList<String>();
 
     @Mock private Context mMockContext;
@@ -602,9 +604,7 @@ public class EpdgSelectorTest {
                                     int transactionId, List<InetAddress> validIPList) {
                                 assertEquals(1234, transactionId);
 
-                                for (InetAddress mInetAddress : validIPList) {
-                                    actualAddresses.add(mInetAddress);
-                                }
+                                actualAddresses.addAll(validIPList);
                                 Log.d(TAG, "onServerListChanged received");
                                 latch.countDown();
                             }
@@ -622,47 +622,11 @@ public class EpdgSelectorTest {
     }
 
     @Test
-    public void testSetPcoData() throws Exception {
+    public void testResolutionMethodPco_noPcoData() throws Exception {
         addTestPcoIdsToTestConfigBundle();
 
-        boolean retIPv6 = mEpdgSelector.setPcoData(TEST_PCO_ID_IPV6, pcoData);
-        boolean retIPv4 = mEpdgSelector.setPcoData(TEST_PCO_ID_IPV4, pcoData);
-        boolean retIncorrect = mEpdgSelector.setPcoData(0xFF00, pcoData);
-
-        assertTrue(retIPv6);
-        assertTrue(retIPv4);
-        assertFalse(retIncorrect);
-    }
-
-    @Test
-    public void testPcoResolutionMethod() throws Exception {
-        IwlanCarrierConfig.putTestConfigIntArray(
-                CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
-                new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PCO});
-        addTestPcoIdsToTestConfigBundle();
-
-        mEpdgSelector.clearPcoData();
-        assertTrue(mEpdgSelector.setPcoData(TEST_PCO_ID_IPV6, TEST_PCO_IPV6_DATA));
-        assertTrue(mEpdgSelector.setPcoData(TEST_PCO_ID_IPV4, TEST_PCO_IPV4_DATA));
-
-        Set<InetAddress> actualAddresses =
-                new HashSet<>(getValidatedServerListWithDefaultParams(false /* isEmergency */));
-        Set<InetAddress> expectedAddresses =
-                new HashSet<>(getInetAddresses(new String[] {TEST_IP_ADDRESS, TEST_IPV6_ADDRESS}));
-
-        assertEquals(expectedAddresses, actualAddresses);
-    }
-
-    @Test
-    public void testPcoResolutionMethodWithNoPcoData() throws Exception {
-        IwlanCarrierConfig.putTestConfigIntArray(
-                CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
-                new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PCO});
-        addTestPcoIdsToTestConfigBundle();
-
-        mEpdgSelector.clearPcoData();
-        assertTrue(mEpdgSelector.setPcoData(TEST_PCO_ID_IPV6, TEST_PCO_NO_DATA));
-        assertTrue(mEpdgSelector.setPcoData(TEST_PCO_ID_IPV4, TEST_PCO_NO_DATA));
+        sendCarrierSignalPcoValue(ApnSetting.TYPE_IMS, TEST_PCO_ID_IPV4, TEST_PCO_NO_DATA);
+        sendCarrierSignalPcoValue(ApnSetting.TYPE_IMS, TEST_PCO_ID_IPV6, TEST_PCO_NO_DATA);
 
         List<InetAddress> actualAddresses =
                 getValidatedServerListWithDefaultParams(false /* isEmergency */);
@@ -671,15 +635,11 @@ public class EpdgSelectorTest {
     }
 
     @Test
-    public void testPcoResolutionMethodWithOnlyPlmnData() throws Exception {
-        IwlanCarrierConfig.putTestConfigIntArray(
-                CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
-                new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PCO});
+    public void testResolutionMethodPco_withPlmnData() throws Exception {
         addTestPcoIdsToTestConfigBundle();
 
-        mEpdgSelector.clearPcoData();
-        assertTrue(mEpdgSelector.setPcoData(TEST_PCO_ID_IPV6, TEST_PCO_PLMN_DATA));
-        assertTrue(mEpdgSelector.setPcoData(TEST_PCO_ID_IPV4, TEST_PCO_PLMN_DATA));
+        sendCarrierSignalPcoValue(ApnSetting.TYPE_IMS, TEST_PCO_ID_IPV4, TEST_PCO_PLMN_DATA);
+        sendCarrierSignalPcoValue(ApnSetting.TYPE_IMS, TEST_PCO_ID_IPV6, TEST_PCO_PLMN_DATA);
 
         List<InetAddress> actualAddresses =
                 getValidatedServerListWithDefaultParams(false /* isEmergency */);
@@ -687,6 +647,9 @@ public class EpdgSelectorTest {
     }
 
     private void addTestPcoIdsToTestConfigBundle() {
+        IwlanCarrierConfig.putTestConfigIntArray(
+                CarrierConfigManager.Iwlan.KEY_EPDG_ADDRESS_PRIORITY_INT_ARRAY,
+                new int[] {CarrierConfigManager.Iwlan.EPDG_ADDRESS_PCO});
         IwlanCarrierConfig.putTestConfigInt(
                 CarrierConfigManager.Iwlan.KEY_EPDG_PCO_ID_IPV6_INT, TEST_PCO_ID_IPV6);
         IwlanCarrierConfig.putTestConfigInt(
@@ -1348,5 +1311,110 @@ public class EpdgSelectorTest {
         assertThrows(
                 RejectedExecutionException.class,
                 () -> epdgSelector.trySubmitEpdgSelectionExecutor(runnable, false, false));
+    }
+
+    private void sendCarrierSignalPcoValue(int apnType, int pcoId, byte[] pcoData) {
+        // Create intent object
+        final Intent intent = new Intent(TelephonyManager.ACTION_CARRIER_SIGNAL_PCO_VALUE);
+        intent.putExtra(TelephonyManager.EXTRA_APN_TYPE, apnType);
+        intent.putExtra(TelephonyManager.EXTRA_PCO_ID, pcoId);
+        intent.putExtra(TelephonyManager.EXTRA_PCO_VALUE, pcoData);
+        // Trigger onReceive method
+        mEpdgSelector.processCarrierSignalPcoValue(intent);
+    }
+
+    @Test
+    public void testProcessCarrierSignalPcoValue_ipv4() throws Exception {
+        addTestPcoIdsToTestConfigBundle();
+
+        sendCarrierSignalPcoValue(ApnSetting.TYPE_IMS, TEST_PCO_ID_IPV4, TEST_PCO_IPV4_DATA);
+
+        Set<InetAddress> expectedAddresses = new HashSet<>(getInetAddresses(TEST_IP_ADDRESS));
+        Set<InetAddress> actualAddresses =
+                new HashSet<>(
+                        getValidatedServerListWithIpPreference(
+                                EpdgSelector.PROTO_FILTER_IPV4,
+                                EpdgSelector.IPV4_PREFERRED,
+                                /* isEmergency= */ false));
+        assertEquals(expectedAddresses, actualAddresses);
+    }
+
+    @Test
+    public void testProcessCarrierSignalPcoValue_ipv6() throws Exception {
+        addTestPcoIdsToTestConfigBundle();
+
+        sendCarrierSignalPcoValue(ApnSetting.TYPE_IMS, TEST_PCO_ID_IPV6, TEST_PCO_IPV6_DATA);
+
+        Set<InetAddress> expectedAddresses = new HashSet<>(getInetAddresses(TEST_IPV6_ADDRESS));
+        Set<InetAddress> actualAddresses =
+                new HashSet<>(
+                        getValidatedServerListWithIpPreference(
+                                EpdgSelector.PROTO_FILTER_IPV6,
+                                EpdgSelector.IPV6_PREFERRED,
+                                /* isEmergency= */ false));
+        assertEquals(expectedAddresses, actualAddresses);
+    }
+
+    @Test
+    public void testProcessCarrierSignalPcoValue_ipv4v6() throws Exception {
+        addTestPcoIdsToTestConfigBundle();
+
+        sendCarrierSignalPcoValue(ApnSetting.TYPE_IMS, TEST_PCO_ID_IPV6, TEST_PCO_IPV6_DATA);
+        sendCarrierSignalPcoValue(ApnSetting.TYPE_IMS, TEST_PCO_ID_IPV4, TEST_PCO_IPV4_DATA);
+
+        Set<InetAddress> expectedAddresses =
+                new HashSet<>(getInetAddresses(TEST_IP_ADDRESS, TEST_IPV6_ADDRESS));
+        Set<InetAddress> actualAddresses =
+                new HashSet<>(getValidatedServerListWithDefaultParams(/* isEmergency= */ false));
+        assertEquals(expectedAddresses, actualAddresses);
+    }
+
+    @Test
+    public void testProcessCarrierSignalPcoValue_incorrectApnType_noAddress() throws Exception {
+        addTestPcoIdsToTestConfigBundle();
+
+        sendCarrierSignalPcoValue(ApnSetting.TYPE_NONE, TEST_PCO_ID_IPV4, TEST_PCO_IPV4_DATA);
+
+        List<InetAddress> actualAddresses =
+                getValidatedServerListWithIpPreference(
+                        EpdgSelector.PROTO_FILTER_IPV4,
+                        EpdgSelector.IPV4_PREFERRED,
+                        /* isEmergency= */ false);
+        assertEquals(0, actualAddresses.size());
+    }
+
+    @Test
+    public void testProcessCarrierSignalPcoValue_invalidPcoId_noAddress() throws Exception {
+        addTestPcoIdsToTestConfigBundle();
+
+        sendCarrierSignalPcoValue(ApnSetting.TYPE_IMS, TEST_PCO_ID_INVALID, TEST_PCO_IPV4_DATA);
+
+        List<InetAddress> actualAddresses =
+                getValidatedServerListWithIpPreference(
+                        EpdgSelector.PROTO_FILTER_IPV4,
+                        EpdgSelector.IPV4_PREFERRED,
+                        /* isEmergency= */ false);
+        assertEquals(0, actualAddresses.size());
+    }
+
+    @Test
+    public void testProcessCarrierSignalPcoValue_nullPcoData_noAddress() throws Exception {
+        addTestPcoIdsToTestConfigBundle();
+
+        sendCarrierSignalPcoValue(ApnSetting.TYPE_IMS, TEST_PCO_ID_IPV4, /* pcoData= */ null);
+        sendCarrierSignalPcoValue(ApnSetting.TYPE_IMS, TEST_PCO_ID_IPV6, /* pcoData= */ null);
+
+        List<InetAddress> actualIpv4Addresses =
+                getValidatedServerListWithIpPreference(
+                        EpdgSelector.PROTO_FILTER_IPV4,
+                        EpdgSelector.IPV4_PREFERRED,
+                        /* isEmergency= */ false);
+        List<InetAddress> actualIpv6Addresses =
+                getValidatedServerListWithIpPreference(
+                        EpdgSelector.PROTO_FILTER_IPV6,
+                        EpdgSelector.IPV6_PREFERRED,
+                        /* isEmergency= */ false);
+        assertEquals(0, actualIpv4Addresses.size());
+        assertEquals(0, actualIpv6Addresses.size());
     }
 }
