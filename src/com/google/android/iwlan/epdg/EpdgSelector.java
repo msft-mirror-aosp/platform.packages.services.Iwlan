@@ -20,9 +20,12 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.net.ConnectivityManager;
 import android.net.DnsResolver;
 import android.net.DnsResolver.DnsException;
 import android.net.InetAddresses;
+import android.net.LinkAddress;
+import android.net.LinkProperties;
 import android.net.Network;
 import android.net.ipsec.ike.exceptions.IkeException;
 import android.net.ipsec.ike.exceptions.IkeIOException;
@@ -95,6 +98,9 @@ public class EpdgSelector {
     private final int mSlotId;
     private static final ConcurrentHashMap<Integer, EpdgSelector> mSelectorInstances =
             new ConcurrentHashMap<>();
+
+    private final ConnectivityManager mConnectivityManager;
+
     private int mV4PcoId = -1;
     private int mV6PcoId = -1;
     private final List<byte[]> mV4PcoData = new ArrayList<>();
@@ -168,6 +174,8 @@ public class EpdgSelector {
         mContext = context;
         mSlotId = slotId;
         mFeatureFlags = featureFlags;
+
+        mConnectivityManager = context.getSystemService(ConnectivityManager.class);
 
         mErrorPolicyManager = ErrorPolicyManager.getInstance(mContext, mSlotId);
         registerBroadcastReceiver();
@@ -353,14 +361,17 @@ public class EpdgSelector {
                                 .collect(Collectors.<T>toList()));
     }
 
-    @VisibleForTesting
-    protected boolean hasIpv4Address(Network network) {
-        return IwlanHelper.hasIpv4Address(IwlanHelper.getAllAddressesForNetwork(mContext, network));
+    private boolean hasLocalIpv4Address(Network network) {
+        LinkProperties linkProperties = mConnectivityManager.getLinkProperties(network);
+        return linkProperties != null
+                && linkProperties.getAllLinkAddresses().stream().anyMatch(LinkAddress::isIpv4);
     }
 
-    @VisibleForTesting
-    protected boolean hasIpv6Address(Network network) {
-        return IwlanHelper.hasIpv6Address(IwlanHelper.getAllAddressesForNetwork(mContext, network));
+    private boolean hasLocalIpv6Address(Network network) {
+        LinkProperties linkProperties = mConnectivityManager.getLinkProperties(network);
+        // TODO(b/362349553): Restrict usage to global IPv6 addresses until the IKE limitation is
+        // removed.
+        return linkProperties != null && linkProperties.hasGlobalIpv6Address();
     }
 
     private void printParallelDnsResult(Map<String, List<InetAddress>> domainNameToIpAddresses) {
@@ -414,6 +425,8 @@ public class EpdgSelector {
         // LinkedHashMap preserves insertion order (and hence priority) of domain names passed in.
         LinkedHashMap<String, List<InetAddress>> domainNameToIpAddr = new LinkedHashMap<>();
 
+        if (!hasLocalIpv6Address(network)) filter = PROTO_FILTER_IPV4;
+
         List<CompletableFuture<Map.Entry<String, List<InetAddress>>>> futuresList =
                 new ArrayList<>();
         for (String domainName : domainNames) {
@@ -426,12 +439,12 @@ public class EpdgSelector {
 
             domainNameToIpAddr.put(domainName, new ArrayList<>());
             // Dispatches separate IPv4 and IPv6 queries to avoid being blocked on either result.
-            if (hasIpv4Address(network)) {
+            if (hasLocalIpv4Address(network)) {
                 futuresList.add(
                         submitDnsResolverQuery(
                                 domainName, network, DnsResolver.TYPE_A, mDnsResolutionExecutor));
             }
-            if (hasIpv6Address(network)) {
+            if (hasLocalIpv6Address(network)) {
                 futuresList.add(
                         submitDnsResolverQuery(
                                 domainName,
