@@ -95,6 +95,8 @@ public class IwlanEventListener {
     /** On Preferred Network Type changed */
     public static final int PREFERRED_NETWORK_TYPE_CHANGED_EVENT = 13;
 
+    public static final int SCREEN_ON_EVENT = 14;
+
     /* Events used and handled by IwlanDataService internally */
     public static final int DATA_SERVICE_INTERNAL_EVENT_BASE = 100;
 
@@ -115,6 +117,7 @@ public class IwlanEventListener {
         CELLINFO_CHANGED_EVENT,
         CALL_STATE_CHANGED_EVENT,
         PREFERRED_NETWORK_TYPE_CHANGED_EVENT,
+        SCREEN_ON_EVENT,
     })
     @interface IwlanEventType {}
 
@@ -300,6 +303,9 @@ public class IwlanEventListener {
                         instance.updateHandlers(event);
                     }
                 }
+                break;
+            case Intent.ACTION_SCREEN_ON:
+                mInstances.values().forEach(instance -> instance.updateHandlers(SCREEN_ON_EVENT));
                 break;
         }
     }
