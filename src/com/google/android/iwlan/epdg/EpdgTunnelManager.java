@@ -694,6 +694,8 @@ public class EpdgTunnelManager {
         mFeatureFlags = featureFlags;
         mIkeSessionCreator = new IkeSessionCreator();
         mIpSecManager = mContext.getSystemService(IpSecManager.class);
+        // Adding this here is necessary because we need to initialize EpdgSelector at the beginning
+        // to ensure no broadcasts are missed.
         mEpdgSelector = EpdgSelector.getSelectorInstance(mContext, mSlotId);
         TAG = EpdgTunnelManager.class.getSimpleName() + "[" + mSlotId + "]";
         initHandler();
@@ -714,9 +716,9 @@ public class EpdgTunnelManager {
     /**
      * Gets a EpdgTunnelManager instance.
      *
-     * @param context application context
-     * @param subId subscription ID for the tunnel
-     * @return tunnel manager instance corresponding to the sub id
+     * @param context the context at which EpdgTunnelManager instance to be created
+     * @param slotId the slot index at which EpdgTunnelManager instance to be created
+     * @return EpdgTunnelManager instance for the specified slot id
      */
     public static EpdgTunnelManager getInstance(@NonNull Context context, int slotId) {
         return mTunnelManagerInstances.computeIfAbsent(
