@@ -520,7 +520,7 @@ public class IwlanDataServiceTest {
                 newNetwork, mLinkProperties, TRANSPORT_CELLULAR, DEFAULT_SUB_INDEX);
 
         mIwlanDataService
-                .mIwlanDataServiceHandler
+                .mHandler
                 .obtainMessage(
                         IwlanEventListener.CROSS_SIM_CALLING_ENABLE_EVENT,
                         DEFAULT_SLOT_INDEX,
@@ -542,7 +542,7 @@ public class IwlanDataServiceTest {
         verify(mMockEpdgTunnelManager).updateNetwork(eq(newNetwork), eq(mLinkProperties));
 
         mIwlanDataService
-                .mIwlanDataServiceHandler
+                .mHandler
                 .obtainMessage(
                         IwlanEventListener.CROSS_SIM_CALLING_ENABLE_EVENT,
                         DEFAULT_SLOT_INDEX,
@@ -558,7 +558,7 @@ public class IwlanDataServiceTest {
         onSystemDefaultNetworkLost();
 
         mIwlanDataService
-                .mIwlanDataServiceHandler
+                .mHandler
                 .obtainMessage(
                         IwlanEventListener.CROSS_SIM_CALLING_ENABLE_EVENT,
                         DEFAULT_SLOT_INDEX,
@@ -1135,7 +1135,7 @@ public class IwlanDataServiceTest {
 
         // APN = IMS, in idle call state
         mIwlanDataService
-                .mIwlanDataServiceHandler
+                .mHandler
                 .obtainMessage(
                         IwlanEventListener.CALL_STATE_CHANGED_EVENT,
                         DEFAULT_SLOT_INDEX,
@@ -1191,7 +1191,7 @@ public class IwlanDataServiceTest {
 
         // APN = Emergency, in idle call state
         mIwlanDataService
-                .mIwlanDataServiceHandler
+                .mHandler
                 .obtainMessage(
                         IwlanEventListener.CALL_STATE_CHANGED_EVENT,
                         DEFAULT_SLOT_INDEX,
@@ -1247,7 +1247,7 @@ public class IwlanDataServiceTest {
 
         // APN = IMS, in call
         mIwlanDataService
-                .mIwlanDataServiceHandler
+                .mHandler
                 .obtainMessage(
                         IwlanEventListener.CALL_STATE_CHANGED_EVENT,
                         DEFAULT_SLOT_INDEX,
@@ -1303,7 +1303,7 @@ public class IwlanDataServiceTest {
 
         // APN = Emergency, in call
         mIwlanDataService
-                .mIwlanDataServiceHandler
+                .mHandler
                 .obtainMessage(
                         IwlanEventListener.CALL_STATE_CHANGED_EVENT,
                         DEFAULT_SLOT_INDEX,
@@ -1356,7 +1356,7 @@ public class IwlanDataServiceTest {
         networkCallback.onLinkPropertiesChanged(mMockNetwork, mLinkProperties);
 
         mIwlanDataService
-                .mIwlanDataServiceHandler
+                .mHandler
                 .obtainMessage(
                         IwlanEventListener.CARRIER_CONFIG_CHANGED_EVENT,
                         DEFAULT_SLOT_INDEX,
@@ -1364,7 +1364,7 @@ public class IwlanDataServiceTest {
                 .sendToTarget();
 
         mIwlanDataService
-                .mIwlanDataServiceHandler
+                .mHandler
                 .obtainMessage(
                         IwlanEventListener.WIFI_CALLING_ENABLE_EVENT,
                         DEFAULT_SLOT_INDEX,
@@ -1684,7 +1684,7 @@ public class IwlanDataServiceTest {
                         eq(true),
                         any(IwlanTunnelCallback.class),
                         eq(EpdgTunnelManager.BRINGDOWN_REASON_UNKNOWN));
-        assertNotNull(mIwlanDataService.mIwlanDataServiceHandler);
+        assertNotNull(mIwlanDataService.mHandler);
         // Should not raise NullPointerException
         mSpyIwlanDataServiceProvider
                 .getIwlanTunnelCallback()
@@ -2032,7 +2032,7 @@ public class IwlanDataServiceTest {
 
     private void sendCallStateChangedEvent(int callState, int slotIndex) {
         mIwlanDataService
-                .mIwlanDataServiceHandler
+                .mHandler
                 .obtainMessage(IwlanEventListener.CALL_STATE_CHANGED_EVENT, slotIndex, callState)
                 .sendToTarget();
     }
@@ -2052,7 +2052,7 @@ public class IwlanDataServiceTest {
 
     private void updatePreferredNetworkType(long networkTypeBitmask) {
         mIwlanDataService
-                .mIwlanDataServiceHandler
+                .mHandler
                 .obtainMessage(
                         IwlanEventListener.PREFERRED_NETWORK_TYPE_CHANGED_EVENT,
                         DEFAULT_SLOT_INDEX,
@@ -2189,7 +2189,7 @@ public class IwlanDataServiceTest {
 
         // in idle call state
         mIwlanDataService
-                .mIwlanDataServiceHandler
+                .mHandler
                 .obtainMessage(
                         IwlanEventListener.CALL_STATE_CHANGED_EVENT,
                         DEFAULT_SLOT_INDEX,
@@ -2240,7 +2240,7 @@ public class IwlanDataServiceTest {
 
         // in idle call state
         mIwlanDataService
-                .mIwlanDataServiceHandler
+                .mHandler
                 .obtainMessage(
                         IwlanEventListener.CALL_STATE_CHANGED_EVENT,
                         DEFAULT_SLOT_INDEX,
@@ -2793,7 +2793,7 @@ public class IwlanDataServiceTest {
                 mMockNetwork, mLinkProperties, TRANSPORT_WIFI, DEFAULT_SUB_INDEX);
 
         mIwlanDataService
-                .mIwlanDataServiceHandler
+                .mHandler
                 .obtainMessage(
                         IwlanEventListener.SCREEN_ON_EVENT, DEFAULT_SLOT_INDEX, 0 /* unused */)
                 .sendToTarget();
