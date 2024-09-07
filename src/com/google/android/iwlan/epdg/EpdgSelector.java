@@ -34,7 +34,10 @@ import android.support.annotation.IntDef;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.telephony.CarrierConfigManager;
+import android.telephony.CellIdentityGsm;
+import android.telephony.CellIdentityLte;
 import android.telephony.CellIdentityNr;
+import android.telephony.CellIdentityWcdma;
 import android.telephony.CellInfo;
 import android.telephony.CellInfoGsm;
 import android.telephony.CellInfoLte;
@@ -187,8 +190,7 @@ public class EpdgSelector {
                     public void onReceive(Context context, Intent intent) {
                         String action = intent.getAction();
                         Log.d(TAG, "onReceive: " + action);
-                        if (Objects.equals(
-                                action, TelephonyManager.ACTION_CARRIER_SIGNAL_PCO_VALUE)) {
+                        if (action.equals(TelephonyManager.ACTION_CARRIER_SIGNAL_PCO_VALUE)) {
                             processCarrierSignalPcoValue(intent);
                         }
                     }
@@ -286,10 +288,10 @@ public class EpdgSelector {
 
     private CompletableFuture<Map.Entry<String, List<InetAddress>>> submitDnsResolverQuery(
             String domainName, Network network, int queryType, Executor executor) {
-        CompletableFuture<Map.Entry<String, List<InetAddress>>> result = new CompletableFuture<>();
+        CompletableFuture<Map.Entry<String, List<InetAddress>>> result = new CompletableFuture();
 
         final DnsResolver.Callback<List<InetAddress>> cb =
-                new DnsResolver.Callback<>() {
+                new DnsResolver.Callback<List<InetAddress>>() {
                     @Override
                     public void onAnswer(@NonNull final List<InetAddress> answer, final int rcode) {
                         if (rcode != 0) {
@@ -349,7 +351,8 @@ public class EpdgSelector {
     // even if any future throw an exception.
     private <T> CompletableFuture<List<T>> allOf(List<CompletableFuture<T>> futuresList) {
         CompletableFuture<Void> allFuturesResult =
-                CompletableFuture.allOf(futuresList.toArray(new CompletableFuture[0]));
+                CompletableFuture.allOf(
+                        futuresList.toArray(new CompletableFuture[futuresList.size()]));
         return allFuturesResult.thenApply(
                 v ->
                         futuresList.stream()
@@ -415,7 +418,7 @@ public class EpdgSelector {
      * @param filter Selects for IPv4, IPv6 (or both) addresses from the resulting DNS records
      * @param network {@link Network} Network on which to run the DNS query.
      * @param timeout timeout in seconds.
-     * @return Map of unique IP addresses corresponding to the domainNames.
+     * @return List of unique IP addresses corresponding to the domainNames.
      */
     private Map<String, List<InetAddress>> getIP(
             List<String> domainNames, int filter, Network network, long timeout) {
@@ -496,7 +499,7 @@ public class EpdgSelector {
      */
     private void getIP(
             String domainName, int filter, List<InetAddress> validIpList, Network network) {
-        List<InetAddress> ipList = new ArrayList<>();
+        List<InetAddress> ipList = new ArrayList<InetAddress>();
 
         // Get All IP for each domain name
         Log.d(TAG, "Input domainName : " + domainName);
@@ -506,9 +509,9 @@ public class EpdgSelector {
             ipList.add(InetAddresses.parseNumericAddress(domainName));
         } else {
             try {
-                CompletableFuture<List<InetAddress>> result = new CompletableFuture<>();
+                CompletableFuture<List<InetAddress>> result = new CompletableFuture();
                 final DnsResolver.Callback<List<InetAddress>> cb =
-                        new DnsResolver.Callback<>() {
+                        new DnsResolver.Callback<List<InetAddress>>() {
                             @Override
                             public void onAnswer(
                                     @NonNull final List<InetAddress> answer, final int rcode) {
@@ -561,14 +564,14 @@ public class EpdgSelector {
                 mContext.getSystemService(SubscriptionManager.class);
         if (subscriptionManager == null) {
             Log.e(TAG, "SubscriptionManager is NULL");
-            return plmnsFromCarrierConfig.toArray(new String[0]);
+            return plmnsFromCarrierConfig.toArray(new String[plmnsFromCarrierConfig.size()]);
         }
 
         SubscriptionInfo subInfo =
                 subscriptionManager.getActiveSubscriptionInfoForSimSlotIndex(mSlotId);
         if (subInfo == null) {
             Log.e(TAG, "SubscriptionInfo is NULL");
-            return plmnsFromCarrierConfig.toArray(new String[0]);
+            return plmnsFromCarrierConfig.toArray(new String[plmnsFromCarrierConfig.size()]);
         }
 
         // Get MCCMNC from IMSI
@@ -599,7 +602,7 @@ public class EpdgSelector {
                     break;
                 case CarrierConfigManager.Iwlan.EPDG_PLMN_EHPLMN_FIRST:
                     if (!ehplmns.isEmpty()) {
-                        combinedList.add(ehplmns.getFirst());
+                        combinedList.add(ehplmns.get(0));
                     }
                     break;
                 default:
@@ -616,7 +619,7 @@ public class EpdgSelector {
                         .toList();
 
         Log.d(TAG, "Final plmn list:" + combinedList);
-        return combinedList.toArray(new String[0]);
+        return combinedList.toArray(new String[combinedList.size()]);
     }
 
     private List<String> getPlmnsFromCarrierConfig() {
@@ -634,7 +637,7 @@ public class EpdgSelector {
     }
 
     private List<InetAddress> removeDuplicateIp(List<InetAddress> validIpList) {
-        ArrayList<InetAddress> resultIpList = new ArrayList<>();
+        ArrayList<InetAddress> resultIpList = new ArrayList<InetAddress>();
 
         for (InetAddress validIp : validIpList) {
             if (!resultIpList.contains(validIp)) {
@@ -692,13 +695,14 @@ public class EpdgSelector {
 
         if (mTelephonyManager == null) {
             Log.e(TAG, "TelephonyManager is NULL");
-            return new ArrayList<>();
+            return new ArrayList<String>();
         } else {
             return mTelephonyManager.getEquivalentHomePlmns();
         }
     }
 
-    private void resolveByStaticMethod(int filter, List<InetAddress> validIpList, Network network) {
+    private void resolutionMethodStatic(
+            int filter, List<InetAddress> validIpList, Network network) {
         String[] domainNames = null;
 
         Log.d(TAG, "STATIC Method");
@@ -706,7 +710,7 @@ public class EpdgSelector {
         // Get the static domain names from carrier config
         // Config obtained in form of a list of domain names separated by
         // a delimiter is only used for testing purpose.
-        if (isInVisitingCountry()) {
+        if (!inSameCountry()) {
             domainNames =
                     getDomainNames(
                             CarrierConfigManager.Iwlan.KEY_EPDG_STATIC_ADDRESS_ROAMING_STRING);
@@ -740,8 +744,8 @@ public class EpdgSelector {
         return configValue.split(",");
     }
 
-    private boolean isInVisitingCountry() {
-        boolean isInAnotherCountry = true;
+    private boolean inSameCountry() {
+        boolean inSameCountry = true;
 
         TelephonyManager tm = mContext.getSystemService(TelephonyManager.class);
         tm =
@@ -753,20 +757,24 @@ public class EpdgSelector {
             String currentCountry = IwlanHelper.getLastKnownCountryCode(mContext);
             if (!TextUtils.isEmpty(simCountry) && !TextUtils.isEmpty(currentCountry)) {
                 Log.d(TAG, "simCountry = " + simCountry + ", currentCountry = " + currentCountry);
-                isInAnotherCountry = !simCountry.equalsIgnoreCase(currentCountry);
+                inSameCountry = simCountry.equalsIgnoreCase(currentCountry);
             }
         }
 
-        return isInAnotherCountry;
+        return inSameCountry;
     }
 
-    private Map<String, List<InetAddress>> resolveByPlmnBasedFqdn(
+    private Map<String, List<InetAddress>> resolutionMethodPlmn(
             int filter, List<InetAddress> validIpList, boolean isEmergency, Network network) {
+        String[] plmnList;
+        StringBuilder domainName = new StringBuilder();
+
         Log.d(TAG, "PLMN Method");
-        var plmnList = getPlmnList();
-        var domainNames = new ArrayList<String>();
+
+        plmnList = getPlmnList();
+        List<String> domainNames = new ArrayList<>();
         for (String plmn : plmnList) {
-            var mccmnc = splitMccMnc(plmn);
+            String[] mccmnc = splitMccMnc(plmn);
             /*
              * Operator Identifier based ePDG FQDN format:
              * epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
@@ -775,18 +783,27 @@ public class EpdgSelector {
              * sos.epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
              */
             if (isEmergency) {
-                domainNames.add(
-                        "sos."
-                                + "epdg.epc.mnc"
-                                + mccmnc[1]
-                                + ".mcc"
-                                + mccmnc[0]
-                                + ".pub.3gppnetwork.org");
+                domainName = new StringBuilder();
+                domainName
+                        .append("sos.")
+                        .append("epdg.epc.mnc")
+                        .append(mccmnc[1])
+                        .append(".mcc")
+                        .append(mccmnc[0])
+                        .append(".pub.3gppnetwork.org");
+                domainNames.add(domainName.toString());
+                domainName.setLength(0);
             }
             // For emergency PDN setup, still adding FQDN without "sos" header as second priority
             // because some operator doesn't support hostname with "sos" prefix.
-            domainNames.add(
-                    "epdg.epc.mnc" + mccmnc[1] + ".mcc" + mccmnc[0] + ".pub.3gppnetwork.org");
+            domainName
+                    .append("epdg.epc.mnc")
+                    .append(mccmnc[1])
+                    .append(".mcc")
+                    .append(mccmnc[0])
+                    .append(".pub.3gppnetwork.org");
+            domainNames.add(domainName.toString());
+            domainName.setLength(0);
         }
 
         Map<String, List<InetAddress>> domainNameToIpAddr =
@@ -796,17 +813,24 @@ public class EpdgSelector {
         return domainNameToIpAddr;
     }
 
-    private void resolveByTaiBasedFqdn(
+    private void resolutionMethodCellularLoc(
             int filter, List<InetAddress> validIpList, boolean isEmergency, Network network) {
+        String[] plmnList;
+        StringBuilder domainName = new StringBuilder();
+
         Log.d(TAG, "CELLULAR_LOC Method");
 
-        TelephonyManager telephonyManager = getTelephonyManager();
-        if (telephonyManager == null) {
+        TelephonyManager mTelephonyManager = mContext.getSystemService(TelephonyManager.class);
+        mTelephonyManager =
+                Objects.requireNonNull(mTelephonyManager)
+                        .createForSubscriptionId(IwlanHelper.getSubId(mContext, mSlotId));
+
+        if (mTelephonyManager == null) {
             Log.e(TAG, "TelephonyManager is NULL");
             return;
         }
 
-        List<CellInfo> cellInfoList = telephonyManager.getAllCellInfo();
+        List<CellInfo> cellInfoList = mTelephonyManager.getAllCellInfo();
         if (cellInfoList == null) {
             Log.e(TAG, "cellInfoList is NULL");
             return;
@@ -818,129 +842,96 @@ public class EpdgSelector {
             }
 
             if (cellInfo instanceof CellInfoGsm cellInfoGsm) {
-                handleGsmCellInfo(cellInfoGsm, filter, validIpList, isEmergency, network);
+                CellIdentityGsm gsmCellId = cellInfoGsm.getCellIdentity();
+                String lacString = String.format("%04x", gsmCellId.getLac());
+
+                lacDomainNameResolution(filter, validIpList, lacString, isEmergency, network);
             } else if (cellInfo instanceof CellInfoWcdma cellInfoWcdma) {
-                handleWcdmaCellInfo(cellInfoWcdma, filter, validIpList, isEmergency, network);
+                CellIdentityWcdma wcdmaCellId = cellInfoWcdma.getCellIdentity();
+                String lacString = String.format("%04x", wcdmaCellId.getLac());
+
+                lacDomainNameResolution(filter, validIpList, lacString, isEmergency, network);
             } else if (cellInfo instanceof CellInfoLte cellInfoLte) {
-                handleLteCellInfo(cellInfoLte, filter, validIpList, isEmergency, network);
+                CellIdentityLte lteCellId = cellInfoLte.getCellIdentity();
+                String tacString = String.format("%04x", lteCellId.getTac());
+                String[] tacSubString = new String[2];
+                tacSubString[0] = tacString.substring(0, 2);
+                tacSubString[1] = tacString.substring(2);
+
+                plmnList = getPlmnList();
+                for (String plmn : plmnList) {
+                    String[] mccmnc = splitMccMnc(plmn);
+                    /*
+                     * Tracking Area Identity based ePDG FQDN format:
+                     * tac-lb<TAC-low-byte>.tac-hb<TAC-high-byte>.tac.
+                     * epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
+                     *
+                     * <p>Tracking Area Identity based Emergency ePDG FQDN format:
+                     * tac-lb<TAC-low-byte>.tac-hb<TAC-highbyte>.tac.
+                     * sos.epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org"
+                     */
+                    domainName
+                            .append("tac-lb")
+                            .append(tacSubString[1])
+                            .append(".tac-hb")
+                            .append(tacSubString[0]);
+                    if (isEmergency) {
+                        domainName.append(".tac.sos.epdg.epc.mnc");
+                    } else {
+                        domainName.append(".tac.epdg.epc.mnc");
+                    }
+                    domainName
+                            .append(mccmnc[1])
+                            .append(".mcc")
+                            .append(mccmnc[0])
+                            .append(".pub.3gppnetwork.org");
+                    getIP(domainName.toString(), filter, validIpList, network);
+                    domainName.setLength(0);
+                }
             } else if (cellInfo instanceof CellInfoNr cellInfoNr) {
-                handleNrCellInfo(cellInfoNr, filter, validIpList, isEmergency, network);
+                CellIdentityNr nrCellId = (CellIdentityNr) cellInfoNr.getCellIdentity();
+                String tacString = String.format("%06x", nrCellId.getTac());
+                String[] tacSubString = new String[3];
+                tacSubString[0] = tacString.substring(0, 2);
+                tacSubString[1] = tacString.substring(2, 4);
+                tacSubString[2] = tacString.substring(4);
+
+                plmnList = getPlmnList();
+                for (String plmn : plmnList) {
+                    String[] mccmnc = splitMccMnc(plmn);
+                    /*
+                     * 5GS Tracking Area Identity based ePDG FQDN format:
+                     * tac-lb<TAC-low-byte>.tac-mb<TAC-middle-byte>.tac-hb<TAC-high-byte>.
+                     * 5gstac.epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
+                     *
+                     * <p>5GS Tracking Area Identity based Emergency ePDG FQDN format:
+                     * tac-lb<TAC-low-byte>.tac-mb<TAC-middle-byte>.tac-hb<TAC-high-byte>.
+                     * 5gstac.sos.epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
+                     */
+                    domainName
+                            .append("tac-lb")
+                            .append(tacSubString[2])
+                            .append(".tac-mb")
+                            .append(tacSubString[1])
+                            .append(".tac-hb")
+                            .append(tacSubString[0]);
+                    if (isEmergency) {
+                        domainName.append(".5gstac.sos.epdg.epc.mnc");
+                    } else {
+                        domainName.append(".5gstac.epdg.epc.mnc");
+                    }
+                    domainName
+                            .append(mccmnc[1])
+                            .append(".mcc")
+                            .append(mccmnc[0])
+                            .append(".pub.3gppnetwork.org");
+                    getIP(domainName.toString(), filter, validIpList, network);
+                    domainName.setLength(0);
+                }
             } else {
                 Log.d(TAG, "This cell doesn't contain LAC/TAC info");
             }
         }
-    }
-
-    private void handleGsmCellInfo(
-            CellInfoGsm cellInfoGsm,
-            int filter,
-            List<InetAddress> validIpList,
-            boolean isEmergency,
-            Network network) {
-        var gsmCellId = cellInfoGsm.getCellIdentity();
-        var lacString = String.format("%04x", gsmCellId.getLac());
-        lacDomainNameResolution(filter, validIpList, lacString, isEmergency, network);
-    }
-
-    private void handleWcdmaCellInfo(
-            CellInfoWcdma cellInfoWcdma,
-            int filter,
-            List<InetAddress> validIpList,
-            boolean isEmergency,
-            Network network) {
-        var wcdmaCellId = cellInfoWcdma.getCellIdentity();
-        var lacString = String.format("%04x", wcdmaCellId.getLac());
-        lacDomainNameResolution(filter, validIpList, lacString, isEmergency, network);
-    }
-
-    private void handleLteCellInfo(
-            CellInfoLte cellInfoLte,
-            int filter,
-            List<InetAddress> validIpList,
-            boolean isEmergency,
-            Network network) {
-        var plmnList = getPlmnList();
-        var lteCellId = cellInfoLte.getCellIdentity();
-        var tacString = String.format("%04x", lteCellId.getTac());
-        var tacSubString = List.of(tacString.substring(0, 2), tacString.substring(2));
-
-        for (String plmn : plmnList) {
-            var mccmnc = splitMccMnc(plmn);
-            /*
-             * Tracking Area Identity based ePDG FQDN format:
-             * tac-lb<TAC-low-byte>.tac-hb<TAC-high-byte>.tac.
-             * epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
-             *
-             * <p>Tracking Area Identity based Emergency ePDG FQDN format:
-             * tac-lb<TAC-low-byte>.tac-hb<TAC-highbyte>.tac.
-             * sos.epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org"
-             */
-            String domainName =
-                    "tac-lb"
-                            + tacSubString.get(1)
-                            + ".tac-hb"
-                            + tacSubString.getFirst()
-                            + (isEmergency ? ".tac.sos.epdg.epc.mnc" : ".tac.epdg.epc.mnc")
-                            + mccmnc[1]
-                            + ".mcc"
-                            + mccmnc[0]
-                            + ".pub.3gppnetwork.org";
-            getIP(domainName, filter, validIpList, network);
-        }
-    }
-
-    private void handleNrCellInfo(
-            CellInfoNr cellInfoNr,
-            int filter,
-            List<InetAddress> validIpList,
-            boolean isEmergency,
-            Network network) {
-        var nrCellId = (CellIdentityNr) cellInfoNr.getCellIdentity();
-        var tacString = String.format("%06x", nrCellId.getTac());
-        var tacSubString =
-                List.of(
-                        tacString.substring(0, 2),
-                        tacString.substring(2, 4),
-                        tacString.substring(4));
-        var plmnList = getPlmnList();
-        for (String plmn : plmnList) {
-            var mccmnc = splitMccMnc(plmn);
-            /*
-             * 5GS Tracking Area Identity based ePDG FQDN format:
-             * tac-lb<TAC-low-byte>.tac-mb<TAC-middle-byte>.tac-hb<TAC-high-byte>.
-             * 5gstac.epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
-             *
-             * <p>5GS Tracking Area Identity based Emergency ePDG FQDN format:
-             * tac-lb<TAC-low-byte>.tac-mb<TAC-middle-byte>.tac-hb<TAC-high-byte>.
-             * 5gstac.sos.epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
-             */
-            String domainName =
-                    "tac-lb"
-                            + tacSubString.get(2)
-                            + ".tac-mb"
-                            + tacSubString.get(1)
-                            + ".tac-hb"
-                            + tacSubString.getFirst()
-                            + (isEmergency ? ".5gstac.sos.epdg.epc.mnc" : ".5gstac.epdg.epc.mnc")
-                            + mccmnc[1]
-                            + ".mcc"
-                            + mccmnc[0]
-                            + ".pub.3gppnetwork.org";
-            getIP(domainName, filter, validIpList, network);
-        }
-    }
-
-    private @androidx.annotation.Nullable TelephonyManager getTelephonyManager() {
-        TelephonyManager telephonyManager = mContext.getSystemService(TelephonyManager.class);
-        telephonyManager =
-                Objects.requireNonNull(telephonyManager)
-                        .createForSubscriptionId(IwlanHelper.getSubId(mContext, mSlotId));
-
-        if (telephonyManager == null) {
-            Log.e(TAG, "TelephonyManager is NULL");
-            return null;
-        }
-        return telephonyManager;
     }
 
     private void lacDomainNameResolution(
@@ -949,9 +940,12 @@ public class EpdgSelector {
             String lacString,
             boolean isEmergency,
             Network network) {
-        var plmnList = getPlmnList();
+        String[] plmnList;
+        StringBuilder domainName = new StringBuilder();
+
+        plmnList = getPlmnList();
         for (String plmn : plmnList) {
-            var mccmnc = splitMccMnc(plmn);
+            String[] mccmnc = splitMccMnc(plmn);
             /*
              * Location Area Identity based ePDG FQDN format:
              * lac<LAC>.epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
@@ -959,19 +953,24 @@ public class EpdgSelector {
              * <p>Location Area Identity based Emergency ePDG FQDN format:
              * lac<LAC>.sos.epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
              */
-            var domainName =
-                    "lac"
-                            + lacString
-                            + (isEmergency ? ".sos.epdg.epc.mnc" : ".epdg.epc.mnc")
-                            + mccmnc[1]
-                            + ".mcc"
-                            + mccmnc[0]
-                            + ".pub.3gppnetwork.org";
-            getIP(domainName, filter, validIpList, network);
+            domainName.append("lac").append(lacString);
+            if (isEmergency) {
+                domainName.append(".sos.epdg.epc.mnc");
+            } else {
+                domainName.append(".epdg.epc.mnc");
+            }
+            domainName
+                    .append(mccmnc[1])
+                    .append(".mcc")
+                    .append(mccmnc[0])
+                    .append(".pub.3gppnetwork.org");
+
+            getIP(domainName.toString(), filter, validIpList, network);
+            domainName.setLength(0);
         }
     }
 
-    private void resolveByPcoMethod(int filter, @NonNull List<InetAddress> validIpList) {
+    private void resolutionMethodPco(int filter, @NonNull List<InetAddress> validIpList) {
         Log.d(TAG, "PCO Method");
 
         // TODO(b/362299669): Refactor PCO clean up upon SIM changed.
@@ -1041,6 +1040,8 @@ public class EpdgSelector {
     }
 
     private String composeFqdnWithMccMnc(String mcc, String mnc, boolean isEmergency) {
+        StringBuilder domainName = new StringBuilder();
+
         /*
          * Operator Identifier based ePDG FQDN format:
          * epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
@@ -1048,12 +1049,18 @@ public class EpdgSelector {
          * Operator Identifier based Emergency ePDG FQDN format:
          * sos.epdg.epc.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org
          */
-        return (isEmergency ? "sos." : "")
-                + "epdg.epc.mnc"
-                + mnc
-                + ".mcc"
-                + mcc
-                + ".pub.3gppnetwork.org";
+        domainName.setLength(0);
+        if (isEmergency) {
+            domainName.append("sos.");
+        }
+        domainName
+                .append("epdg.epc.mnc")
+                .append(mnc)
+                .append(".mcc")
+                .append(mcc)
+                .append(".pub.3gppnetwork.org");
+
+        return domainName.toString();
     }
 
     private boolean isRegisteredWith3GPP(TelephonyManager telephonyManager) {
@@ -1130,10 +1137,19 @@ public class EpdgSelector {
         }
     }
 
-    private void resolveMethodVisitedCountry(
+    private void resolutionMethodVisitedCountry(
             int filter, List<InetAddress> validIpList, boolean isEmergency, Network network) {
-        TelephonyManager telephonyManager = getTelephonyManager();
-        if (telephonyManager == null) return;
+        StringBuilder domainName = new StringBuilder();
+
+        TelephonyManager telephonyManager = mContext.getSystemService(TelephonyManager.class);
+        telephonyManager =
+                Objects.requireNonNull(telephonyManager)
+                        .createForSubscriptionId(IwlanHelper.getSubId(mContext, mSlotId));
+
+        if (telephonyManager == null) {
+            Log.e(TAG, "TelephonyManager is NULL");
+            return;
+        }
 
         final boolean isRegisteredWith3GPP = isRegisteredWith3GPP(telephonyManager);
 
@@ -1170,19 +1186,22 @@ public class EpdgSelector {
          * Visited Country Emergency ePDG FQDN format:
          * sos.epdg.epc.mcc<MCC>.visited-country.pub.3gppnetwork.org
          */
-        var domainName =
-                (isEmergency ? "sos." : "")
-                        + "epdg.epc.mcc"
-                        + cellMcc
-                        + ".visited-country.pub.3gppnetwork.org";
+        if (isEmergency) {
+            domainName.append("sos.");
+        }
+        domainName
+                .append("epdg.epc.mcc")
+                .append(cellMcc)
+                .append(".visited-country.pub.3gppnetwork.org");
+
         Log.d(TAG, "Visited Country FQDN with " + domainName);
 
         CompletableFuture<List<NaptrTarget>> naptrDnsResult = new CompletableFuture<>();
         DnsResolver.Callback<List<NaptrTarget>> naptrDnsCb =
-                new DnsResolver.Callback<>() {
+                new DnsResolver.Callback<List<NaptrTarget>>() {
                     @Override
                     public void onAnswer(@NonNull final List<NaptrTarget> answer, final int rcode) {
-                        if (rcode == 0 && !answer.isEmpty()) {
+                        if (rcode == 0 && answer.size() != 0) {
                             naptrDnsResult.complete(answer);
                         } else {
                             naptrDnsResult.completeExceptionally(new UnknownHostException());
@@ -1194,13 +1213,13 @@ public class EpdgSelector {
                         naptrDnsResult.completeExceptionally(error);
                     }
                 };
-        NaptrDnsResolver.query(network, domainName, Runnable::run, null, naptrDnsCb);
+        NaptrDnsResolver.query(network, domainName.toString(), Runnable::run, null, naptrDnsCb);
 
         try {
             final List<NaptrTarget> naptrResponse =
                     naptrDnsResult.get(DNS_RESOLVER_TIMEOUT_DURATION_SEC, TimeUnit.SECONDS);
             // Check if there is any record in the NAPTR response
-            if (naptrResponse != null && !naptrResponse.isEmpty()) {
+            if (naptrResponse != null && naptrResponse.size() > 0) {
                 processNaptrResponse(
                         filter,
                         validIpList,
@@ -1260,7 +1279,7 @@ public class EpdgSelector {
      * @param selectorCallback {@link EpdgSelectorCallback} The result will be returned through this
      *     callback. If null, the caller is not interested in the result. Typically, this means the
      *     caller is performing DNS prefetch of the ePDG server addresses to warm the native
-     *     dnsResolver module's caches.
+     *     dnsresolver module's caches.
      * @return {link IwlanError} denoting the status of this operation.
      */
     public IwlanError getValidatedServerList(
@@ -1299,29 +1318,30 @@ public class EpdgSelector {
                                                                     .EPDG_ADDRESS_VISITED_COUNTRY);
 
                     // In the visited country
-                    if (isRoaming && isInVisitingCountry() && isVisitedCountryMethodRequired) {
-                        resolveMethodVisitedCountry(filter, validIpList, isEmergency, network);
+                    if (isRoaming && !inSameCountry() && isVisitedCountryMethodRequired) {
+                        resolutionMethodVisitedCountry(filter, validIpList, isEmergency, network);
                     }
 
                     Map<String, List<InetAddress>> plmnDomainNamesToIpAddress = null;
                     for (int addrResolutionMethod : addrResolutionMethods) {
                         switch (addrResolutionMethod) {
                             case CarrierConfigManager.Iwlan.EPDG_ADDRESS_STATIC:
-                                resolveByStaticMethod(filter, validIpList, network);
+                                resolutionMethodStatic(filter, validIpList, network);
                                 break;
 
                             case CarrierConfigManager.Iwlan.EPDG_ADDRESS_PLMN:
                                 plmnDomainNamesToIpAddress =
-                                        resolveByPlmnBasedFqdn(
+                                        resolutionMethodPlmn(
                                                 filter, validIpList, isEmergency, network);
                                 break;
 
                             case CarrierConfigManager.Iwlan.EPDG_ADDRESS_PCO:
-                                resolveByPcoMethod(filter, validIpList);
+                                resolutionMethodPco(filter, validIpList);
                                 break;
 
                             case CarrierConfigManager.Iwlan.EPDG_ADDRESS_CELLULAR_LOC:
-                                resolveByTaiBasedFqdn(filter, validIpList, isEmergency, network);
+                                resolutionMethodCellularLoc(
+                                        filter, validIpList, isEmergency, network);
                                 break;
 
                             default:
