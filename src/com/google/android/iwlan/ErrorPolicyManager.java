@@ -27,6 +27,7 @@ import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.telephony.DataFailCause;
 import android.telephony.TelephonyManager;
+import android.telephony.data.DataCallResponse;
 import android.telephony.data.DataService;
 import android.text.TextUtils;
 import android.util.Log;
@@ -122,10 +123,15 @@ public class ErrorPolicyManager {
     private static final int IKE_PROTOCOL_ERROR_PLMN_NOT_ALLOWED = 11011;
     private static final int IKE_PROTOCOL_ERROR_UNAUTHENTICATED_EMERGENCY_NOT_SUPPORTED = 11055;
 
+    /**
+     * Represents the retry backoff duration is unspecified, see {@link
+     * android.telephony.data.DataCallResponse#RETRY_DURATION_UNDEFINED}
+     */
+    public static final Duration UNSPECIFIED_RETRY_DURATION =
+            Duration.ofMillis(DataCallResponse.RETRY_DURATION_UNDEFINED);
+
     /** Private IKEv2 notify message types, as defined in TS 124 502 (section 9.2.4.1) */
     private static final int IKE_PROTOCOL_ERROR_CONGESTION = 15500;
-
-    private static final int IWLAN_NO_ERROR_RETRY_TIME = -1;
 
     private static final ErrorPolicy FALLBACK_ERROR_POLICY =
             builder()
@@ -207,7 +213,7 @@ public class ErrorPolicyManager {
         if (iwlanError.getErrorType() == IwlanError.NO_ERROR) {
             Log.d(LOG_TAG, "reportIwlanError: NO_ERROR");
             mRetryActionStoreByApn.remove(apn);
-            return IWLAN_NO_ERROR_RETRY_TIME;
+            return DataCallResponse.RETRY_DURATION_UNDEFINED;
         }
         mErrorStats.update(apn, iwlanError);
 
@@ -238,7 +244,7 @@ public class ErrorPolicyManager {
         if (iwlanError.getErrorType() == IwlanError.NO_ERROR) {
             Log.d(LOG_TAG, "reportIwlanError: NO_ERROR");
             mRetryActionStoreByApn.remove(apn);
-            return IWLAN_NO_ERROR_RETRY_TIME;
+            return DataCallResponse.RETRY_DURATION_UNDEFINED;
         }
         mErrorStats.update(apn, iwlanError);
 
@@ -260,7 +266,9 @@ public class ErrorPolicyManager {
     public synchronized boolean canBringUpTunnel(String apn) {
         RetryAction lastRetryAction = getLastRetryAction(apn);
         boolean canBringUp =
-                lastRetryAction == null || getRemainingRetryTimeMs(lastRetryAction) <= 0;
+                lastRetryAction == null
+                        || getRemainingBackoffDuration(lastRetryAction).isNegative()
+                        || getRemainingBackoffDuration(lastRetryAction).isZero();
         Log.d(LOG_TAG, "canBringUpTunnel: " + canBringUp);
         return canBringUp;
     }
@@ -358,25 +366,30 @@ public class ErrorPolicyManager {
     }
 
     /**
-     * Returns the current retryTime based on the lastErrorForApn
+     * Returns the current remaining backoff duration of the APN
      *
-     * @param apn apn name for which curren retry time is needed
+     * @param apn APN name for which current backoff duration is needed
      * @return long current retry time in milliseconds
      */
-    public synchronized long getRemainingRetryTimeMs(String apn) {
+    public synchronized Duration getRemainingBackoffDuration(String apn) {
         RetryAction lastRetryAction = getLastRetryAction(apn);
-        return lastRetryAction == null ? -1 : getRemainingRetryTimeMs(lastRetryAction);
+        return lastRetryAction == null
+                ? UNSPECIFIED_RETRY_DURATION
+                : getRemainingBackoffDuration(lastRetryAction);
     }
 
     /**
-     * Get the remaining time in millis should be waited before retry, based on the current time and
-     * the RetryAction.
+     * Returns the current remaining backoff duration based on the last retryAction time
+     *
+     * @param retryAction the last error
      */
-    private static long getRemainingRetryTimeMs(RetryAction retryAction) {
-        long totalRetryTimeMs = retryAction.totalBackoffDuration().toMillis();
+    private static Duration getRemainingBackoffDuration(RetryAction retryAction) {
+        Duration totalBackoffDuration = retryAction.totalBackoffDuration();
         long errorTime = retryAction.lastErrorTime();
         long currentTime = IwlanHelper.elapsedRealtime();
-        return Math.max(0, totalRetryTimeMs - (currentTime - errorTime));
+        Duration sinceLastErrorDuration = Duration.ofMillis(currentTime - errorTime);
+        Duration remainingBackupDuration = totalBackoffDuration.minus(sinceLastErrorDuration);
+        return remainingBackupDuration.isNegative() ? Duration.ZERO : remainingBackupDuration;
     }
 
     /**
