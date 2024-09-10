@@ -33,8 +33,8 @@ android_app {
         "androidx.annotation_annotation",
         "auto_value_annotations",
         "framework-annotations-lib",
-        "framework-connectivity",
-        "framework-wifi",
+        "framework-connectivity.stubs.module_lib",
+        "framework-wifi.stubs.module_lib",
         "modules-utils-handlerexecutor",
     ],
 
