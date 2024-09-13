@@ -1051,9 +1051,9 @@ public class ErrorPolicyManagerTest {
 
         // IKE_PROTOCOL_ERROR_TYPE(24) and retryArray = 4,8,16
         IwlanError iwlanError = buildIwlanIkeAuthFailedError();
-        long time = mErrorPolicyManager.reportIwlanError(apn, iwlanError, 2);
+        mErrorPolicyManager.reportIwlanError(apn, iwlanError, 2);
 
-        time = Math.round((double) mErrorPolicyManager.getRemainingRetryTimeMs(apn) / 1000);
+        long time = Math.round((double) mErrorPolicyManager.getRemainingRetryTimeMs(apn) / 1000);
         assertEquals(time, 2);
 
         // advanceClockByTimeMs for 2 seconds and make sure that we can bring up tunnel after 2 secs
@@ -1069,7 +1069,7 @@ public class ErrorPolicyManagerTest {
         bringUpTunnel = mErrorPolicyManager.canBringUpTunnel(apn);
         assertFalse(bringUpTunnel);
 
-        time = mErrorPolicyManager.reportIwlanError(apn, iwlanError, 5);
+        mErrorPolicyManager.reportIwlanError(apn, iwlanError, 5);
         time = Math.round((double) mErrorPolicyManager.getRemainingRetryTimeMs(apn) / 1000);
         assertEquals(time, 5);
 

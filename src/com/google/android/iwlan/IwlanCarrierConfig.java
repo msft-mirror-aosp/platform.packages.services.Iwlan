@@ -18,6 +18,7 @@ package com.google.android.iwlan;
 
 import android.content.Context;
 import android.os.PersistableBundle;
+import android.support.annotation.IntDef;
 import android.support.annotation.NonNull;
 import android.telephony.CarrierConfigManager;
 
@@ -65,19 +66,40 @@ public class IwlanCarrierConfig {
             PREFIX + "ike_device_identity_supported_bool";
 
     /**
-     * Boolean indicating if reordering ike SA transforms enabled. Refer to
-     * {@link #DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL} for the default value.
+     * Boolean indicating if reordering ike SA transforms enabled. Refer to {@link
+     * #DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL} for the default value.
      */
     public static final String KEY_IKE_SA_TRANSFORMS_REORDER_BOOL =
             PREFIX + "ike_sa_transforms_reorder_bool";
 
+    /** Trigger network validation when making a call */
+    public static final int NETWORK_VALIDATION_EVENT_MAKING_CALL = 0;
+
+    /** Trigger network validation when screen on */
+    public static final int NETWORK_VALIDATION_EVENT_SCREEN_ON = 1;
+
+    /** Trigger network validation when no response on network */
+    public static final int NETWORK_VALIDATION_EVENT_NO_RESPONSE = 2;
+
+    @IntDef({
+        NETWORK_VALIDATION_EVENT_MAKING_CALL,
+        NETWORK_VALIDATION_EVENT_SCREEN_ON,
+        NETWORK_VALIDATION_EVENT_NO_RESPONSE
+    })
+    public @interface NetworkValidationEvent {}
+
     /**
-     * Boolean indicating if underlying network validation check when no response on network is
-     * enabled. By default, this value is {@link
-     * #DEFAULT_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL}.
+     * Key to control which events should trigger IWLAN underlying network validation when specific
+     * event received, possible values in the int array:
+     *
+     * <ul>
+     *   <li>0: NETWORK_VALIDATION_EVENT_MAKING_CALL
+     *   <li>1: NETWORK_VALIDATION_EVENT_SCREEN_ON
+     *   <li>2: NETWORK_VALIDATION_EVENT_NO_RESPONSE
+     * </ul>
      */
-    public static final String KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL =
-            PREFIX + "validate_underlying_network_on_no_response_bool";
+    public static final String KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY =
+            PREFIX + "underlying_network_validation_events_int_array";
 
     /**
      * IWLAN error policy configs that determine the behavior when error happens during ePDG tunnel
@@ -178,6 +200,7 @@ public class IwlanCarrierConfig {
 
     /** This is the default value for {@link #KEY_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL}. */
     public static final boolean DEFAULT_DISTINCT_EPDG_FOR_EMERGENCY_ALLOWED_BOOL = false;
+
     /**
      * Default value indicating whether the UE includes the IKE DEVICE_IDENTITY Notify payload upon
      * receiving a request. This is the default setting for {@link
@@ -189,10 +212,10 @@ public class IwlanCarrierConfig {
     public static final boolean DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL = false;
 
     /**
-     * The default value for determining whether underlying network validation check when no
-     * response on network shall be enabled or disabled.
+     * The default value of which events should trigger IWLAN underlying network validation. This is
+     * the default value for {@link #KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY}
      */
-    public static final boolean DEFAULT_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL = true;
+    public static final int[] DEFAULT_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY = {};
 
     /**
      * The default value for determining IWLAN's behavior when error happens during ePDG tunnel
@@ -260,9 +283,9 @@ public class IwlanCarrierConfig {
                 KEY_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL, DEFAULT_IKE_DEVICE_IDENTITY_SUPPORTED_BOOL);
         bundle.putBoolean(
                 KEY_IKE_SA_TRANSFORMS_REORDER_BOOL, DEFAULT_IKE_SA_TRANSFORMS_REORDER_BOOL);
-        bundle.putBoolean(
-                KEY_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL,
-                DEFAULT_VALIDATE_UNDERLYING_NETWORK_ON_NO_RESPONSE_BOOL);
+        bundle.putIntArray(
+                KEY_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY,
+                DEFAULT_UNDERLYING_NETWORK_VALIDATION_EVENTS_INT_ARRAY);
         bundle.putString(KEY_ERROR_POLICY_CONFIG_STRING, DEFAULT_ERROR_POLICY_CONFIG_STRING);
         return bundle;
     }
@@ -584,5 +607,15 @@ public class IwlanCarrierConfig {
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     public static void resetTestConfig() {
         sTestBundle.clear();
+    }
+
+    public static String getUnderlyingNetworkValidationEventString(
+            @IwlanCarrierConfig.NetworkValidationEvent int event) {
+        return switch (event) {
+            case IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_MAKING_CALL -> "MAKING_CALL";
+            case IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_SCREEN_ON -> "SCREEN_ON";
+            case IwlanCarrierConfig.NETWORK_VALIDATION_EVENT_NO_RESPONSE -> "NO_RESPONSE";
+            default -> "UNKNOWN";
+        };
     }
 }
