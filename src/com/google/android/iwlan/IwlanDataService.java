@@ -2302,25 +2302,33 @@ public class IwlanDataService extends DataService {
         int cid = networkValidationInfo.mCid;
         Executor executor = networkValidationInfo.mExecutor;
         Consumer<Integer> resultCodeCallback = networkValidationInfo.mResultCodeCallback;
-        IwlanDataServiceProvider.TunnelState tunnelState;
 
         String apnName = findMatchingApn(iwlanDataServiceProvider, cid);
-        int resultCode;
         if (apnName == null) {
-            Log.w(TAG, "no matching APN name found for network validation.");
-            resultCode = DataServiceCallback.RESULT_ERROR_UNSUPPORTED;
-        } else {
-            iwlanDataServiceProvider.mEpdgTunnelManager.requestNetworkValidationForApn(apnName);
-            resultCode = DataServiceCallback.RESULT_SUCCESS;
-            tunnelState = iwlanDataServiceProvider.mTunnelStateForApn.get(apnName);
-            if (tunnelState == null) {
-                Log.w(TAG, "EVENT_REQUEST_NETWORK_VALIDATION: tunnel state is null.");
-            } else {
-                tunnelState.setNetworkValidationStatus(
-                        PreciseDataConnectionState.NETWORK_VALIDATION_IN_PROGRESS);
-            }
+            Log.w(TAG, "handleNetworkValidationRequest: No APN for CID: " + cid);
+            executor.execute(
+                    () ->
+                            resultCodeCallback.accept(
+                                    DataServiceCallback.RESULT_ERROR_ILLEGAL_STATE));
+            return;
         }
-        executor.execute(() -> resultCodeCallback.accept(resultCode));
+
+        IwlanDataServiceProvider.TunnelState tunnelState =
+                iwlanDataServiceProvider.mTunnelStateForApn.get(apnName);
+        if (tunnelState == null) {
+            Log.e(TAG, "handleNetworkValidationRequest: No tunnel state for APN: " + apnName);
+            executor.execute(
+                    () ->
+                            resultCodeCallback.accept(
+                                    DataServiceCallback.RESULT_ERROR_ILLEGAL_STATE));
+            return;
+        }
+
+        Log.d(TAG, "handleNetworkValidationRequest: Validating network for APN: " + apnName);
+        executor.execute(() -> resultCodeCallback.accept(DataServiceCallback.RESULT_SUCCESS));
+        iwlanDataServiceProvider.mEpdgTunnelManager.requestNetworkValidationForApn(apnName);
+        tunnelState.setNetworkValidationStatus(
+                PreciseDataConnectionState.NETWORK_VALIDATION_IN_PROGRESS);
     }
 
     private static void handleLivenessStatusChange(
