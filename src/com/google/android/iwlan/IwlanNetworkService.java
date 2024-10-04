@@ -29,6 +29,7 @@ import android.net.NetworkSpecifier;
 import android.net.TelephonyNetworkSpecifier;
 import android.net.TransportInfo;
 import android.net.vcn.VcnTransportInfo;
+import android.net.vcn.VcnUtils;
 import android.os.Handler;
 import android.os.HandlerExecutor;
 import android.os.HandlerThread;
@@ -136,7 +137,9 @@ public class IwlanNetworkService extends NetworkService {
             if (networkCapabilities != null) {
                 if (networkCapabilities.hasTransport(TRANSPORT_CELLULAR)) {
                     IwlanNetworkService.setConnectedDataSub(
-                            getConnectedDataSub(networkCapabilities));
+                            getConnectedDataSub(
+                                    mContext.getSystemService(ConnectivityManager.class),
+                                    networkCapabilities));
                     IwlanNetworkService.setNetworkConnected(
                             true, IwlanNetworkService.Transport.MOBILE);
                 } else if (networkCapabilities.hasTransport(TRANSPORT_WIFI)) {
@@ -374,7 +377,8 @@ public class IwlanNetworkService extends NetworkService {
         mConnectedDataSub = subId;
     }
 
-    static int getConnectedDataSub(NetworkCapabilities networkCapabilities) {
+    static int getConnectedDataSub(
+            ConnectivityManager connectivityManager, NetworkCapabilities networkCapabilities) {
         int connectedDataSub = INVALID_SUB_ID;
         NetworkSpecifier specifier = networkCapabilities.getNetworkSpecifier();
         TransportInfo transportInfo = networkCapabilities.getTransportInfo();
@@ -382,7 +386,8 @@ public class IwlanNetworkService extends NetworkService {
         if (specifier instanceof TelephonyNetworkSpecifier) {
             connectedDataSub = ((TelephonyNetworkSpecifier) specifier).getSubscriptionId();
         } else if (transportInfo instanceof VcnTransportInfo) {
-            connectedDataSub = ((VcnTransportInfo) transportInfo).getSubId();
+            connectedDataSub =
+                    VcnUtils.getSubIdFromVcnCaps(connectivityManager, networkCapabilities);
         }
         return connectedDataSub;
     }
