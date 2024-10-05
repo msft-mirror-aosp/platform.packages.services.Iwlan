@@ -1441,12 +1441,25 @@ public class IwlanDataServiceTest {
                 .build();
     }
 
+    static Network newCellNetwork(ConnectivityManager connectivityMgr, int subId) {
+        Network cellNetwork = mock(Network.class);
+        NetworkCapabilities caps =
+                new NetworkCapabilities.Builder()
+                        .addTransportType(TRANSPORT_CELLULAR)
+                        .setNetworkSpecifier(new TelephonyNetworkSpecifier(subId))
+                        .build();
+        when(connectivityMgr.getNetworkCapabilities(cellNetwork)).thenReturn(caps);
+        return cellNetwork;
+    }
+
     private NetworkCapabilities prepareNetworkCapabilitiesForTest(
             int transportType, int subId, boolean isVcn) {
         NetworkCapabilities.Builder builder =
                 new NetworkCapabilities.Builder().addTransportType(transportType);
         if (isVcn) {
-            builder.setTransportInfo(new VcnTransportInfo(subId));
+            Network underlyingCell = newCellNetwork(mMockConnectivityManager, subId);
+            builder.setTransportInfo(new VcnTransportInfo.Builder().build())
+                    .setUnderlyingNetworks(Collections.singletonList(underlyingCell));
         } else {
             builder.setNetworkSpecifier(new TelephonyNetworkSpecifier(subId));
         }
